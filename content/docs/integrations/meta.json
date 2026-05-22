@@ -1,0 +1,11 @@
+{
+  "title": "Integrations",
+  "pages": [
+    "telephony",
+    "messaging",
+    "external-notifications",
+    "internal-notifications",
+    "glue",
+    "downstream"
+  ]
+}

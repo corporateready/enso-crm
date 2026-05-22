@@ -55,3 +55,9 @@ TRANSLATION_QA_REPORT.md
 .playwright-mcp/
 .playwright-cli/
 output/playwright/
+
+# enso-crm additions
+*.key
+*.pem
+secrets/
+/tmp-research/

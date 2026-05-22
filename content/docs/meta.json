@@ -1,0 +1,19 @@
+{
+  "title": "enso-crm Scope",
+  "pages": [
+    "index",
+    "architecture",
+    "stack",
+    "deployment",
+    "phasing",
+    "open-questions",
+    "---Domains---",
+    "domains",
+    "---Systems---",
+    "systems",
+    "---Integrations---",
+    "integrations",
+    "---Migration---",
+    "migration"
+  ]
+}
