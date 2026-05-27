@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 
 // A personProjectAssignment is a junction record (person × project × manager).
 // Junction records have no natural display label, so Twenty falls back to
@@ -32,6 +33,15 @@ export class PersonProjectAssignmentNameService {
       return undefined;
     }
 
+    const workspaceId = workspace.id;
+
+    // The relations that feed the label (project, manager) are internal
+    // reference data. We read them with a system context and bypass permission
+    // checks: the caller may be an API key or a restricted Sales Manager, but
+    // computing the display name must never depend on the caller's row/object
+    // permissions over Project or WorkspaceMember.
+    const systemAuthContext = buildSystemAuthContext(workspaceId);
+
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         let projectId = record.projectId ?? undefined;
@@ -43,8 +53,9 @@ export class PersonProjectAssignmentNameService {
         if ((!projectId || !managerId) && record.id) {
           const assignmentRepository =
             await this.globalWorkspaceOrmManager.getRepository<any>(
-              workspace.id,
+              workspaceId,
               'personProjectAssignment',
+              { shouldBypassPermissionChecks: true },
             );
 
           const existing = await assignmentRepository.findOne({
@@ -61,8 +72,9 @@ export class PersonProjectAssignmentNameService {
         if (projectId) {
           const projectRepository =
             await this.globalWorkspaceOrmManager.getRepository<any>(
-              workspace.id,
+              workspaceId,
               'project',
+              { shouldBypassPermissionChecks: true },
             );
 
           const project = await projectRepository.findOne({
@@ -75,8 +87,9 @@ export class PersonProjectAssignmentNameService {
         if (managerId) {
           const workspaceMemberRepository =
             await this.globalWorkspaceOrmManager.getRepository<any>(
-              workspace.id,
+              workspaceId,
               'workspaceMember',
+              { shouldBypassPermissionChecks: true },
             );
 
           const manager = await workspaceMemberRepository.findOne({
@@ -93,7 +106,7 @@ export class PersonProjectAssignmentNameService {
 
         return parts.length > 0 ? parts.join(' · ') : undefined;
       },
-      authContext,
+      systemAuthContext,
     );
   }
 }
