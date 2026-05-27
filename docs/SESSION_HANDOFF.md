@@ -1,6 +1,6 @@
 # ENSO CRM — Session Handoff
 
-_Last updated: 2026-05-27_
+_Last updated: 2026-05-28_
 
 This is the working handoff for continuing development across sessions. It captures the
 **live state**, the **operating playbook** (how to talk to the deployed instance), key
@@ -72,6 +72,19 @@ Secrets are in `/.env` (gitignored). Load with `set -a && source .env && set +a`
   because it carries lifecycle metadata: the **responsible manager per project per person** is
   sticky and routes ALL future inquiries for that (person, project) pair, **outliving deals**.
   After 3 months no contact → assignment expires → falls back to general routing.
+- **personRelationship** (CUSTOM, junction person × relatedPerson × type) — NEW (2026-05-28):
+  models person-to-person family/related links (spouse, kids, parents, siblings, partners).
+  Fields: `name` (TEXT, **composite**), `person` (→ person, the subject/owner),
+  `relatedPerson` (→ person, the linked profile), `relationType` (SELECT:
+  SPOUSE/PARTNER/CHILD/PARENT/SIBLING/OTHER), `notes` (TEXT). Object id
+  `4e04662f-88d8-4816-9824-370b2afe4ae2`.
+  - On **person** this created two ONE_TO_MANY inverse cards: `relationships` (subject side —
+    the primary card) and `relatedInRelationships` (target side — can be hidden in UI later).
+  - **Why a junction, not direct relations:** Twenty only supports MANY_TO_ONE / ONE_TO_MANY
+    (ONE_TO_ONE + MANY_TO_MANY were *deliberately removed* in upstream PR #12482, June 2025 —
+    re-adding = ~3–4 wks + permanent fork divergence + no join-table infra). Family links are
+    symmetric/many-to-many (spouse, two parents), which direct relations can't model cleanly.
+    The junction is Twenty's intended many-to-many pattern. Decision documented in chat.
 
 ### Roles
 - **Admin** (API key here), **Member**, **Sales Manager** (canRead/UpdateAll = true,
@@ -111,6 +124,22 @@ await globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
 Composite name (`FULL_NAME`) is read as `member.name.firstName` / `.lastName` in the workspace
 ORM context (not flat `nameFirstName`).
 
+**Composite-name feature for `personRelationship`** — DONE & deployed (2026-05-28, commit
+`91c4482511`, pushed to `main`). Same pattern as above: materializes
+`"<RelationType label> · <relatedPerson firstName lastName>"` (e.g. "Spouse · Maria Popescu")
+into the scalar `name`.
+- `src/modules/enso/person-relationship/services/person-relationship-name.service.ts` —
+  `computeName`; static `RELATION_TYPE_LABELS` map (SPOUSE→Spouse, …, OTHER→Related); reads
+  `relatedPerson` (person) + `relationType` with system auth context + bypass-perms repos.
+- Pre-query hooks under `…/person-relationship/query-hooks/`: `createOne`, `createMany`,
+  `updateOne` (recomputes only when `relatedPersonId`/`relationType` changed).
+- Registered via `person-relationship-query-hook.module.ts`, imported into the same
+  `workspace-query-hook.module.ts` as the assignment hooks.
+- ⏳ **Phase 2 — NOT yet built: mirror-write** (auto-create the reciprocal record so A↔B stays
+  in sync, with inverse type mapping PARENT↔CHILD, SPOUSE↔SPOUSE, etc.). Needs a **post**-query
+  hook (`WorkspacePostQueryHookInstance`, returns void, gets the created result) with
+  loop-guarding to avoid infinite create recursion. Deliberately deferred — it's the risky part.
+
 ---
 
 ## 5. Twenty constraints worth remembering
@@ -137,6 +166,12 @@ ORM context (not flat `nameFirstName`).
 
 ## 7. Pending / next session
 
+- **Phase 2 of `personRelationship` — mirror-write** (see §4): post-query hook to auto-create
+  the reciprocal record with inverse `relationType`. Verify Phase 1 (composite name) in the UI
+  first now that it's deployed.
+- **Field groups / record-page organisation** for Company / Project / Person / Deal — user
+  asked to organise fields into logical sections (e.g. Person: Identity / Contact / Family /
+  Real-estate). Not started this session.
 - **#25 — "My People" view filter** via `projectAssignments.manager` (nested-relation filter
   syntax to work out on the data API / view config).
 - **#24 — Row-level "edit only own"** for Sales Manager
@@ -145,8 +180,23 @@ ORM context (not flat `nameFirstName`).
   contacts primary+additional, lostReason, etc. — see `content/docs/`).
 - Possibly migrate `twenty-worker` off the Docker Hub image to the fork build.
 
+### Dev-env gotchas (worktree, 2026-05-28)
+- This worktree had **no `node_modules`** and the repo root was empty too. `yarn` is **not on
+  PATH** in non-login shells — run `corepack enable` (gives `yarn` 4.13.0) or invoke
+  `node .yarn/releases/yarn-4.13.0.cjs install`.
+- A full install needs lots of disk; we hit **ENOSPC** at ~3 GiB free. Clear space first.
+- `.nvmrc` wants Node `^24.5.0`; only 24.4.1 was installed → a postinstall guard fails, but
+  `nx typecheck`/build still run fine on 24.4.1.
+- `nx` build/lint scripts shell out to `yarn`, so corepack must be enabled or they fail with
+  `yarn: command not found`.
+- Pinned `oxfmt@0.50.0` binary wasn't installed (postinstall blocked); `npx oxfmt` pulls
+  **0.52.0**, which **false-positives** on the multi-line `implements …` style that 0.50.0 (CI)
+  produces. Trust `nx typecheck` + style-identity with committed `personProjectAssignment`
+  files; don't let local 0.52 reformat your hooks.
+
 ### Commit history (fork-specific, on `main`)
 ```
+91c4482511 feat(enso): composite name for personRelationship junction
 fd2431ff4f fix(person-project-assignment): bypass permissions when computing composite name
 34825bc22a feat(enso): composite name for personProjectAssignment
 0e651454bb build(railway): end Dockerfile at 'twenty' stage for Railway
