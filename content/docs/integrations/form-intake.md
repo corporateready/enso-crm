@@ -109,20 +109,40 @@ business), so we normalize by **national-number length**:
 (Implementation note: coerce booleans — `email && regex` is `null` when email is
 absent, which would violate the NOT-NULL `isSynthetic` column.)
 
-## Going live: pointing PostHog
+## PostHog wiring — LIVE (dual-send)
 
-PostHog form events currently feed the **legacy Elestio** workflow → Attio. To
-send them to the new CRM, add/point a PostHog **webhook destination** at:
+PostHog (EU, `https://eu.posthog.com`) has **6 projects**; forms fire the
+`form_submitted` event and an "HTTP Webhook" destination posts
+`{event, person}` to n8n. We added a **second destination** ("HTTP Webhook →
+New CRM (form-intake)") in each relevant project — **dual-send**: the existing
+Attio destination is untouched, and a copy now flows to the new CRM.
 
-```
-URL:    https://n8n-production-d2a9.up.railway.app/webhook/form-intake
-Header: x-intake-secret: <secret>   (stored in n8n's encrypted credential)
-Filter: form-submission events only
-```
+| PostHog project | id | → CRM project |
+|---|---|---|
+| ARTIMA Business & Lifestyle | 36450 | ARTIMA (ENS2301) |
+| IOANARADU | 128764 | IOANA RADU (ENS1901) |
+| SARMIZEGETUSA | 126393 | TRIUMF BOTANICA (ENS2101) |
+| AVENEW Botanica | 99901 | TRIUMF BOTANICA (ENS2101) — still live |
+| ENSO Development | 107041 | ENSO LIVING / ESTATE (by path) |
 
-**Recommended during migration: dual-send** — add the new destination *alongside*
-the existing Elestio one, so Attio keeps receiving leads while the new CRM is
-validated. Cut the old one only after the new pipeline is trusted.
+New destination config (per project): URL
+`https://n8n-production-d2a9.up.railway.app/webhook/form-intake`, header
+`x-intake-secret: <secret>`, body `{"event":"{event}","person":"{person}"}`,
+trigger `form_submitted`. Verified end-to-end (PostHog → n8n → CRM).
+
+**Cutover:** when the new CRM is trusted, disable the old Attio "HTTP Webhook"
+destinations (don't delete — keep as rollback). PostHog creds are in `.env`
+(`POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`).
+
+### Fast-ack (avoid duplicate deliveries)
+
+The webhook uses **`responseMode: onReceived`** — it returns `200 {ok:true}`
+immediately and processes asynchronously. This matters: the CRM work is 3
+sequential GraphQL calls (find → create person → create activity); if the
+webhook blocked on those, PostHog's delivery timeout would fire and **retry →
+duplicate activities**. Fast-ack decouples delivery from processing. Tradeoff: a
+downstream failure is not surfaced to PostHog (won't retry) — inspect n8n
+execution logs for failures (a future error-workflow should alert on these).
 
 ## Deliberately out of scope (next)
 

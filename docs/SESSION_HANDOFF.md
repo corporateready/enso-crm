@@ -109,11 +109,15 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
 
 ## 5. Pending / next session
 
-- **Point PostHog at the new webhook** — BLOCKED: `POSTHOG_HOST` /
-  `POSTHOG_PERSONAL_API_KEY` are empty placeholders in `.env`. Fill them (then I
-  can do it via API) or do it in PostHog UI. **Recommend dual-send** (add new
-  destination alongside Elestio→Attio; don't cut over while building). Target:
-  `…/webhook/form-intake` + header `x-intake-secret`, form events only.
+- **PostHog pointing — DONE (dual-send live).** Added "HTTP Webhook → New CRM
+  (form-intake)" destination in 5 PostHog projects (ARTIMA 36450, IOANARADU
+  128764, SARMIZEGETUSA 126393, ENSO Development 107041, AVENEW Botanica 99901),
+  alongside the existing Attio webhooks. `form_submitted` → `…/webhook/form-intake`
+  + `x-intake-secret`. Webhook is fast-ack (`onReceived`) to avoid retry-duplicates.
+  **Cutover later:** disable the old Attio "HTTP Webhook" destinations once trusted
+  (keep for rollback). PostHog creds now in `.env`.
+- **Add an n8n error-workflow** — with fast-ack, downstream CRM failures aren't
+  surfaced to PostHog. Add alerting on failed executions.
 - **Next intake channels:** calls (Roistat/Zadarma), social (Chatwoot), Meta lead
   ads → same pattern into `inboundActivity`. Then Opportunity creation + routing.
 - **Opportunity deal-level fields** (dealType, m2Min/Max/Final, relatedOpportunity,
