@@ -17,13 +17,14 @@ export class NotifyManagerAssignmentJob {
 
   @Process(NotifyManagerAssignmentJob.name)
   async handle(data: NotifyManagerAssignmentJobData): Promise<void> {
-    const { workspaceId, opportunityId, managerId } = data;
+    const { workspaceId, opportunityId, managerId, autoClaimed } = data;
 
     const authContext = buildSystemAuthContext(workspaceId);
 
     await this.managerNotificationService.notifyAssignment(authContext, {
       opportunityId,
       managerId,
+      autoClaimed,
       claimWindowMinutes: Math.round(CLAIM_WINDOW_MS / 60_000),
     });
   }

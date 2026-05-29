@@ -24,8 +24,11 @@ export const CLAIM_WINDOW_MS = Number(
   process.env.ENSO_CLAIM_WINDOW_MS ?? 3 * 60 * 1000,
 );
 
-// After this many routing attempts, stop rerouting and escalate to ops.
-export const MAX_ROUTING_ATTEMPTS = 5;
+// Routing never hard-stops — it keeps rerouting among available managers and
+// only pauses (parks) when the whole project pool is offline, resuming when
+// someone comes back. After this many unclaimed reroutes we send the admin a
+// one-time heads-up (a nudge; routing continues).
+export const ADMIN_HEADSUP_AFTER_REROUTES = 5;
 
 // inboundActivity.kind → opportunity.source. The activity's `source` enum
 // describes the transport (WEBSITE/ROISTAT/META/…), not the deal source, so the

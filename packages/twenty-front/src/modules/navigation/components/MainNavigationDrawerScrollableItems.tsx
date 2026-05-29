@@ -3,6 +3,7 @@ import { NavigationDrawerWorkspaceSectionSkeletonLoader } from '@/object-metadat
 
 import { isLayoutCustomizationModeEnabledState } from '@/layout-customization/states/isLayoutCustomizationModeEnabledState';
 import { NavigationDrawerOtherSection } from '@/navigation/components/NavigationDrawerOtherSection';
+import { RoutingPresenceSection } from '@/navigation/components/RoutingPresenceSection';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { styled } from '@linaria/react';
 import { lazy, Suspense } from 'react';
@@ -43,6 +44,7 @@ export const MainNavigationDrawerScrollableItems = () => {
         <FavoritesSectionDispatcher />
         <WorkspaceSectionDispatcher />
       </Suspense>
+      {!isLayoutCustomizationModeEnabled && <RoutingPresenceSection />}
       {!isLayoutCustomizationModeEnabled && <NavigationDrawerOtherSection />}
     </StyledScrollableItemsContainer>
   );

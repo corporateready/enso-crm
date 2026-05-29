@@ -51,6 +51,7 @@ export class ManagerNotificationService {
     params: {
       opportunityId: string;
       managerId: string;
+      autoClaimed: boolean;
       claimWindowMinutes: number;
     },
   ): Promise<void> {
@@ -71,8 +72,12 @@ export class ManagerNotificationService {
       params.managerId,
     );
 
+    const headline = params.autoClaimed
+      ? `🔔 *New lead assigned to you* — your returning client`
+      : `🔔 *New lead routed* — claim within ${params.claimWindowMinutes} min`;
+
     const lines = [
-      `🔔 *New lead routed* — claim within ${params.claimWindowMinutes} min`,
+      headline,
       details.managerName ? `Manager: ${details.managerName}` : undefined,
       details.projectName ? `Project: ${details.projectName}` : undefined,
       details.who ? `Contact: ${details.who}` : undefined,

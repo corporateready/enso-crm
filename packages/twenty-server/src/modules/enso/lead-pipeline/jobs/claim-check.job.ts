@@ -11,13 +11,15 @@ import {
   type RouteOpportunityJobData,
 } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
 import { RouteOpportunityJob } from 'src/modules/enso/lead-pipeline/jobs/route-opportunity.job';
-import { MAX_ROUTING_ATTEMPTS } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { ADMIN_HEADSUP_AFTER_REROUTES } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
 
-// The claim window expired. Idempotent: if the deal left ROUTING (manager
-// claimed) this is a no-op. Otherwise reroute to the next manager — or, once
-// MAX_ROUTING_ATTEMPTS is reached, stall the deal and escalate to ops.
+// The claim window expired. Idempotent: if the deal left ROUTING (claimed or
+// sticky auto-claimed) this is a no-op. Otherwise reroute — forever. Routing
+// never hard-stops; it only pauses (parks) when the project pool is offline and
+// resumes when someone comes back. After ADMIN_HEADSUP_AFTER_REROUTES unclaimed
+// reroutes we send the admin a one-time heads-up while routing continues.
 @Processor(MessageQueue.ensoLeadPipelineQueue)
 export class ClaimCheckJob {
   private readonly logger = new Logger(ClaimCheckJob.name);
@@ -47,20 +49,17 @@ export class ClaimCheckJob {
 
     const nextAttempt = attempt + 1;
 
-    if (nextAttempt >= MAX_ROUTING_ATTEMPTS) {
-      await this.opportunityRoutingService.markStalled(
-        authContext,
-        opportunityId,
-      );
+    // One-time admin heads-up — the lead is going stale, but keep routing.
+    if (nextAttempt === ADMIN_HEADSUP_AFTER_REROUTES) {
       await this.managerNotificationService.notifyEscalation(authContext, {
         opportunityId,
-        reason: `Could not be claimed after ${nextAttempt} routing attempts.`,
+        reason: `Still unclaimed after ${nextAttempt} routing attempts.`,
         attempts: nextAttempt,
       });
-
-      return;
     }
 
+    // Reroute (rotate). routeOpportunity re-pings the only online manager, or
+    // parks + retries if the whole project pool is offline.
     await this.messageQueueService.add<RouteOpportunityJobData>(
       RouteOpportunityJob.name,
       {

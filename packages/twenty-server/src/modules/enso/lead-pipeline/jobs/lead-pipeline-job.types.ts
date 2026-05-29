@@ -19,6 +19,8 @@ export type NotifyManagerAssignmentJobData = {
   workspaceId: string;
   opportunityId: string;
   managerId: string;
+  // true = sticky owner auto-claimed (returning client); no claim countdown.
+  autoClaimed: boolean;
 };
 
 export type ClaimCheckJobData = {

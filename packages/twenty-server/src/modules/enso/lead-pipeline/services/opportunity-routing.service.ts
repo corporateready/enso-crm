@@ -9,8 +9,17 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { CLOSED_OPPORTUNITY_STAGES } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 
 export type RoutingResult =
-  | { status: 'assigned'; managerId: string; sticky: boolean }
+  // assigned: owner set. autoClaimed=true means a sticky owner took it straight
+  // to LEAD_CLAIMED (no claim window). sticky=true on either claim path.
+  | {
+      status: 'assigned';
+      managerId: string;
+      sticky: boolean;
+      autoClaimed: boolean;
+    }
   | { status: 'already_claimed' }
+  // no_candidates = the project's routing pool is empty (nobody assigned to it is
+  // currently accepting leads). The deal is "parked" in ROUTING and retried.
   | { status: 'no_candidates' }
   | { status: 'not_found' };
 
@@ -28,14 +37,15 @@ type CandidateRow = {
   activeClientCount: number;
 };
 
-// The routing brain. Picks a manager for an opportunity in stage ROUTING:
-//   1. honor an existing sticky personProjectAssignment (person × project) if
-//      its manager isn't excluded;
-//   2. else true round-robin over available managers — oldest lastAssignedAt
-//      first, then fewest active clients, then random.
-// Sets opportunity.owner and bumps the chosen manager's lastAssignedAt. Does NOT
-// write the sticky assignment (that happens on claim) and does NOT touch
-// routingCount (the claim-check job owns reroute accounting).
+// The routing brain. For an opportunity in stage ROUTING:
+//   1. sticky personProjectAssignment (person × project) exists → assign that
+//      manager and AUTO-CLAIM (stage = LEAD_CLAIMED). Sticky wins even if the
+//      manager is currently offline — it's their client.
+//   2. else round-robin over managers who are BOTH accepting leads
+//      (isAvailableForRouting) AND assigned to the deal's project
+//      (projectRoutingMember). Oldest lastAssignedAt → fewest active clients →
+//      random. Sets owner (stage stays ROUTING; a claim window opens).
+// Sets owner + bumps lastAssignedAt; mirrors `attempt` into routingCount.
 @Injectable()
 export class OpportunityRoutingService {
   private readonly logger = new Logger(OpportunityRoutingService.name);
@@ -79,9 +89,39 @@ export class OpportunityRoutingService {
           return { status: 'already_claimed' };
         }
 
-        const managerId = await this.pickManager(
+        // (1) Sticky → auto-claim straight to LEAD_CLAIMED (even if offline).
+        const stickyManagerId = await this.findStickyManagerId(
           workspaceId,
           opportunity,
+        );
+
+        if (isDefined(stickyManagerId)) {
+          await opportunityRepository.update(
+            { id: opportunity.id },
+            {
+              ownerId: stickyManagerId,
+              stage: 'LEAD_CLAIMED',
+              routingCount: attempt,
+            },
+          );
+          await this.bumpLastAssigned(workspaceId, stickyManagerId);
+
+          this.logger.log(
+            `Opportunity ${opportunityId} auto-claimed by sticky manager ${stickyManagerId}.`,
+          );
+
+          return {
+            status: 'assigned',
+            managerId: stickyManagerId,
+            sticky: true,
+            autoClaimed: true,
+          };
+        }
+
+        // (2) Round-robin over available + project-eligible managers.
+        const managerId = await this.roundRobinPick(
+          workspaceId,
+          opportunity.projectId,
           excludedManagerIds,
         );
 
@@ -89,34 +129,22 @@ export class OpportunityRoutingService {
           return { status: 'no_candidates' };
         }
 
-        const sticky = await this.hasActiveAssignment(
-          workspaceId,
-          opportunity,
-          managerId,
-        );
-
         await opportunityRepository.update(
           { id: opportunity.id },
           { ownerId: managerId, routingCount: attempt },
         );
-
-        const workspaceMemberRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'workspaceMember',
-            { shouldBypassPermissionChecks: true },
-          );
-
-        await workspaceMemberRepository.update(
-          { id: managerId },
-          { lastAssignedAt: new Date() },
-        );
+        await this.bumpLastAssigned(workspaceId, managerId);
 
         this.logger.log(
-          `Routed opportunity ${opportunityId} to ${managerId} (sticky=${sticky}).`,
+          `Routed opportunity ${opportunityId} to ${managerId} (attempt ${attempt}).`,
         );
 
-        return { status: 'assigned', managerId, sticky };
+        return {
+          status: 'assigned',
+          managerId,
+          sticky: false,
+          autoClaimed: false,
+        };
       },
       systemAuthContext,
     );
@@ -155,49 +183,21 @@ export class OpportunityRoutingService {
     );
   }
 
-  // Escalation terminal state: routing exhausted (no candidates or max
-  // attempts). Mark the deal stalled so it surfaces in the escalation queue.
-  async markStalled(
-    authContext: WorkspaceAuthContext,
-    opportunityId: string,
-  ): Promise<void> {
-    const workspaceId = authContext.workspace?.id;
-
-    if (!workspaceId || !isDefined(opportunityId)) {
-      return;
-    }
-
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
-
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
-      const opportunityRepository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'opportunity',
-          { shouldBypassPermissionChecks: true },
-        );
-
-      await opportunityRepository.update(
-        { id: opportunityId },
-        { pipelineState: 'STALLED' },
-      );
-    }, systemAuthContext);
-  }
-
-  // Honor a sticky assignment first; else round-robin. Runs inside an existing
-  // workspace context.
-  private async pickManager(
+  private async bumpLastAssigned(
     workspaceId: string,
-    opportunity: OpportunityRow,
-    excludedManagerIds: string[],
-  ): Promise<string | undefined> {
-    const sticky = await this.findStickyManagerId(workspaceId, opportunity);
+    managerId: string,
+  ): Promise<void> {
+    const workspaceMemberRepository =
+      await this.globalWorkspaceOrmManager.getRepository<any>(
+        workspaceId,
+        'workspaceMember',
+        { shouldBypassPermissionChecks: true },
+      );
 
-    if (isDefined(sticky) && !excludedManagerIds.includes(sticky)) {
-      return sticky;
-    }
-
-    return this.roundRobinPick(workspaceId, excludedManagerIds);
+    await workspaceMemberRepository.update(
+      { id: managerId },
+      { lastAssignedAt: new Date() },
+    );
   }
 
   private async findStickyManagerId(
@@ -230,23 +230,42 @@ export class OpportunityRoutingService {
     return assignment?.managerId ?? undefined;
   }
 
-  private async hasActiveAssignment(
-    workspaceId: string,
-    opportunity: OpportunityRow,
-    managerId: string,
-  ): Promise<boolean> {
-    const sticky = await this.findStickyManagerId(workspaceId, opportunity);
-
-    return sticky === managerId;
-  }
-
-  // True round-robin over available managers. Project specialization is a no-op
-  // today (all managers serve all projects); when a manager × project
-  // eligibility set is added, filter candidates by it here.
+  // Round-robin over the project's routing pool: members who are accepting leads
+  // (isAvailableForRouting) AND assigned to this project (active
+  // projectRoutingMember). Exclusion is SOFT — we prefer not to re-pick the
+  // just-assigned manager (to rotate), but if they're the only one online we
+  // re-ping them rather than park. Returns undefined ONLY when the pool is truly
+  // empty (nobody online+eligible) → the deal parks and is retried.
   private async roundRobinPick(
     workspaceId: string,
+    projectId: string | null | undefined,
     excludedManagerIds: string[],
   ): Promise<string | undefined> {
+    if (!isDefined(projectId)) {
+      return undefined;
+    }
+
+    const routingMemberRepository =
+      await this.globalWorkspaceOrmManager.getRepository<any>(
+        workspaceId,
+        'projectRoutingMember',
+        { shouldBypassPermissionChecks: true },
+      );
+
+    const routingMembers = await routingMemberRepository.find({
+      where: { projectId, isActive: true },
+    });
+
+    const eligibleManagerIds = new Set<string>(
+      routingMembers
+        .map((member: { managerId?: string | null }) => member.managerId)
+        .filter((id: string | null | undefined): id is string => isDefined(id)),
+    );
+
+    if (eligibleManagerIds.size === 0) {
+      return undefined; // no managers assigned to this project's routing
+    }
+
     const workspaceMemberRepository =
       await this.globalWorkspaceOrmManager.getRepository<any>(
         workspaceId,
@@ -258,12 +277,21 @@ export class OpportunityRoutingService {
       where: { isAvailableForRouting: true },
     });
 
-    const eligible = available.filter(
+    const candidates = available.filter((member: { id: string }) =>
+      eligibleManagerIds.has(member.id),
+    );
+
+    if (candidates.length === 0) {
+      return undefined; // nobody online for this project → park + retry
+    }
+
+    // Soft exclusion: rotate away from the just-assigned manager when possible.
+    let pool = candidates.filter(
       (member: { id: string }) => !excludedManagerIds.includes(member.id),
     );
 
-    if (eligible.length === 0) {
-      return undefined;
+    if (pool.length === 0) {
+      pool = candidates; // only the excluded manager is online → re-ping them
     }
 
     const opportunityRepository =
@@ -273,9 +301,9 @@ export class OpportunityRoutingService {
         { shouldBypassPermissionChecks: true },
       );
 
-    const candidates: CandidateRow[] = [];
+    const ranked: CandidateRow[] = [];
 
-    for (const member of eligible) {
+    for (const member of pool) {
       const activeClientCount = await opportunityRepository.count({
         where: {
           ownerId: member.id,
@@ -283,16 +311,16 @@ export class OpportunityRoutingService {
         },
       });
 
-      candidates.push({
+      ranked.push({
         id: member.id,
         lastAssignedAt: member.lastAssignedAt ?? null,
         activeClientCount,
       });
     }
 
-    candidates.sort(this.compareCandidates);
+    ranked.sort(this.compareCandidates);
 
-    return candidates[0]?.id;
+    return ranked[0]?.id;
   }
 
   // Oldest lastAssignedAt first (never-assigned = oldest), then fewest active

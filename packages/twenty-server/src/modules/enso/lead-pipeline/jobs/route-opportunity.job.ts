@@ -17,16 +17,18 @@ import { CLAIM_WINDOW_MS } from 'src/modules/enso/lead-pipeline/lead-pipeline.co
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
 
-// Stage 2: assign a manager to an opportunity in ROUTING. On success notify the
-// manager and open a claim window (a delayed claim-check). If routing is
-// exhausted, escalate to ops and stall the deal.
+// Stage 2: assign a manager to an opportunity in ROUTING.
+//   - sticky owner → auto-claimed (LEAD_CLAIMED): notify, no claim window.
+//   - round-robin assignment → notify + open a 3-min claim window (claim-check).
+//   - parked (no available manager for the project) → keep a heartbeat
+//     (claim-check) so the deal resumes within one window of someone coming
+//     online. Routing never hard-stops.
 @Processor(MessageQueue.ensoLeadPipelineQueue)
 export class RouteOpportunityJob {
   private readonly logger = new Logger(RouteOpportunityJob.name);
 
   constructor(
     private readonly opportunityRoutingService: OpportunityRoutingService,
-    private readonly managerNotificationService: ManagerNotificationService,
     @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
     private readonly messageQueueService: MessageQueueService,
   ) {}
@@ -49,34 +51,54 @@ export class RouteOpportunityJob {
     }
 
     if (result.status === 'no_candidates') {
-      await this.opportunityRoutingService.markStalled(
-        authContext,
-        opportunityId,
+      // Parked: nobody online + assigned to this project's routing. Keep a
+      // heartbeat so the deal is picked up when a manager comes online.
+      this.logger.warn(
+        `Opportunity ${opportunityId} parked — no available manager for its project (attempt ${attempt}).`,
       );
-      await this.managerNotificationService.notifyEscalation(authContext, {
+      await this.scheduleClaimCheck(
+        workspaceId,
         opportunityId,
-        reason: 'No available managers to route to.',
-        attempts: attempt,
-      });
+        attempt,
+        excludedManagerIds,
+      );
 
       return;
     }
 
-    // Assigned. Notify the manager (separate job) and open the claim window.
+    // Assigned — notify the manager (separate job).
     await this.messageQueueService.add<NotifyManagerAssignmentJobData>(
       NotifyManagerAssignmentJob.name,
-      { workspaceId, opportunityId, managerId: result.managerId },
-    );
-
-    await this.messageQueueService.add<ClaimCheckJobData>(
-      ClaimCheckJob.name,
       {
         workspaceId,
         opportunityId,
-        attempt,
-        // The just-assigned manager is excluded from the next reroute.
-        excludedManagerIds: [...excludedManagerIds, result.managerId],
+        managerId: result.managerId,
+        autoClaimed: result.autoClaimed,
       },
+    );
+
+    // Sticky auto-claim already moved the deal to LEAD_CLAIMED — no claim window.
+    if (result.autoClaimed) {
+      return;
+    }
+
+    // Round-robin assignment → open the claim window; reroute excludes the
+    // just-assigned manager so the next attempt rotates.
+    await this.scheduleClaimCheck(workspaceId, opportunityId, attempt, [
+      ...excludedManagerIds,
+      result.managerId,
+    ]);
+  }
+
+  private async scheduleClaimCheck(
+    workspaceId: string,
+    opportunityId: string,
+    attempt: number,
+    excludedManagerIds: string[],
+  ): Promise<void> {
+    await this.messageQueueService.add<ClaimCheckJobData>(
+      ClaimCheckJob.name,
+      { workspaceId, opportunityId, attempt, excludedManagerIds },
       {
         delay: CLAIM_WINDOW_MS,
         // Idempotent: one claim-check per (opportunity, attempt).
