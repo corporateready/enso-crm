@@ -116,8 +116,11 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
   + `x-intake-secret`. Webhook is fast-ack (`onReceived`) to avoid retry-duplicates.
   **Cutover later:** disable the old Attio "HTTP Webhook" destinations once trusted
   (keep for rollback). PostHog creds now in `.env`.
-- **Add an n8n error-workflow** — with fast-ack, downstream CRM failures aren't
-  surfaced to PostHog. Add alerting on failed executions.
+- **Error alerting — DONE.** n8n workflow "⚠️ Intake Error Alerts"
+  (`OOfJPijdq1s08DQ9`): Error Trigger → Google Chat (ops space). Set as the
+  intake workflow's `errorWorkflow`. Catches hard failures AND soft GraphQL
+  errors (an "Assert activity" node throws on `.errors`/null). Verified.
+  Future: dead-letter/retry queue so failed leads auto-recover.
 - **Next intake channels:** calls (Roistat/Zadarma), social (Chatwoot), Meta lead
   ads → same pattern into `inboundActivity`. Then Opportunity creation + routing.
 - **Opportunity deal-level fields** (dealType, m2Min/Max/Final, relatedOpportunity,

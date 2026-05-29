@@ -144,6 +144,28 @@ duplicate activities**. Fast-ack decouples delivery from processing. Tradeoff: a
 downstream failure is not surfaced to PostHog (won't retry) — inspect n8n
 execution logs for failures (a future error-workflow should alert on these).
 
+## Error alerting
+
+Because fast-ack means a downstream failure isn't surfaced to PostHog, a
+separate n8n workflow **"⚠️ Intake Error Alerts"** (Error Trigger → format →
+Google Chat) is set as the intake workflow's `errorWorkflow`. It fires on any
+execution error and posts the workflow, failed node, error message, and
+execution URL to the ops Google Chat space.
+
+Two failure classes are covered:
+- **Hard failures** (network / 502 / auth / node bugs) → execution errors →
+  alert automatically.
+- **Soft GraphQL errors** — the CRM returns HTTP 200 with an `errors` array even
+  when a mutation fails (so n8n would otherwise mark it "success"). An **Assert
+  activity** node after `Create inboundActivity` throws if the response has
+  `.errors` or no `createInboundActivity`, converting the soft failure into a
+  hard one so it alerts too. (This class is what the `isSynthetic` NOT-NULL bug
+  was — silently "successful" with no record created.)
+
+Verified end-to-end (forced failure → Google Chat alert delivered). Future:
+a dead-letter/retry queue so failed leads auto-recover rather than needing
+manual re-entry from the alert.
+
 ## Deliberately out of scope (next)
 
 Opportunity creation + routing; other channels (calls via Roistat/Zadarma,
