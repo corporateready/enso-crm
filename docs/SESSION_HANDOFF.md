@@ -116,6 +116,12 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
   + `x-intake-secret`. Webhook is fast-ack (`onReceived`) to avoid retry-duplicates.
   **Cutover later:** disable the old Attio "HTTP Webhook" destinations once trusted
   (keep for rollback). PostHog creds now in `.env`.
+- **Consent — implied/opt-out, DONE at intake.** Form submission (accept
+  Terms+Privacy) = consent for email/SMS/WhatsApp/call until unsubscribe. The
+  form-intake workflow upserts `personProjectConsent` (3 channels true, source
+  FORM_WEBSITE) per person×project on submit. Enforcement: `!doNotContact &&
+  consent`. **Opt-out half pending** (email unsubscribe / SMS STOP / manual →
+  flip row to false) — build with the senders (Novu/SMS).
 - **Error alerting — DONE.** n8n workflow "⚠️ Intake Error Alerts"
   (`OOfJPijdq1s08DQ9`): Error Trigger → Google Chat (ops space). Set as the
   intake workflow's `errorWorkflow`. Catches hard failures AND soft GraphQL

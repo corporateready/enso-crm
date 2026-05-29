@@ -93,9 +93,24 @@ The form's `areaSelect` → `inboundActivity.m2Requested` (NUMBER). The
 of interest) + `m2Final` (confirmed). When the deal-creation workflow is built,
 `m2Requested` seeds the Opportunity's `m2Min`/`m2Max`.
 
-**Not captured because the forms don't send it:** there is **no marketing-consent
-field** on the forms today. To capture GDPR consent at intake, add a consent
-checkbox to the forms and map it to `personProjectConsent` in the workflow.
+### Consent (implied / opt-out model)
+
+Business/legal basis: **submitting the form = accepting Terms of Use + Privacy
+Policy**, which grant email + SMS + WhatsApp + call **until the person
+unsubscribes** (opt-out, not explicit opt-in). The form-submission
+`inboundActivity` (timestamp + `landingPage` + raw payload) is the consent
+*evidence*.
+
+On submit the workflow **upserts `personProjectConsent`** for the resolved
+(person × project): `email/sms/whatsappMarketingConsent = true`,
+`*ConsentedAt = now`, `*ConsentSource = FORM_WEBSITE`. Find-or-refresh by
+(person, project) — re-submission refreshes the timestamp, never duplicates.
+Calls need no flag (operational 1:1; gated only by `doNotContact`).
+
+Enforcement stays layered: `canSend(channel) = !person.doNotContact &&
+personProjectConsent.<channel>`. The **opt-out half** (email unsubscribe link,
+SMS `STOP`, manual) flips the row to `false` / sets `doNotContact` — built when
+the senders (Novu/SMS) are wired.
 
 ## Project resolution (host + path → CRM project)
 
