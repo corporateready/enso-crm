@@ -1,201 +1,159 @@
 # ENSO CRM — Session Handoff
 
-_Last updated: 2026-05-28_
+_Last updated: 2026-05-29_
 
-This is the working handoff for continuing development across sessions. It captures the
-**live state**, the **operating playbook** (how to talk to the deployed instance), key
-**gotchas**, and **what's next**. The next session should re-verify live state by querying
-the deployed API — IDs below were accurate at handoff time.
-
----
-
-## 1. What ENSO CRM is
-
-In-house operational CRM for a Moldovan/Romanian real-estate group (brands: ENSO, ARTIMA,
-NEWTON HOUSE, AVRAM IANCU, ENSO LIVING, AVENEW BOTANICA, Vanzari Imobiliare). It is a
-**fork of Twenty CRM**, deployed on **Railway**, **production from day 1 (no staging)**,
-internal-use only. It replaces Attio + Customer.io + Respond.io + most n8n. The analytical
-half (`modern-data-stack`: BigQuery/dbt/Lightdash/PostHog/Fivetran) stays as-is.
-
-Full scope/architecture lives in `content/docs/` (Fumadocs-viewable). Research on the old
-stack is in `docs/*.md` (attio_current, n8n_*, data_sample_findings, integrations_api_summary).
+This file is the **transient working state** for cross-session continuity. Durable knowledge
+(architecture, data model, decisions, reusable patterns) lives in `content/docs/`
+(Fumadocs-viewable). When in doubt about *what the system does or why*, go there. This file is
+for *what just happened*, *what's broken or pending*, and *operational shortcuts*.
 
 ---
 
-## 2. Live infrastructure (Railway)
+## Current state at a glance
 
-- **Railway project:** `enso-crm` (id `c3d0b708-0ee9-484f-8fb8-bfe8a50eb7cf`)
+**Deployed (production, on `main`):** Fork of Twenty CRM on Railway. Backend customizations
+live under `packages/twenty-server/src/modules/enso/`. Push to `main` = auto-deploy.
+
+**Custom objects built and live:**
+- `project` (CUSTOM) — 6 seeded rows: Vanzari Imobiliare, AVENEW BOTANICA, ARTIMA, ENSO LIVING,
+  NEWTON HOUSE, AVRAM IANCU.
+- `personProjectAssignment` (CUSTOM, junction person × project × manager) — sticky routing.
+  Composite-name hook deployed.
+- `personRelationship` (CUSTOM, junction person × person, labeled **Family** in UI) — family
+  graph. Composite-name + mirror-write (Phase 2) deployed.
+- `personProjectConsent` (CUSTOM, junction person × project) — per-project marketing consent
+  with audit. Composite-name hook deployed.
+
+**Person object additions:**
+- `dateOfBirth` (DATE)
+- `doNotContact` (BOOLEAN) + `doNotContactSetAt` (DATE_TIME) + `doNotContactReason` (SELECT)
+  — global hard-stop with audit.
+- `residenceAddress` (ADDRESS, custom; renamed from reserved `address`).
+- `currentLocation`, `languages`, `nationality`, `facebookLink` — earlier custom additions.
+
+**Opportunity object additions:**
+- `stage` SELECT (with `ROUTING`), `pipelineState` SELECT, `routingCount` NUMBER, full UTM set,
+  `lostReason` TEXT, `firstContactChannel` / `firstContactAt`, `project` → project.
+
+For the *why* of all of the above — schema rationale, design tradeoffs, the consent model,
+the junction-with-composite-name + mirror-write pattern — see:
+- `content/docs/domains/people-and-companies.md` — Person / Family / consent / company
+- `content/docs/systems/junction-composite-name-pattern.md` — the reusable hook recipe
+- `content/docs/domains/deals.md` — opportunity model
+- `content/docs/architecture.md` — overall
+
+---
+
+## Live infrastructure (Railway)
+
+- **Project:** `enso-crm` (id `c3d0b708-0ee9-484f-8fb8-bfe8a50eb7cf`)
 - **Server URL:** `https://twenty-server-production-2502.up.railway.app`
 - **Services:** `twenty-server`, `twenty-worker`, Postgres, Redis
   - `twenty-worker` start command overridden to `yarn worker:prod` (RAILWAY_RUN_COMMAND)
-  - `twenty-server` needs `PORT=3000` env var (else Railway 502s)
-- **Build:** GitHub-connected source build from `corporateready/enso-crm`, branch `main`.
-  Railway builds the **last stage** of `packages/twenty-docker/twenty/Dockerfile`, which we
-  truncated to end at the `twenty` stage (Railway rejects `VOLUME`, present in the original
-  trailing `twenty-app-dev` stage). **Push to `main` = auto-deploy.** Builds take ~10–15 min;
-  expect transient 502s during rollover.
-- **Postgres persists across rebuilds** (separate service) — schema + records survive deploys.
-- ⚠️ `twenty-worker` may still run the Docker Hub image, not the fork build — verify/migrate
-  if worker-side behavior is needed.
+  - `twenty-server` requires `PORT=3000` env var (else Railway 502s)
+- **Build:** GitHub-sourced from `corporateready/enso-crm` `main` → Dockerfile at
+  `packages/twenty-docker/twenty/Dockerfile`, **truncated to end at the `twenty` stage**
+  (Railway rejects `VOLUME` in the original trailing `twenty-app-dev` stage). Push to `main` =
+  auto-deploy, ~7–10 min total. Expect transient 502s during boot rollover (~2 min after
+  migrate completes).
+- **Postgres persists across rebuilds.** Schema + records survive deploys.
+- ⚠️ `twenty-worker` may still run the Docker Hub image, not the fork build. Verify if any
+  worker-side behavior matters.
 
 ### Operating the deployed API
 
-Secrets are in `/.env` (gitignored). Load with `set -a && source .env && set +a`.
+Secrets in `/.env` (gitignored). Load with `set -a && source .env && set +a`.
 - `TWENTY_BASE_URL`, `TWENTY_API_KEY` (ES256 JWT, ~444 chars, on the **Admin** role)
 - Data GraphQL: `POST $TWENTY_BASE_URL/graphql`
-- Metadata GraphQL: `POST $TWENTY_BASE_URL/metadata`
+- Metadata GraphQL: `POST $TWENTY_BASE_URL/metadata` (objects, fields, **views**, viewFields)
 - Auth header: `Authorization: Bearer $TWENTY_API_KEY`
-- Introspection is **disabled in prod** — you can't `__schema` your way around; query known fields.
+- Introspection is **disabled in prod** — query known shapes; do not rely on `__schema`.
 - ⚠️ The metadata `objects{ fields }` connection **truncates nested fields** across the full
-  result — it under-reports fields. To inventory an object, query the **data** API for the
-  records' fields, or fetch one object at a time. Don't trust a thin metadata dump.
+  result. To inventory an object, fetch it singly via `object(id:"...") { fields(...) }`,
+  or query the data API for a record's fields.
 
 ---
 
-## 3. Live schema (verified at handoff)
+## Conventions to follow this session (and future sessions)
 
-### Standard objects extended
-- **opportunity**: `stage` (SELECT, locked-down values incl. `ROUTING`), `pipelineState`
-  (SELECT, e.g. `ACTIVE`), `routingCount` (NUMBER), `utmSource` / `utmMedium` / `utmCampaign`
-  (TEXT), plus standard `amount` (CURRENCY), `closeDate` (DATE_TIME). Name composite TBD.
-- **person**: `facebookLink` (LINKS) custom; field groups configured
-  (Contact/Work/Personal — phone in General/Contact, location in Personal). `residenceAddress`
-  (renamed from reserved `address`).
+These are working agreements with the project owner. Don't drop them silently.
 
-### Custom objects
-- **project** (CUSTOM): `name` (TEXT, label identifier), `code` (TEXT). 6 seeded rows:
-  Vanzari Imobiliare, AVENEW BOTANICA, ARTIMA Business & Lifestyle, ENSO LIVING, NEWTON HOUSE,
-  AVRAM IANCU. (Brand concept was dropped — brand ≡ project in production.)
-- **personProjectAssignment** (CUSTOM, junction person × project × manager):
-  `name` (TEXT, **composite**), `personId`, `projectId`, `managerId` (→ workspaceMember),
-  `lastContactAt`, `endedAt`, `endReason` (DATE_TIME/TEXT). It is a real entity (not a field)
-  because it carries lifecycle metadata: the **responsible manager per project per person** is
-  sticky and routes ALL future inquiries for that (person, project) pair, **outliving deals**.
-  After 3 months no contact → assignment expires → falls back to general routing.
-- **personRelationship** (CUSTOM, junction person × relatedPerson × type) — NEW (2026-05-28):
-  models person-to-person family/related links (spouse, kids, parents, siblings, partners).
-  Fields: `name` (TEXT, **composite**), `person` (→ person, the subject/owner),
-  `relatedPerson` (→ person, the linked profile), `relationType` (SELECT:
-  SPOUSE/PARTNER/CHILD/PARENT/SIBLING/OTHER), `notes` (TEXT). Object id
-  `4e04662f-88d8-4816-9824-370b2afe4ae2`.
-  - On **person** this created two ONE_TO_MANY inverse cards: `relationships` (subject side —
-    the primary card) and `relatedInRelationships` (target side — can be hidden in UI later).
-  - **Why a junction, not direct relations:** Twenty only supports MANY_TO_ONE / ONE_TO_MANY
-    (ONE_TO_ONE + MANY_TO_MANY were *deliberately removed* in upstream PR #12482, June 2025 —
-    re-adding = ~3–4 wks + permanent fork divergence + no join-table infra). Family links are
-    symmetric/many-to-many (spouse, two parents), which direct relations can't model cleanly.
-    The junction is Twenty's intended many-to-many pattern. Decision documented in chat.
-
-### Roles
-- **Admin** (API key here), **Member**, **Sales Manager** (canRead/UpdateAll = true,
-  no soft-delete; has explicit object permissions on 4 objects).
+1. **When creating a new field, auto-enable it in the relevant views.** Call
+   `createViewField` on the object's INDEX TABLE view AND its FIELDS_WIDGET view with
+   `isVisible: true, position: <next>`. Do NOT touch non-INDEX table views (custom views are
+   the user's to curate). Internal bookkeeping fields (description prefix `Internal:`,
+   e.g. `mirrorOf`) should NOT be added to views.
+2. **Composite-name + mirror-write pattern** is documented in
+   `content/docs/systems/junction-composite-name-pattern.md`. Follow the checklist there for
+   any new junction.
+3. **System auth context with `shouldBypassPermissionChecks`** for any hook reading reference
+   data — otherwise restricted callers (API keys, Sales Managers) hit `PERMISSION_DENIED` and
+   the whole write fails.
+4. **Don't direct-push to `main` without user approval.** Auto-mode classifier blocks it;
+   user must explicitly authorize each push to production.
 
 ---
 
-## 4. Custom code in the fork (NestJS)
+## Dev-env gotchas (this machine)
 
-**Composite-name feature for `personProjectAssignment`** — DONE & verified live.
-Junction records had no natural label (showed "Untitled"). Twenty has no formula/lookup field
-type and relation cards only show scalar fields, so we materialize `project · manager` into the
-scalar `name` on write.
-
-- `src/modules/enso/person-project-assignment/services/person-project-assignment-name.service.ts`
-  — `computeName(authContext, record)`; reads project + workspaceMember and joins as
-  `"<project.name> · <member firstName lastName>"`.
-- Pre-query hooks (`@WorkspaceQueryHook`): `…createOne`, `…createMany`, `…updateOne`
-  (update only recomputes when `projectId`/`managerId` changed). All under
-  `src/modules/enso/person-project-assignment/query-hooks/`.
-- `person-project-assignment-query-hook.module.ts` registers them; it's imported into
-  `engine/api/graphql/workspace-query-runner/workspace-query-hook/workspace-query-hook.module.ts`
-  (that import is **how hooks get discovered** — don't forget it for future hooks).
-
-**⚠️ Key gotcha — permissions in hooks:** when reading reference data inside a hook, you MUST
-use a **system auth context** and bypass permission checks, or callers without read perms on
-those objects (API keys, restricted Sales Managers) hit `PERMISSION_DENIED` and the whole
-write fails. Pattern (mirrors `BlocklistValidationService`):
-```ts
-const systemAuthContext = buildSystemAuthContext(workspaceId); // from src/engine/twenty-orm/utils/build-system-auth-context.util
-await globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
-  const repo = await globalWorkspaceOrmManager.getRepository<any>(
-    workspaceId, 'project', { shouldBypassPermissionChecks: true }); // <-- required
-  // ...
-}, systemAuthContext);
-```
-Composite name (`FULL_NAME`) is read as `member.name.firstName` / `.lastName` in the workspace
-ORM context (not flat `nameFirstName`).
-
-**Composite-name feature for `personRelationship`** — DONE & deployed (2026-05-28, commit
-`91c4482511`, pushed to `main`). Same pattern as above: materializes
-`"<RelationType label> · <relatedPerson firstName lastName>"` (e.g. "Spouse · Maria Popescu")
-into the scalar `name`.
-- `src/modules/enso/person-relationship/services/person-relationship-name.service.ts` —
-  `computeName`; static `RELATION_TYPE_LABELS` map (SPOUSE→Spouse, …, OTHER→Related); reads
-  `relatedPerson` (person) + `relationType` with system auth context + bypass-perms repos.
-- Pre-query hooks under `…/person-relationship/query-hooks/`: `createOne`, `createMany`,
-  `updateOne` (recomputes only when `relatedPersonId`/`relationType` changed).
-- Registered via `person-relationship-query-hook.module.ts`, imported into the same
-  `workspace-query-hook.module.ts` as the assignment hooks.
-- ⏳ **Phase 2 — NOT yet built: mirror-write** (auto-create the reciprocal record so A↔B stays
-  in sync, with inverse type mapping PARENT↔CHILD, SPOUSE↔SPOUSE, etc.). Needs a **post**-query
-  hook (`WorkspacePostQueryHookInstance`, returns void, gets the created result) with
-  loop-guarding to avoid infinite create recursion. Deliberately deferred — it's the risky part.
+- Worktree at `.claude/worktrees/strange-wu-6e947d` had no `node_modules` initially; root also
+  empty. `yarn` is not on PATH in non-login shells — run `corepack enable` (gives `yarn`
+  4.13.0), or invoke `node .yarn/releases/yarn-4.13.0.cjs install`.
+- Full `yarn install` needs lots of disk; hit ENOSPC at ~3 GiB free. Clear space first.
+- `.nvmrc` wants Node `^24.5.0`; only 24.4.1 was installed → a postinstall guard fails, but
+  `nx typecheck`/build still run fine on 24.4.1.
+- Pinned `oxfmt@0.50.0` binary may not be installed (postinstall blocked); `npx oxfmt` pulls
+  **0.52.0**, which false-positives on the multi-line `implements …` style that 0.50.0 (CI)
+  produces. Trust `nx typecheck` + style-identity with committed hook files; don't let local
+  0.52 reformat your hooks.
 
 ---
 
-## 5. Twenty constraints worth remembering
+## Live IDs reference (quick lookup)
 
-- Field types: TEXT, NUMBER, BOOLEAN, DATE_TIME, SELECT, MULTI_SELECT, ADDRESS, LINKS, PHONES,
-  EMAILS, RELATION, ACTOR, FULL_NAME, CURRENCY, POSITION, TS_VECTOR, ARRAY, RAW_JSON, UUID.
-  **No formula / computed / lookup / rollup type** — derive on write via hooks.
-- Record-page relation **cards show scalar fields only** and suppress nested relations; a
-  junction's label must be a scalar TEXT field → hence the composite-name approach.
-- `address` is a reserved field name → use a different name (we used `residenceAddress`).
+| Object | UUID |
+|---|---|
+| `person` | `1103d2af-d96a-4ee7-95f3-364f433d2b55` |
+| `company` | `adf37f19-46e1-419b-a27d-29ef4f11ae36` |
+| `opportunity` | `a71b2bcb-9380-4b84-9f94-b6ddc19b103b` |
+| `project` (CUSTOM) | `0b6820aa-9926-437a-b877-047ed916525c` |
+| `personProjectAssignment` (CUSTOM) | `3f107ab7-d4bb-48c4-92d2-af9a50641fda` |
+| `personRelationship` (CUSTOM) | `4e04662f-88d8-4816-9824-370b2afe4ae2` |
+| `personProjectConsent` (CUSTOM) | `40c511fa-1464-4584-a43b-980d816a29a8` |
+
+Sample fixture people for smoke tests (existed at handoff time, may have changed):
+- Ivan Zhao — `7a93d1e5-3f74-4945-8a65-d7f996083f72`
+- Dario Amodei — `93c72d2e-e65c-44c4-99ad-f87f50349dcf`
+
+Sample project for smoke tests:
+- Vanzari Imobiliare — `153c97f9-f274-4453-bffb-73b15e0b299a`
 
 ---
 
-## 6. Stack decisions (for later phases)
+## Pending / next session
 
-- Notifications: **Novu** (external/prospect-facing) + **Knock** (internal/manager in-app).
-- Email: **Resend** (`crm@notifications.enso.ro`) via Novu/Knock SMTP.
-- SMS: own providers (NOT Twilio). Jobs: **Trigger.dev**. Glue: **n8n** (self-hosted, prod).
-  Inbox: **Chatwoot** (self-hosted). Storage: **Backblaze B2**. Stay within free tiers.
-- Form intake flow: PostHog → n8n → Twenty (dedup → person → deal). Dedup logic is critical.
-- CPQ + 1C exist but are out of scope (1C = payments/contracts). Customer.io/Respond.io/Zapier retired.
-
----
-
-## 7. Pending / next session
-
-- **Phase 2 of `personRelationship` — mirror-write** (see §4): post-query hook to auto-create
-  the reciprocal record with inverse `relationType`. Verify Phase 1 (composite name) in the UI
-  first now that it's deployed.
-- **Field groups / record-page organisation** for Company / Project / Person / Deal — user
-  asked to organise fields into logical sections (e.g. Person: Identity / Contact / Family /
-  Real-estate). Not started this session.
+- **Opportunity (Deal) field-group pass** — organise the record-page layout (similar to what
+  was done for Person: Contact / Personal / Work / Social / System with Family / Date of
+  Birth / Consent). Plus likely new fields per `content/docs/domains/deals.md`.
+- **Company field pass** — same exercise.
+- **Project field pass** — likely lightest; project currently has just `name` + `code`.
 - **#25 — "My People" view filter** via `projectAssignments.manager` (nested-relation filter
   syntax to work out on the data API / view config).
 - **#24 — Row-level "edit only own"** for Sales Manager
   (`upsertRowLevelPermissionPredicates`; operand discovery was hard with introspection off).
-- Continue building **objects & fields** per scope (interactions/activities, sequences module,
-  contacts primary+additional, lostReason, etc. — see `content/docs/`).
-- Possibly migrate `twenty-worker` off the Docker Hub image to the fork build.
+- **Lead source on Person** — deferred design. Intent: derived from intake activity + UTM
+  trio, exposed as read-only computed via a hook. Revisit when intake flow lands.
+- **Phase 2 mirror-write edit-from-mirror** — known limitation: editing a mirror row directly
+  doesn't propagate to canonical. Either block mirror edits or re-route them. Not urgent.
 
-### Dev-env gotchas (worktree, 2026-05-28)
-- This worktree had **no `node_modules`** and the repo root was empty too. `yarn` is **not on
-  PATH** in non-login shells — run `corepack enable` (gives `yarn` 4.13.0) or invoke
-  `node .yarn/releases/yarn-4.13.0.cjs install`.
-- A full install needs lots of disk; we hit **ENOSPC** at ~3 GiB free. Clear space first.
-- `.nvmrc` wants Node `^24.5.0`; only 24.4.1 was installed → a postinstall guard fails, but
-  `nx typecheck`/build still run fine on 24.4.1.
-- `nx` build/lint scripts shell out to `yarn`, so corepack must be enabled or they fail with
-  `yarn: command not found`.
-- Pinned `oxfmt@0.50.0` binary wasn't installed (postinstall blocked); `npx oxfmt` pulls
-  **0.52.0**, which **false-positives** on the multi-line `implements …` style that 0.50.0 (CI)
-  produces. Trust `nx typecheck` + style-identity with committed `personProjectAssignment`
-  files; don't let local 0.52 reformat your hooks.
+---
 
-### Commit history (fork-specific, on `main`)
+## Recent commits (fork-specific, on `main`)
+
 ```
+ff4b1a53a9 feat(enso): mirror-write for personRelationship (Phase 2)
+ea11dcebd0 feat(enso): composite name for personProjectConsent junction
+4bfbc668a4 docs: handoff update for personRelationship junction + dev-env gotchas
 91c4482511 feat(enso): composite name for personRelationship junction
 fd2431ff4f fix(person-project-assignment): bypass permissions when computing composite name
 34825bc22a feat(enso): composite name for personProjectAssignment

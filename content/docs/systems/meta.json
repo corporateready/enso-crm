@@ -6,6 +6,7 @@
     "state-machine",
     "sla",
     "attribution",
-    "notifications"
+    "notifications",
+    "junction-composite-name-pattern"
   ]
 }
