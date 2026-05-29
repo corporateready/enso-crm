@@ -27,17 +27,16 @@ export const CLAIM_WINDOW_MS = Number(
 // After this many routing attempts, stop rerouting and escalate to ops.
 export const MAX_ROUTING_ATTEMPTS = 5;
 
-// inboundActivity.source (or kind) → opportunity.source. Both are SELECT enums;
-// the activity already carries a normalized source, so this is mostly identity
-// with a safe fallback for anything unmapped.
-export const ACTIVITY_SOURCE_TO_OPPORTUNITY_SOURCE: Record<string, string> = {
-  FORM_WEBSITE: 'FORM_WEBSITE',
-  CALL_INBOUND: 'CALL_INBOUND',
-  SOCIAL_DM: 'SOCIAL_DM',
+// inboundActivity.kind → opportunity.source. The activity's `source` enum
+// describes the transport (WEBSITE/ROISTAT/META/…), not the deal source, so the
+// deal source is derived from the activity KIND. Unmapped kinds fall back to OTHER.
+export const ACTIVITY_KIND_TO_OPPORTUNITY_SOURCE: Record<string, string> = {
+  FORM_SUBMISSION: 'FORM_WEBSITE',
+  INCOMING_CALL: 'CALL_INBOUND',
+  CALLBACK_REQUEST: 'CALL_INBOUND',
+  SOCIAL_MESSAGE: 'SOCIAL_DM',
   LEAD_AD: 'LEAD_AD',
-  REFERRAL: 'REFERRAL',
-  WALK_IN: 'WALK_IN',
-  MANUAL: 'MANUAL',
+  APPOINTMENT_BOOKED: 'MANUAL',
 };
 
 // Human label per opportunity source, used in the composite opportunity name
@@ -53,8 +52,8 @@ export const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   OTHER: 'Lead',
 };
 
-export const mapOpportunitySource = (activitySource?: string | null): string =>
-  (activitySource && ACTIVITY_SOURCE_TO_OPPORTUNITY_SOURCE[activitySource]) ||
+export const mapOpportunitySource = (activityKind?: string | null): string =>
+  (activityKind && ACTIVITY_KIND_TO_OPPORTUNITY_SOURCE[activityKind]) ||
   'OTHER';
 
 // opportunity.firstTrafficType SELECT options. The activity's trafficType is

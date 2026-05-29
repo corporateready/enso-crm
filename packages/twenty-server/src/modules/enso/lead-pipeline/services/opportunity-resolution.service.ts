@@ -33,7 +33,7 @@ type ActivityRow = {
   projectId?: string | null;
   opportunityId?: string | null;
   isSynthetic?: boolean | null;
-  source?: string | null;
+  kind?: string | null;
   m2Requested?: number | null;
   utmSource?: string | null;
   utmMedium?: string | null;
@@ -145,7 +145,7 @@ export class OpportunityResolutionService {
           return { opportunityId: existing.id, created: false };
         }
 
-        const source = mapOpportunitySource(activity.source);
+        const source = mapOpportunitySource(activity.kind);
 
         const name = await this.opportunityNameService.computeName(
           authContext,
