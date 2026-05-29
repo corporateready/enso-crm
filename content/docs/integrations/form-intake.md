@@ -72,6 +72,24 @@ Fields used: `name`, `email`, `phone`, `$host`, `$pathname`, `$current_url`,
 `$geoip_country_name`, `roistat_visit`; plus `event.uuid` (→ `sourceExternalId`)
 and `event.timestamp` (→ `occurredAt`).
 
+## What's captured (and the full-payload safety net)
+
+Promoted to typed `inboundActivity` fields: `name`→person, `email`, `phone`
+(E.164), `$host`, `$current_url`→landingPage, `$referrer`, `$ip`/`$geoip_*`,
+`utm_*`, `gclid`, `occurredAt`, `sourceExternalId` (event uuid).
+
+**`submittedPayload` (RAW_JSON) stores the entire PostHog `properties` object** —
+so nothing is ever lost. Real forms also send: `areaSelect` (a real-estate form
+field, e.g. area/m² of interest), `distinct_id`/`external_id` (PostHog ids), and
+~12 ad-click IDs (`fbclid`, `fbp`, `ttclid`, `msclkid`, `li_fat_id`, `igshid`,
+`dclid`, `twclid`, `rdt_cid`, `gbraid`/`wbraid`, `epik`) used for paid-conversion
+callbacks. These live in `submittedPayload` and can be promoted to typed fields
+when needed.
+
+**Not captured because the forms don't send it:** there is **no marketing-consent
+field** on the forms today. To capture GDPR consent at intake, add a consent
+checkbox to the forms and map it to `personProjectConsent` in the workflow.
+
 ## Project resolution (host + path → CRM project)
 
 Mapping lives **in the Resolve node** (per decision; not on project records).
