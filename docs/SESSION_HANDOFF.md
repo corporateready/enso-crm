@@ -2,161 +2,161 @@
 
 _Last updated: 2026-05-29_
 
-This file is the **transient working state** for cross-session continuity. Durable knowledge
+Transient working state for cross-session continuity. **Durable knowledge**
 (architecture, data model, decisions, reusable patterns) lives in `content/docs/`
-(Fumadocs-viewable). When in doubt about *what the system does or why*, go there. This file is
-for *what just happened*, *what's broken or pending*, and *operational shortcuts*.
+(Fumadocs). This file = what's live now, operating playbook, what's pending.
+Re-verify live IDs against the deployed APIs — they were accurate at handoff.
 
 ---
 
-## Current state at a glance
+## 1. What ENSO CRM is
 
-**Deployed (production, on `main`):** Fork of Twenty CRM on Railway. Backend customizations
-live under `packages/twenty-server/src/modules/enso/`. Push to `main` = auto-deploy.
-
-**Custom objects built and live:**
-- `project` (CUSTOM) — 6 seeded rows: Vanzari Imobiliare, AVENEW BOTANICA, ARTIMA, ENSO LIVING,
-  NEWTON HOUSE, AVRAM IANCU.
-- `personProjectAssignment` (CUSTOM, junction person × project × manager) — sticky routing.
-  Composite-name hook deployed.
-- `personRelationship` (CUSTOM, junction person × person, labeled **Family** in UI) — family
-  graph. Composite-name + mirror-write (Phase 2) deployed.
-- `personProjectConsent` (CUSTOM, junction person × project) — per-project marketing consent
-  with audit. Composite-name hook deployed.
-
-**Person object additions:**
-- `dateOfBirth` (DATE)
-- `doNotContact` (BOOLEAN) + `doNotContactSetAt` (DATE_TIME) + `doNotContactReason` (SELECT)
-  — global hard-stop with audit.
-- `residenceAddress` (ADDRESS, custom; renamed from reserved `address`).
-- `currentLocation`, `languages`, `nationality`, `facebookLink` — earlier custom additions.
-
-**Opportunity object additions:**
-- `stage` SELECT (with `ROUTING`), `pipelineState` SELECT, `routingCount` NUMBER, full UTM set,
-  `lostReason` TEXT, `firstContactChannel` / `firstContactAt`, `project` → project.
-
-For the *why* of all of the above — schema rationale, design tradeoffs, the consent model,
-the junction-with-composite-name + mirror-write pattern — see:
-- `content/docs/domains/people-and-companies.md` — Person / Family / consent / company
-- `content/docs/systems/junction-composite-name-pattern.md` — the reusable hook recipe
-- `content/docs/domains/deals.md` — opportunity model
-- `content/docs/architecture.md` — overall
+In-house operational CRM for a Moldovan/Romanian real-estate group. **Fork of
+Twenty CRM**, on **Railway**, production from day 1 (no staging). Replaces
+Attio + Customer.io + Respond.io + most n8n. Analytical half
+(BigQuery/dbt/Lightdash/PostHog/Fivetran) stays as-is. Backend customizations
+under `packages/twenty-server/src/modules/enso/`.
 
 ---
 
-## Live infrastructure (Railway)
+## 2. Live infrastructure
 
-- **Project:** `enso-crm` (id `c3d0b708-0ee9-484f-8fb8-bfe8a50eb7cf`)
-- **Server URL:** `https://twenty-server-production-2502.up.railway.app`
-- **Services:** `twenty-server`, `twenty-worker`, Postgres, Redis
-  - `twenty-worker` start command overridden to `yarn worker:prod` (RAILWAY_RUN_COMMAND)
-  - `twenty-server` requires `PORT=3000` env var (else Railway 502s)
-- **Build:** GitHub-sourced from `corporateready/enso-crm` `main` → Dockerfile at
-  `packages/twenty-docker/twenty/Dockerfile`, **truncated to end at the `twenty` stage**
-  (Railway rejects `VOLUME` in the original trailing `twenty-app-dev` stage). Push to `main` =
-  auto-deploy, ~7–10 min total. Expect transient 502s during boot rollover (~2 min after
-  migrate completes).
-- **Postgres persists across rebuilds.** Schema + records survive deploys.
-- ⚠️ `twenty-worker` may still run the Docker Hub image, not the fork build. Verify if any
-  worker-side behavior matters.
+**CRM** — Railway project `enso-crm` (`c3d0b708-0ee9-484f-8fb8-bfe8a50eb7cf`)
+- Server: `https://twenty-server-production-2502.up.railway.app`
+- Services: `twenty-server`, `twenty-worker`, Postgres, Redis. `twenty-server`
+  needs `PORT=3000`. Build = last `twenty` stage of the docker Dockerfile.
+- **Push to `main` = auto-deploy** (~7–10 min build+boot; healthz returns 200
+  mid-boot, so verify via logs/behavior, not just health). Postgres persists.
+- ⚠️ Each push to `main` needs explicit user approval (classifier blocks it).
 
-### Operating the deployed API
+**n8n intake** — Railway project `enso-intake` (`5ac534a3-d231-4394-b349-c42c69af4c53`)
+- n8n: `https://n8n-production-d2a9.up.railway.app` (v2.22.5, Docker image) + own Postgres.
+- Volume-less (Postgres holds state; mounted volume crashes on perms). `PORT=5678` set.
+- Full setup + workflow design: `content/docs/integrations/form-intake.md`.
 
-Secrets in `/.env` (gitignored). Load with `set -a && source .env && set +a`.
-- `TWENTY_BASE_URL`, `TWENTY_API_KEY` (ES256 JWT, ~444 chars, on the **Admin** role)
-- Data GraphQL: `POST $TWENTY_BASE_URL/graphql`
-- Metadata GraphQL: `POST $TWENTY_BASE_URL/metadata` (objects, fields, **views**, viewFields)
-- Auth header: `Authorization: Bearer $TWENTY_API_KEY`
-- Introspection is **disabled in prod** — query known shapes; do not rely on `__schema`.
-- ⚠️ The metadata `objects{ fields }` connection **truncates nested fields** across the full
-  result. To inventory an object, fetch it singly via `object(id:"...") { fields(...) }`,
-  or query the data API for a record's fields.
+**n8n legacy (Elestio)** — `https://n8n-svgqc-u17606.vm.elestio.app` — 33 workflows
+(READ-only reference; the live Attio intake).
 
----
-
-## Conventions to follow this session (and future sessions)
-
-These are working agreements with the project owner. Don't drop them silently.
-
-1. **When creating a new field, auto-enable it in the relevant views.** Call
-   `createViewField` on the object's INDEX TABLE view AND its FIELDS_WIDGET view with
-   `isVisible: true, position: <next>`. Do NOT touch non-INDEX table views (custom views are
-   the user's to curate). Internal bookkeeping fields (description prefix `Internal:`,
-   e.g. `mirrorOf`) should NOT be added to views.
-2. **Composite-name + mirror-write pattern** is documented in
-   `content/docs/systems/junction-composite-name-pattern.md`. Follow the checklist there for
-   any new junction.
-3. **System auth context with `shouldBypassPermissionChecks`** for any hook reading reference
-   data — otherwise restricted callers (API keys, Sales Managers) hit `PERMISSION_DENIED` and
-   the whole write fails.
-4. **Don't direct-push to `main` without user approval.** Auto-mode classifier blocks it;
-   user must explicitly authorize each push to production.
+### Operating playbook (secrets in repo `/.env`, gitignored; `set -a && source .env && set +a`)
+- CRM data GraphQL: `POST $TWENTY_BASE_URL/graphql` · metadata: `/metadata` ·
+  `Authorization: Bearer $TWENTY_API_KEY`. Introspection OFF in prod.
+  ⚠️ Data queries **return soft-deleted rows** unless you filter
+  `deletedAt: { is: NULL }`.
+- n8n REST: `X-N8N-API-KEY` header. `N8N_ELESTIO_*` (read), `N8N_RAILWAY_*` (write).
+- Railway CLI authed (`railway` works; the MCP token expired — use CLI).
+- Dev env (this worktree): no node_modules by default; `corepack enable` for yarn;
+  `node_modules/.bin/nx` runs from the worktree after install. `oxfmt` 0.52 (npx)
+  false-positives vs pinned 0.50 — trust `nx typecheck` + style-parity with
+  existing enso files.
 
 ---
 
-## Dev-env gotchas (this machine)
+## 3. What's live in the CRM (this session's work)
 
-- Worktree at `.claude/worktrees/strange-wu-6e947d` had no `node_modules` initially; root also
-  empty. `yarn` is not on PATH in non-login shells — run `corepack enable` (gives `yarn`
-  4.13.0), or invoke `node .yarn/releases/yarn-4.13.0.cjs install`.
-- Full `yarn install` needs lots of disk; hit ENOSPC at ~3 GiB free. Clear space first.
-- `.nvmrc` wants Node `^24.5.0`; only 24.4.1 was installed → a postinstall guard fails, but
-  `nx typecheck`/build still run fine on 24.4.1.
-- Pinned `oxfmt@0.50.0` binary may not be installed (postinstall blocked); `npx oxfmt` pulls
-  **0.52.0**, which false-positives on the multi-line `implements …` style that 0.50.0 (CI)
-  produces. Trust `nx typecheck` + style-identity with committed hook files; don't let local
-  0.52 reformat your hooks.
+Durable detail in `content/docs/`; summary + IDs here.
 
----
+**Custom objects (all junctions use the composite-name + (optional) mirror-write
+pattern — see `content/docs/systems/junction-composite-name-pattern.md`):**
+- `personRelationship` (`4e04662f-…`) — person↔person "Family" links; composite
+  name + **mirror-write** (auto-reciprocal, inverse type CHILD↔PARENT). Has a
+  hidden `mirrorOf` self-relation (loop guard). Verified live.
+- `personProjectConsent` (`40c511fa-…`) — per-project marketing consent + audit
+  (sparse, default-deny). Composite name.
+- `inboundActivity` (`cef40992-…`) — inbound-event CDP (41 fields), attribution-
+  native; composite name `"{Kind} · {who} · {project} · {ts}"`. Written to by
+  the n8n form-intake workflow.
+- `personProjectAssignment` (`3f107ab7-…`) — sticky manager routing (prior session).
 
-## Live IDs reference (quick lookup)
+**Person additions:** `dateOfBirth`; `doNotContact` + `doNotContactSetAt` +
+`doNotContactReason` (per-channel marketing consent fields were removed — consent
+now lives on `personProjectConsent`). Person↔Family card relabeled.
 
-| Object | UUID |
-|---|---|
-| `person` | `1103d2af-d96a-4ee7-95f3-364f433d2b55` |
-| `company` | `adf37f19-46e1-419b-a27d-29ef4f11ae36` |
-| `opportunity` | `a71b2bcb-9380-4b84-9f94-b6ddc19b103b` |
-| `project` (CUSTOM) | `0b6820aa-9926-437a-b877-047ed916525c` |
-| `personProjectAssignment` (CUSTOM) | `3f107ab7-d4bb-48c4-92d2-af9a50641fda` |
-| `personRelationship` (CUSTOM) | `4e04662f-88d8-4816-9824-370b2afe4ae2` |
-| `personProjectConsent` (CUSTOM) | `40c511fa-1464-4584-a43b-980d816a29a8` |
+**Opportunity:** stage/pipelineState/UTMs/lostReason/etc. (prior). Deal-level
+fields (dealType, m2*, relatedOpportunity, closedAt, lostReason→SELECT) NOT yet added.
 
-Sample fixture people for smoke tests (existed at handoff time, may have changed):
-- Ivan Zhao — `7a93d1e5-3f74-4945-8a65-d7f996083f72`
-- Dario Amodei — `93c72d2e-e65c-44c4-99ad-f87f50349dcf`
+**project records (data):** ARTIMA `4b63d540` ENS2301 · IOANA RADU `d8f29e3b`
+ENS1901 (renamed from Newton House) · TRIUMF BOTANICA `1af69943` ENS2101 (was
+AVENEW; PostHog name "SARMIZEGETUSA") · AVRAM IANCU `52d75b8d` ENS2402 · ENSO
+LIVING `c2fc149f` ENS2501 · ENSO ESTATE `2b0b2f11` ENS2502 (new) · ENSO
+Development `82e62d0d` ENS00 (new, umbrella enso.ro) · Vanzari Imobiliare
+`153c97f9` ENSVI (general/fallback intake).
 
-Sample project for smoke tests:
-- Vanzari Imobiliare — `153c97f9-f274-4453-bffb-73b15e0b299a`
+Other object IDs: person `1103d2af-…`, company `adf37f19-…`, opportunity `a71b2bcb-…`.
 
----
-
-## Pending / next session
-
-- **Opportunity (Deal) field-group pass** — organise the record-page layout (similar to what
-  was done for Person: Contact / Personal / Work / Social / System with Family / Date of
-  Birth / Consent). Plus likely new fields per `content/docs/domains/deals.md`.
-- **Company field pass** — same exercise.
-- **Project field pass** — likely lightest; project currently has just `name` + `code`.
-- **#25 — "My People" view filter** via `projectAssignments.manager` (nested-relation filter
-  syntax to work out on the data API / view config).
-- **#24 — Row-level "edit only own"** for Sales Manager
-  (`upsertRowLevelPermissionPredicates`; operand discovery was hard with introspection off).
-- **Lead source on Person** — deferred design. Intent: derived from intake activity + UTM
-  trio, exposed as read-only computed via a hook. Revisit when intake flow lands.
-- **Phase 2 mirror-write edit-from-mirror** — known limitation: editing a mirror row directly
-  doesn't propagate to canonical. Either block mirror edits or re-route them. Not urgent.
+⚠️ **viewField convention:** new fields don't auto-appear in views. When creating
+a field, also `createViewField` (visible) on the object's INDEX TABLE + FIELDS_WIDGET
+views. Don't touch curated/custom views. Internal fields (`mirrorOf`) stay hidden.
 
 ---
 
-## Recent commits (fork-specific, on `main`)
+## 4. Live n8n form-intake (NOT in git — lives in the Railway n8n)
+
+Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
+- Webhook: `POST /webhook/form-intake`, header-auth `x-intake-secret`.
+  Secret value is in n8n's encrypted "Form Intake Secret" credential
+  (`uEHDLwzoKrA4F1De`); also recorded at `/tmp/n8n-export/intake-secret.txt` this
+  session (regenerate/rotate as needed).
+- CRM auth: n8n encrypted "Twenty CRM API" credential (`NYM0XzeLNTCwTydL`),
+  Header Auth Bearer, scoped to the CRM domain.
+- Does: PostHog form payload → resolve project (host/path/redirect/Vanzari) →
+  E.164 phone (length-based MD/RO) → dedup Person (phone-or-email, enrich-on-match)
+  → create `inboundActivity` (full attribution, synthetic flagging).
+- Edit via n8n REST API (GET/PUT `/api/v1/workflows/c6tgJmzSkxtsXTwb`). Mapping +
+  phone rules live in the **Resolve** Code node.
+- Verified end-to-end for ARTIMA / IOANA RADU / ENSO LIVING + dedup + enrich + auth.
+
+---
+
+## 5. Pending / next session
+
+- **PostHog pointing — DONE (dual-send live).** Added "HTTP Webhook → New CRM
+  (form-intake)" destination in 5 PostHog projects (ARTIMA 36450, IOANARADU
+  128764, SARMIZEGETUSA 126393, ENSO Development 107041, AVENEW Botanica 99901),
+  alongside the existing Attio webhooks. `form_submitted` → `…/webhook/form-intake`
+  + `x-intake-secret`. Webhook is fast-ack (`onReceived`) to avoid retry-duplicates.
+  **Cutover later:** disable the old Attio "HTTP Webhook" destinations once trusted
+  (keep for rollback). PostHog creds now in `.env`.
+- **Consent — implied/opt-out, DONE at intake.** Form submission (accept
+  Terms+Privacy) = consent for email/SMS/WhatsApp/call until unsubscribe. The
+  form-intake workflow upserts `personProjectConsent` (3 channels true, source
+  FORM_WEBSITE) per person×project on submit. Enforcement: `!doNotContact &&
+  consent`. **Opt-out half pending** (email unsubscribe / SMS STOP / manual →
+  flip row to false) — build with the senders (Novu/SMS).
+- **Error alerting — DONE.** n8n workflow "⚠️ Intake Error Alerts"
+  (`OOfJPijdq1s08DQ9`): Error Trigger → Google Chat (ops space). Set as the
+  intake workflow's `errorWorkflow`. Catches hard failures AND soft GraphQL
+  errors (an "Assert activity" node throws on `.errors`/null). Verified.
+  Future: dead-letter/retry queue so failed leads auto-recover.
+- **Next intake channels:** calls (Roistat/Zadarma), social (Chatwoot), Meta lead
+  ads → same pattern into `inboundActivity`. Then Opportunity creation + routing.
+- **Opportunity deal-level fields** (dealType, m2Min/Max/Final, relatedOpportunity,
+  closedAt, lostReason→SELECT) — designed, not built. Attribution belongs on
+  `inboundActivity`, not Opportunity (decided).
+- **Company / Project field-group passes**; #25 "My People" filter; #24 row-level
+  "edit own only" for Sales Manager.
+- **Lead source on Person** — derive from earliest inboundActivity (computed via hook).
+- **mirror-write edit-from-mirror** limitation: editing a mirror row doesn't
+  propagate to canonical. Not urgent.
+
+---
+
+## 6. Commit history (fork-specific, on `main`)
 
 ```
+2a23bba61a fix(enso): stamp SYSTEM actor on mirror-write raw insert
+678c4fee1d feat(enso): composite name for inboundActivity
+28ca8474e7 fix(enso): set position on mirror-write raw insert
+fbc105a54d fix(enso): mirror-write reads canonical by id, not from hook payload
+728b34d487 docs: split durable knowledge into content/docs, slim SESSION_HANDOFF
 ff4b1a53a9 feat(enso): mirror-write for personRelationship (Phase 2)
 ea11dcebd0 feat(enso): composite name for personProjectConsent junction
-4bfbc668a4 docs: handoff update for personRelationship junction + dev-env gotchas
 91c4482511 feat(enso): composite name for personRelationship junction
-fd2431ff4f fix(person-project-assignment): bypass permissions when computing composite name
+fd2431ff4f fix(person-project-assignment): bypass permissions computing composite name
 34825bc22a feat(enso): composite name for personProjectAssignment
 0e651454bb build(railway): end Dockerfile at 'twenty' stage for Railway
 1ea03c0d9e Add ENSO CRM scope docs + research findings
 ```
+
+Note: the `inboundActivity` object + the n8n workflow + the project-record
+renames were done via **live API**, not git — they won't show in commits.
+Metadata/data + n8n state are the source of truth for those.
