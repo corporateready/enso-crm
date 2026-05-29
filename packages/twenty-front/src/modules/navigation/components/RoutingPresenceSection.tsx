@@ -1,5 +1,5 @@
 import { useLingui } from '@lingui/react/macro';
-import { IconCircle, IconCircleDot } from 'twenty-ui/display';
+import { IconCircleDot } from 'twenty-ui/display';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
@@ -45,7 +45,9 @@ export const RoutingPresenceSection = () => {
     <NavigationDrawerSection>
       <NavigationDrawerItem
         label={isAvailable ? t`Accepting leads` : t`Not accepting leads`}
-        Icon={isAvailable ? IconCircleDot : IconCircle}
+        Icon={IconCircleDot}
+        // Colored status dot: green = accepting, yellow = paused.
+        iconColor={isAvailable ? 'green' : 'yellow'}
         onClick={handleToggle}
         active={isAvailable}
       />
