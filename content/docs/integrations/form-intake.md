@@ -78,13 +78,20 @@ Promoted to typed `inboundActivity` fields: `name`→person, `email`, `phone`
 (E.164), `$host`, `$current_url`→landingPage, `$referrer`, `$ip`/`$geoip_*`,
 `utm_*`, `gclid`, `occurredAt`, `sourceExternalId` (event uuid).
 
-**`submittedPayload` (RAW_JSON) stores the entire PostHog `properties` object** —
-so nothing is ever lost. Real forms also send: `areaSelect` (a real-estate form
-field, e.g. area/m² of interest), `distinct_id`/`external_id` (PostHog ids), and
-~12 ad-click IDs (`fbclid`, `fbp`, `ttclid`, `msclkid`, `li_fat_id`, `igshid`,
-`dclid`, `twclid`, `rdt_cid`, `gbraid`/`wbraid`, `epik`) used for paid-conversion
-callbacks. These live in `submittedPayload` and can be promoted to typed fields
-when needed.
+Also promoted to **typed fields** (for querying / conversion-API callbacks):
+12 ad-click IDs — `fbclid`, `fbp`, `ttclid`, `msclkid`, `liFatId`, `igshid`,
+`dclid`, `twclid`, `rdtCid`, `gbraid`, `wbraid`, `epik`; PostHog `distinctId` /
+`externalId`; and `m2Requested` (NUMBER, from the form's `areaSelect`).
+
+**`submittedPayload` (RAW_JSON) still stores the entire PostHog `properties`
+object** — so any field not promoted (and any future field) is never lost.
+
+### m² synchronization with the deal
+
+The form's `areaSelect` → `inboundActivity.m2Requested` (NUMBER). The
+**Opportunity** carries the deal-side m² model: `m2Min` / `m2Max` (initial range
+of interest) + `m2Final` (confirmed). When the deal-creation workflow is built,
+`m2Requested` seeds the Opportunity's `m2Min`/`m2Max`.
 
 **Not captured because the forms don't send it:** there is **no marketing-consent
 field** on the forms today. To capture GDPR consent at intake, add a consent
