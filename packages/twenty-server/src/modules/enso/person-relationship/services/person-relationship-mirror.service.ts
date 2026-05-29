@@ -31,6 +31,15 @@ type RelationshipRow = {
   mirrorOfId?: string | null;
 };
 
+// Raw inserts bypass the create resolver that normally fills the `createdBy`
+// ACTOR from auth context, and `createdByName` / `updatedByName` are NOT NULL.
+// Mirror rows are system-generated, so stamp them as a SYSTEM actor.
+const SYSTEM_ACTOR = {
+  source: 'SYSTEM',
+  name: 'System',
+  context: {},
+} as const;
+
 // Symmetric types map to themselves; asymmetric (CHILD/PARENT) invert.
 const INVERSE_RELATION_TYPE: Record<string, string> = {
   SPOUSE: 'SPOUSE',
@@ -134,6 +143,8 @@ export class PersonRelationshipMirrorService {
         relationType: mirrorType,
         mirrorOfId: canonical.id,
         position: (lastPosition ?? 0) + 1,
+        createdBy: SYSTEM_ACTOR,
+        updatedBy: SYSTEM_ACTOR,
         ...(isDefined(name) ? { name } : {}),
       });
     }, systemAuthContext);
@@ -192,6 +203,8 @@ export class PersonRelationshipMirrorService {
           relationType: mirrorType,
           mirrorOfId: canonical.id,
           position: (lastPosition ?? 0) + 1,
+          createdBy: SYSTEM_ACTOR,
+          updatedBy: SYSTEM_ACTOR,
           ...(isDefined(name) ? { name } : {}),
         });
 
