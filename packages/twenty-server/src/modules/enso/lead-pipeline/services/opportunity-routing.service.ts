@@ -29,6 +29,7 @@ type OpportunityRow = {
   ownerId?: string | null;
   projectId?: string | null;
   pointOfContactId?: string | null;
+  routingCount?: number | null;
 };
 
 type CandidateRow = {
@@ -45,7 +46,8 @@ type CandidateRow = {
 //      (isAvailableForRouting) AND assigned to the deal's project
 //      (projectRoutingMember). Oldest lastAssignedAt → fewest active clients →
 //      random. Sets owner (stage stays ROUTING; a claim window opens).
-// Sets owner + bumps lastAssignedAt; mirrors `attempt` into routingCount.
+// Sets owner + bumps lastAssignedAt; increments routingCount on each owner
+// change during ROUTING (first assignee = 1).
 @Injectable()
 export class OpportunityRoutingService {
   private readonly logger = new Logger(OpportunityRoutingService.name);
@@ -101,7 +103,8 @@ export class OpportunityRoutingService {
             {
               ownerId: stickyManagerId,
               stage: 'LEAD_CLAIMED',
-              routingCount: attempt,
+              // routingCount counts owner changes during ROUTING (first = 1).
+              routingCount: this.nextRoutingCount(opportunity, stickyManagerId),
             },
           );
           await this.bumpLastAssigned(workspaceId, stickyManagerId);
@@ -131,7 +134,12 @@ export class OpportunityRoutingService {
 
         await opportunityRepository.update(
           { id: opportunity.id },
-          { ownerId: managerId, routingCount: attempt },
+          {
+            ownerId: managerId,
+            // routingCount counts owner changes during ROUTING (first = 1);
+            // re-pinging the same manager (only one online) is not a change.
+            routingCount: this.nextRoutingCount(opportunity, managerId),
+          },
         );
         await this.bumpLastAssigned(workspaceId, managerId);
 
@@ -181,6 +189,19 @@ export class OpportunityRoutingService {
       },
       systemAuthContext,
     );
+  }
+
+  // routingCount = number of owner changes while the deal is in ROUTING, with
+  // the first assignee as 1. Only a real owner change increments it; re-pinging
+  // the same manager (e.g. they're the only one online) does not.
+  private nextRoutingCount(
+    opportunity: OpportunityRow,
+    nextManagerId: string,
+  ): number {
+    const current = opportunity.routingCount ?? 0;
+    const ownerChanged = opportunity.ownerId !== nextManagerId;
+
+    return ownerChanged ? current + 1 : current;
   }
 
   private async bumpLastAssigned(

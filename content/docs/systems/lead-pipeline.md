@@ -75,8 +75,15 @@ independently; opportunity-creation strategy can vary per activity `kind`.
   offline; it's their client.
 - **Else round-robin** over the project pool: `lastAssignedAt` asc (never-assigned
   first) → active-client count asc (open `ownedOpportunities`) → random. Sets
-  `owner` (stage stays ROUTING), bumps `lastAssignedAt`, mirrors attempt into
-  `routingCount`, notifies, opens the claim window.
+  `owner` (stage stays ROUTING), bumps `lastAssignedAt`, notifies, opens the
+  claim window.
+- **`routingCount`** = number of **owner changes during ROUTING**, first assignee
+  = **1** (Attio's `routing_count`, now numeric). Only a real owner change
+  increments it — re-pinging the only-online manager, or a parked cycle with no
+  assignment, does not. (Owner changes are also captured natively in the deal
+  Timeline + audit log, since the workspace ORM emits an UPDATED event even on
+  the routing service's system-context writes; a dedicated routingAttempt audit
+  object is therefore not built.)
 
 ## Claim window, reroute — never gives up
 
