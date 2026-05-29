@@ -23,7 +23,7 @@ inboundActivity.createOne  ──POST hook (server)──▶ enqueue ResolveOppo
                                                          │  (ensoLeadPipelineQueue, worker)
                           resolve ─▶ route ─▶ notify     ▼
   resolve: dedup → attach or create Opportunity (stage ROUTING) + frozen snapshot
-  route:   sticky-or-round-robin → set owner, bump lastAssignedAt, schedule claim-check
+  route:   sticky-or-random-pick → set owner, schedule claim-check
   notify:  Google Chat (best-effort, env-gated)
   claim-check (delayed 3 min): unclaimed → reroute (excl. prior owner); escalate at 5 → STALLED
 
@@ -73,10 +73,16 @@ independently; opportunity-creation strategy can vary per activity `kind`.
   project, `endedAt IS NULL`) exists, assign that manager and move the deal
   **straight to `LEAD_CLAIMED`** (no claim window) — even if the manager is
   offline; it's their client.
-- **Else round-robin** over the project pool: `lastAssignedAt` asc (never-assigned
-  first) → active-client count asc (open `ownedOpportunities`) → random. Sets
-  `owner` (stage stays ROUTING), bumps `lastAssignedAt`, notifies, opens the
-  claim window.
+- **Else uniform random pick**, **per opportunity and independent**: among the
+  online + project-eligible pool, choose one at random. **No** org-wide rotation
+  / least-recently-assigned counter, **no** load balancing, **no** offline
+  catch-up — being online keeps you in every draw (always-online managers get the
+  most leads); going offline just drops you from the pool; what happens on one
+  deal never influences another. Reward for picking up is *structural*: you keep
+  what you claim, and unclaimed deals reroute away. On reroute the per-deal
+  `excludedManagerIds` (job payload, not stored) skips already-tried managers so a
+  single deal cycles the pool before repeating. Sets `owner` (stage stays
+  ROUTING), notifies, opens the claim window.
 - **`routingCount`** = number of **owner changes during ROUTING**, first assignee
   = **1** (Attio's `routing_count`, now numeric). Only a real owner change
   increments it — re-pinging the only-online manager, or a parked cycle with no
@@ -151,11 +157,12 @@ and never fails routing.
 
 - Notifications are env-gated (deferred); set `ENSO_ROUTING_CHAT_WEBHOOK_URL` (+
   ops/app-url) on both services to enable Google Chat; in-app/Knock later.
-- `workspaceMember.isAvailableForRouting` / `lastAssignedAt` have no viewFields
-  (the nav presence toggle covers availability self-service; admins setting it
-  per-other-member would need the field on a view).
-- Round-robin **rotation** across ≥2 managers wasn't exercised in the smoke test
-  (single manager → re-ping path). Project-pool filtering, sticky auto-claim, park,
+- `workspaceMember.isAvailableForRouting` has no viewField (the nav presence
+  toggle covers self-service; an admin setting it for another member would need it
+  on a view). `lastAssignedAt` was removed entirely (selection is per-opportunity
+  random — no rotation state).
+- Random distribution across ≥2 managers wasn't exercised in the smoke test
+  (single manager → re-pick path). Project-pool filtering, sticky auto-claim, park,
   and park→resume all verified end-to-end.
 - The N=5 admin heads-up is logic-verified (same `notifyEscalation` path), not
   timed in the smoke test.

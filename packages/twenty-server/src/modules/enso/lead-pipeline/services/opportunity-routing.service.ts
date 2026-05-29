@@ -1,12 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { isDefined } from 'twenty-shared/utils';
-import { In, IsNull, Not } from 'typeorm';
+import { IsNull } from 'typeorm';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
-import { CLOSED_OPPORTUNITY_STAGES } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 
 export type RoutingResult =
   // assigned: owner set. autoClaimed=true means a sticky owner took it straight
@@ -32,22 +31,22 @@ type OpportunityRow = {
   routingCount?: number | null;
 };
 
-type CandidateRow = {
-  id: string;
-  lastAssignedAt?: Date | string | null;
-  activeClientCount: number;
-};
-
 // The routing brain. For an opportunity in stage ROUTING:
 //   1. sticky personProjectAssignment (person × project) exists → assign that
 //      manager and AUTO-CLAIM (stage = LEAD_CLAIMED). Sticky wins even if the
 //      manager is currently offline — it's their client.
-//   2. else round-robin over managers who are BOTH accepting leads
+//   2. else pick UNIFORMLY AT RANDOM among managers who are BOTH accepting leads
 //      (isAvailableForRouting) AND assigned to the deal's project
-//      (projectRoutingMember). Oldest lastAssignedAt → fewest active clients →
-//      random. Sets owner (stage stays ROUTING; a claim window opens).
-// Sets owner + bumps lastAssignedAt; increments routingCount on each owner
-// change during ROUTING (first assignee = 1).
+//      (projectRoutingMember).
+//
+// The pick is **per-opportunity and independent** — there is no org-wide rotation
+// counter or "least-recently-assigned" state. We do NOT compensate managers who
+// were offline (no catch-up) and do NOT balance load. Being online keeps you in
+// every draw (so the always-online get the most leads); going offline just drops
+// you from the pool. What happens on one deal never influences another.
+// On reroute, the per-deal `excludedManagerIds` (carried in the job payload, not
+// stored) skips already-tried managers so a single deal cycles through the pool
+// before repeating — still entirely per-opportunity.
 @Injectable()
 export class OpportunityRoutingService {
   private readonly logger = new Logger(OpportunityRoutingService.name);
@@ -60,7 +59,7 @@ export class OpportunityRoutingService {
     authContext: WorkspaceAuthContext,
     opportunityId: string,
     excludedManagerIds: string[] = [],
-    attempt = 0,
+    _attempt = 0,
   ): Promise<RoutingResult> {
     const workspaceId = authContext.workspace?.id;
 
@@ -107,7 +106,6 @@ export class OpportunityRoutingService {
               routingCount: this.nextRoutingCount(opportunity, stickyManagerId),
             },
           );
-          await this.bumpLastAssigned(workspaceId, stickyManagerId);
 
           this.logger.log(
             `Opportunity ${opportunityId} auto-claimed by sticky manager ${stickyManagerId}.`,
@@ -121,8 +119,8 @@ export class OpportunityRoutingService {
           };
         }
 
-        // (2) Round-robin over available + project-eligible managers.
-        const managerId = await this.roundRobinPick(
+        // (2) Random pick over available + project-eligible managers.
+        const managerId = await this.pickCandidate(
           workspaceId,
           opportunity.projectId,
           excludedManagerIds,
@@ -137,15 +135,12 @@ export class OpportunityRoutingService {
           {
             ownerId: managerId,
             // routingCount counts owner changes during ROUTING (first = 1);
-            // re-pinging the same manager (only one online) is not a change.
+            // re-picking the same manager (only one online) is not a change.
             routingCount: this.nextRoutingCount(opportunity, managerId),
           },
         );
-        await this.bumpLastAssigned(workspaceId, managerId);
 
-        this.logger.log(
-          `Routed opportunity ${opportunityId} to ${managerId} (attempt ${attempt}).`,
-        );
+        this.logger.log(`Routed opportunity ${opportunityId} to ${managerId}.`);
 
         return {
           status: 'assigned',
@@ -192,7 +187,7 @@ export class OpportunityRoutingService {
   }
 
   // routingCount = number of owner changes while the deal is in ROUTING, with
-  // the first assignee as 1. Only a real owner change increments it; re-pinging
+  // the first assignee as 1. Only a real owner change increments it; re-picking
   // the same manager (e.g. they're the only one online) does not.
   private nextRoutingCount(
     opportunity: OpportunityRow,
@@ -202,23 +197,6 @@ export class OpportunityRoutingService {
     const ownerChanged = opportunity.ownerId !== nextManagerId;
 
     return ownerChanged ? current + 1 : current;
-  }
-
-  private async bumpLastAssigned(
-    workspaceId: string,
-    managerId: string,
-  ): Promise<void> {
-    const workspaceMemberRepository =
-      await this.globalWorkspaceOrmManager.getRepository<any>(
-        workspaceId,
-        'workspaceMember',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    await workspaceMemberRepository.update(
-      { id: managerId },
-      { lastAssignedAt: new Date() },
-    );
   }
 
   private async findStickyManagerId(
@@ -251,13 +229,15 @@ export class OpportunityRoutingService {
     return assignment?.managerId ?? undefined;
   }
 
-  // Round-robin over the project's routing pool: members who are accepting leads
-  // (isAvailableForRouting) AND assigned to this project (active
-  // projectRoutingMember). Exclusion is SOFT — we prefer not to re-pick the
-  // just-assigned manager (to rotate), but if they're the only one online we
-  // re-ping them rather than park. Returns undefined ONLY when the pool is truly
-  // empty (nobody online+eligible) → the deal parks and is retried.
-  private async roundRobinPick(
+  // Per-opportunity, independent uniform-random pick over the project's routing
+  // pool: members accepting leads (isAvailableForRouting) AND assigned to this
+  // project (active projectRoutingMember). NO org-wide rotation/least-recently
+  // state, NO load balancing, NO offline catch-up. The per-deal
+  // `excludedManagerIds` skips already-tried managers so one deal cycles through
+  // the pool before repeating; once everyone's been tried it resets (re-picks).
+  // Returns undefined ONLY when the pool is truly empty (nobody online+eligible)
+  // → the deal parks and is retried.
+  private async pickCandidate(
     workspaceId: string,
     projectId: string | null | undefined,
     excludedManagerIds: string[],
@@ -298,66 +278,23 @@ export class OpportunityRoutingService {
       where: { isAvailableForRouting: true },
     });
 
-    const candidates = available.filter((member: { id: string }) =>
-      eligibleManagerIds.has(member.id),
-    );
+    const candidates: string[] = available
+      .map((member: { id: string }) => member.id)
+      .filter((id: string) => eligibleManagerIds.has(id));
 
     if (candidates.length === 0) {
       return undefined; // nobody online for this project → park + retry
     }
 
-    // Soft exclusion: rotate away from the just-assigned manager when possible.
-    let pool = candidates.filter(
-      (member: { id: string }) => !excludedManagerIds.includes(member.id),
-    );
+    // Per-deal rotation without replacement: prefer managers not yet tried on
+    // THIS deal; once all have been tried, reset and re-pick from the full pool.
+    let pool = candidates.filter((id) => !excludedManagerIds.includes(id));
 
     if (pool.length === 0) {
-      pool = candidates; // only the excluded manager is online → re-ping them
+      pool = candidates;
     }
 
-    const opportunityRepository =
-      await this.globalWorkspaceOrmManager.getRepository<any>(
-        workspaceId,
-        'opportunity',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    const ranked: CandidateRow[] = [];
-
-    for (const member of pool) {
-      const activeClientCount = await opportunityRepository.count({
-        where: {
-          ownerId: member.id,
-          stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
-        },
-      });
-
-      ranked.push({
-        id: member.id,
-        lastAssignedAt: member.lastAssignedAt ?? null,
-        activeClientCount,
-      });
-    }
-
-    ranked.sort(this.compareCandidates);
-
-    return ranked[0]?.id;
+    // Uniform random — independent draw per opportunity, no shared state.
+    return pool[Math.floor(Math.random() * pool.length)];
   }
-
-  // Oldest lastAssignedAt first (never-assigned = oldest), then fewest active
-  // clients, then random tiebreak — the rebuild of legacy's Math.random pick.
-  private compareCandidates = (a: CandidateRow, b: CandidateRow): number => {
-    const aTime = a.lastAssignedAt ? new Date(a.lastAssignedAt).getTime() : 0;
-    const bTime = b.lastAssignedAt ? new Date(b.lastAssignedAt).getTime() : 0;
-
-    if (aTime !== bTime) {
-      return aTime - bTime;
-    }
-
-    if (a.activeClientCount !== b.activeClientCount) {
-      return a.activeClientCount - b.activeClientCount;
-    }
-
-    return Math.random() - 0.5;
-  };
 }

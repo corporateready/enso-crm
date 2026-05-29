@@ -89,9 +89,10 @@ now lives on `personProjectConsent`). Person↔Family card relabeled.
 added" note was stale — verified live this session.)
 
 **workspaceMember additions (this session, via metadata API):**
-`isAvailableForRouting` (BOOLEAN, default false — the routing opt-in pool) +
-`lastAssignedAt` (DATE_TIME — round-robin fairness). ⚠️ No viewFields yet — not
-visible/editable in the UI; add viewFields so admins can toggle availability.
+`isAvailableForRouting` (BOOLEAN, default false — the routing opt-in pool; flipped
+by the nav presence toggle). (`lastAssignedAt` was added then **removed** —
+selection is per-opportunity random with no rotation state.) No viewField on
+`isAvailableForRouting` yet — the toggle covers self-service.
 
 **Lead pipeline (this session) — LIVE & smoke-tested end-to-end.** `inboundActivity`
 → Opportunity → routing. Code under `src/modules/enso/lead-pipeline/`. A POST hook
@@ -99,9 +100,10 @@ on `inboundActivity.createOne` enqueues a decomposed BullMQ pipeline on the new
 `ensoLeadPipelineQueue`: **resolve** (dedup person×project over OPEN deals, no
 time window → attach or create deal at stage ROUTING with a frozen first-touch
 attribution snapshot + m2Min/Max from m2Requested; `firstContact*` left NULL) →
-**route** (honor active sticky `personProjectAssignment`, else round-robin over
-`isAvailableForRouting` members ordered by `lastAssignedAt`→active-client-count→
-random; set owner, bump lastAssignedAt; open a 3-min claim window) → **notify**
+**route** (honor active sticky `personProjectAssignment` → auto-claim; else
+**uniform random pick** among online + project-eligible managers, **per
+opportunity, no org-wide rotation/least-recently state, no load balancing, no
+offline catch-up**; set owner; open a 3-min claim window) → **notify**
 (Google Chat, best-effort, env-gated). A delayed **claim-check** job reroutes on
 no-claim and escalates (`pipelineState=STALLED` + ops alert) at 5 attempts; it
 no-ops once claimed. `opportunity.updateOne` POST hook writes the sticky
@@ -183,9 +185,9 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
     optionally `ENSO_OPS_CHAT_WEBHOOK_URL` + `ENSO_CRM_APP_URL` (deal deep-links),
     on **both** twenty-server & twenty-worker. Currently best-effort: logs a WARN
     when unset. Then in-app/Knock later.
-  - **viewFields** for `workspaceMember.isAvailableForRouting` + `lastAssignedAt`
-    so admins can toggle availability in the UI.
-  - **Round-robin rotation** across ≥2 managers still not exercised (single-manager
+  - **viewField** for `workspaceMember.isAvailableForRouting` (optional — the nav
+    toggle already covers self-service availability).
+  - **Random distribution** across ≥2 managers still not exercised (single-manager
     re-ping path). Re-verify fairness once ≥2 managers are in a project pool and available.
   - **Manager×project eligibility — DONE** (routing v2): `projectRoutingMember`
     pool now filters candidates by project; admins manage it per project.
