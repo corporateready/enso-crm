@@ -111,6 +111,19 @@ assignment **on claim only**. Server hooks live in `LeadPipelineModule`
 Smoke test passed: create, dedup (3 activities→1 deal), routing, claim→sticky,
 claim-check no-op, reroute, escalation→STALLED. All test records cleaned up.
 
+**Routing v2 (this session) — LIVE & smoke-tested.** New object
+**`projectRoutingMember`** (`5a9b13c3-…`): manager × project routing pool
+(relations `project`/`manager`, `isActive`, composite name, viewFields, inverse
+"Routing Team" card on Project). Routing now: candidate pool = `isAvailableForRouting`
+**AND** in the deal's `projectRoutingMember` pool; **sticky → auto-claim**
+(LEAD_CLAIMED immediately, even if offline); **never hard-stops** — reroutes
+forever, parks when the pool is offline and resumes when someone returns; one-time
+admin heads-up after 5 unclaimed reroutes (no more STALLED hard stop). Frontend:
+always-visible **"Accepting leads"** presence toggle in the nav
+(`RoutingPresenceSection`) flipping the current member's `isAvailableForRouting`.
+Verified: project-pool routing, project-pool park, sticky auto-claim, park→resume.
+Admin assigns the pool via the Project's "Routing Team" card / Routing Members table.
+
 **project records (data):** ARTIMA `4b63d540` ENS2301 · IOANA RADU `d8f29e3b`
 ENS1901 (renamed from Newton House) · TRIUMF BOTANICA `1af69943` ENS2101 (was
 AVENEW; PostHog name "SARMIZEGETUSA") · AVRAM IANCU `52d75b8d` ENS2402 · ENSO
@@ -172,10 +185,10 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
     when unset. Then in-app/Knock later.
   - **viewFields** for `workspaceMember.isAvailableForRouting` + `lastAssignedAt`
     so admins can toggle availability in the UI.
-  - **Round-robin rotation** only meaningfully tested with 1 manager (escalation
-    path). Re-verify rotation/fairness once ≥2 managers have `isAvailableForRouting=true`.
-  - **Manager×project eligibility** is a no-op today (all available members are
-    candidates). Add a junction when the team specializes by project.
+  - **Round-robin rotation** across ≥2 managers still not exercised (single-manager
+    re-ping path). Re-verify fairness once ≥2 managers are in a project pool and available.
+  - **Manager×project eligibility — DONE** (routing v2): `projectRoutingMember`
+    pool now filters candidates by project; admins manage it per project.
   - **Dedup race**: 3 concurrent resolve jobs for one person→project correctly
     produced 1 deal in the smoke test, but there's no DB-level guard. If volume
     grows, add a unique partial index / advisory lock on (person, project, open).
@@ -195,6 +208,9 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
 ## 6. Commit history (fork-specific, on `main`)
 
 ```
+27eb91283e feat(enso): routing v2 — project pools, sticky auto-claim, non-stop reroute, presence toggle
+5b7608a289 feat(enso): drop deal-dedup time window (match legacy Attio "ever exists")
+4a5c615983 docs: lead pipeline as-built + worker-source fix + handoff refresh
 8931bf288c fix(enso): register lead-pipeline jobs in the worker (JobsModule)
 c7ed36cd28 fix(enso): derive opportunity source from inboundActivity.kind
 69009c1117 feat(enso): inboundActivity → opportunity → routing pipeline

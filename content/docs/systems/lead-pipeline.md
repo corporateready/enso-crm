@@ -62,27 +62,45 @@ independently; opportunity-creation strategy can vary per activity `kind`.
 
 ## Routing (stage 2)
 
-- **Candidate pool** = `workspaceMember` with `isAvailableForRouting = true`.
-  Project specialization is a deliberate no-op today (all available members are
-  candidates); add a manager×project junction when the team specializes.
-- **Sticky first**: if an active `personProjectAssignment` (person × project,
-  `endedAt IS NULL`) exists and isn't excluded, route to that manager. Else
-  **true round-robin**: order by `lastAssignedAt` asc (never-assigned first), then
-  active-client count asc (open `ownedOpportunities`), then random.
-- On assign: set `owner`, bump `lastAssignedAt`, mirror attempt into
-  `routingCount`, enqueue notify, schedule the claim-check.
-- **No candidates** (e.g. all excluded after reroutes) → `pipelineState=STALLED`
-  + ops escalation alert.
+- **Candidate pool** = `workspaceMember` with `isAvailableForRouting = true`
+  **AND** an active `projectRoutingMember` (manager × project, `isActive`) for the
+  deal's project. `projectRoutingMember` is the admin-managed routing pool — which
+  managers receive leads for which project — distinct from the customer-specific
+  `personProjectAssignment`. Managers self-toggle `isAvailableForRouting` (the nav
+  presence switch); admins manage the per-project pool (the "Routing Team" card on
+  a Project, or the Routing Members table).
+- **Sticky → auto-claim**: if an active `personProjectAssignment` (person ×
+  project, `endedAt IS NULL`) exists, assign that manager and move the deal
+  **straight to `LEAD_CLAIMED`** (no claim window) — even if the manager is
+  offline; it's their client.
+- **Else round-robin** over the project pool: `lastAssignedAt` asc (never-assigned
+  first) → active-client count asc (open `ownedOpportunities`) → random. Sets
+  `owner` (stage stays ROUTING), bumps `lastAssignedAt`, mirrors attempt into
+  `routingCount`, notifies, opens the claim window.
 
-## Claim window, reroute, escalation
+## Claim window, reroute — never gives up
 
 - Claim-check is a **delayed BullMQ job** (`now + ENSO_CLAIM_WINDOW_MS`, default
   3 min; idempotent job id `enso-claim-check:<oppId>:<attempt>`).
-- On fire: if the deal left ROUTING → **no-op** (claimed). Else reroute via a new
-  RouteOpportunityJob with the prior owner added to `excludedManagerIds`
-  (accumulated in the job payload — no audit object yet).
-- At `attempt >= 5` (`MAX_ROUTING_ATTEMPTS`) → `STALLED` + ops alert instead of
-  rerouting.
+- On fire: deal left ROUTING → **no-op** (claimed). Else **reroute forever** — the
+  router rotates to the next manager (soft exclusion of just the prior owner; if
+  they're the only one online it re-pings them). Routing **never hard-stops**.
+- **Park + retry**: when the project pool is fully offline, `routeOpportunity`
+  returns `no_candidates` and the deal parks in ROUTING (no owner); a claim-check
+  heartbeat keeps retrying, so it resumes within one window of a manager coming
+  online (verified). The only "stop" is everyone offline.
+- **Admin heads-up** (not a stop): after `ADMIN_HEADSUP_AFTER_REROUTES` (=5)
+  unclaimed reroutes, a one-time ops Google Chat nudge; routing continues.
+- (The old "5 attempts → `STALLED`" hard stop and `markStalled` were removed.)
+
+## Presence (self-service availability)
+
+`twenty-front` shows an always-visible **"Accepting leads / Not accepting leads"**
+toggle in the nav (`RoutingPresenceSection`, above the Other section). It flips the
+current member's `isAvailableForRouting` via the generic record hooks
+(`useFindOneRecord` / `useUpdateOneRecord` on `workspaceMember`) — the field is
+custom and not on the static `currentWorkspaceMember` type. Offline managers are
+excluded from new routing; their existing deals are untouched.
 
 ## Claim → sticky
 
@@ -124,10 +142,19 @@ and never fails routing.
 
 ## Known limitations / next
 
-- Notifications are env-gated (deferred); in-app/Knock later.
-- `isAvailableForRouting` / `lastAssignedAt` have no viewFields yet.
-- Round-robin rotation needs ≥2 available managers to exercise fairness.
+- Notifications are env-gated (deferred); set `ENSO_ROUTING_CHAT_WEBHOOK_URL` (+
+  ops/app-url) on both services to enable Google Chat; in-app/Knock later.
+- `workspaceMember.isAvailableForRouting` / `lastAssignedAt` have no viewFields
+  (the nav presence toggle covers availability self-service; admins setting it
+  per-other-member would need the field on a view).
+- Round-robin **rotation** across ≥2 managers wasn't exercised in the smoke test
+  (single manager → re-ping path). Project-pool filtering, sticky auto-claim, park,
+  and park→resume all verified end-to-end.
+- The N=5 admin heads-up is logic-verified (same `notifyEscalation` path), not
+  timed in the smoke test.
 - No DB-level dedup guard (concurrent resolve jobs for one person×project relied
   on sequential processing in the smoke test).
-- No `routingAttempt` audit object yet (excluded set lives in the job payload).
+- No `routingAttempt` audit object yet (excluded owner lives in the job payload).
+- Parked deals keep a per-deal claim-check heartbeat (~every window) until routed
+  — fine at this scale; consider a single cron sweep if stuck-deal volume grows.
 - Sequences/tasks on claim are not built.
