@@ -124,11 +124,16 @@ export class PersonRelationshipMirrorService {
 
       if (existing) return;
 
+      // Raw insert bypasses the create resolver, which is what normally
+      // auto-assigns `position`. Set it explicitly (mirrors create-person.service).
+      const lastPosition = await repository.maximum('position', undefined);
+
       await repository.insert({
         personId: mirrorPersonId,
         relatedPersonId: mirrorRelatedPersonId,
         relationType: mirrorType,
         mirrorOfId: canonical.id,
+        position: (lastPosition ?? 0) + 1,
         ...(isDefined(name) ? { name } : {}),
       });
     }, systemAuthContext);
@@ -179,11 +184,14 @@ export class PersonRelationshipMirrorService {
 
       if (!mirror) {
         // Canonical has no mirror yet (e.g. pre-dates this feature) — create it.
+        const lastPosition = await repository.maximum('position', undefined);
+
         await repository.insert({
           personId: mirrorPersonId,
           relatedPersonId: mirrorRelatedPersonId,
           relationType: mirrorType,
           mirrorOfId: canonical.id,
+          position: (lastPosition ?? 0) + 1,
           ...(isDefined(name) ? { name } : {}),
         });
 
