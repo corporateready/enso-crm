@@ -28,6 +28,16 @@ under `packages/twenty-server/src/modules/enso/`.
 - **Push to `main` = auto-deploy** (~7–10 min build+boot; healthz returns 200
   mid-boot, so verify via logs/behavior, not just health). Postgres persists.
 - ⚠️ Each push to `main` needs explicit user approval (classifier blocks it).
+- ⚠️ **`twenty-worker` runs background jobs (BullMQ) — it MUST run our fork.**
+  It was previously misconfigured to deploy the upstream image
+  `twentycrm/twenty:latest` (no fork code), so it silently ran vanilla Twenty
+  against our DB and never executed any custom worker job. Fixed this session via
+  Railway API (`serviceConnect` + `serviceInstanceUpdate`): source →
+  repo `corporateready/enso-crm` @ `main`, `dockerfilePath`
+  `packages/twenty-docker/twenty/Dockerfile`, `startCommand` `yarn worker:prod`.
+  It now builds our code and auto-deploys on push, same as the server. Any future
+  feature with a worker job (jobs, crons, queues) depends on this. Verify both
+  services rebuild after a push (worker service id `13ee43eb-…`).
 
 **n8n intake** — Railway project `enso-intake` (`5ac534a3-d231-4394-b349-c42c69af4c53`)
 - n8n: `https://n8n-production-d2a9.up.railway.app` (v2.22.5, Docker image) + own Postgres.
@@ -71,8 +81,35 @@ pattern — see `content/docs/systems/junction-composite-name-pattern.md`):**
 `doNotContactReason` (per-channel marketing consent fields were removed — consent
 now lives on `personProjectConsent`). Person↔Family card relabeled.
 
-**Opportunity:** stage/pipelineState/UTMs/lostReason/etc. (prior). Deal-level
-fields (dealType, m2*, relatedOpportunity, closedAt, lostReason→SELECT) NOT yet added.
+**Opportunity:** fully built — `stage` (incl. `ROUTING`), `pipelineState`,
+`dealType`, `m2Min/m2Max/m2Final`, `lostReason`→SELECT, `routingCount`, `source`,
+`firstContact*`, frozen UTM set + `firstTrafficType`/`firstLandingPage`,
+`roistatVisitId`, `relatedOpportunity`, `owner`→workspaceMember, `project`,
+`pointOfContact`, `inboundActivities` relation. (The earlier "deal fields not yet
+added" note was stale — verified live this session.)
+
+**workspaceMember additions (this session, via metadata API):**
+`isAvailableForRouting` (BOOLEAN, default false — the routing opt-in pool) +
+`lastAssignedAt` (DATE_TIME — round-robin fairness). ⚠️ No viewFields yet — not
+visible/editable in the UI; add viewFields so admins can toggle availability.
+
+**Lead pipeline (this session) — LIVE & smoke-tested end-to-end.** `inboundActivity`
+→ Opportunity → routing. Code under `src/modules/enso/lead-pipeline/`. A POST hook
+on `inboundActivity.createOne` enqueues a decomposed BullMQ pipeline on the new
+`ensoLeadPipelineQueue`: **resolve** (dedup person×project, non-closed, 14-day
+window → attach or create deal at stage ROUTING with a frozen first-touch
+attribution snapshot + m2Min/Max from m2Requested; `firstContact*` left NULL) →
+**route** (honor active sticky `personProjectAssignment`, else round-robin over
+`isAvailableForRouting` members ordered by `lastAssignedAt`→active-client-count→
+random; set owner, bump lastAssignedAt; open a 3-min claim window) → **notify**
+(Google Chat, best-effort, env-gated). A delayed **claim-check** job reroutes on
+no-claim and escalates (`pipelineState=STALLED` + ops alert) at 5 attempts; it
+no-ops once claimed. `opportunity.updateOne` POST hook writes the sticky
+assignment **on claim only**. Server hooks live in `LeadPipelineModule`
+(WorkspaceQueryHookModule); the four jobs live in `LeadPipelineJobsModule`
+(imported by `JobsModule` — the worker's graph, NOT the query-hook graph).
+Smoke test passed: create, dedup (3 activities→1 deal), routing, claim→sticky,
+claim-check no-op, reroute, escalation→STALLED. All test records cleaned up.
 
 **project records (data):** ARTIMA `4b63d540` ENS2301 · IOANA RADU `d8f29e3b`
 ENS1901 (renamed from Newton House) · TRIUMF BOTANICA `1af69943` ENS2101 (was
@@ -127,11 +164,26 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
   intake workflow's `errorWorkflow`. Catches hard failures AND soft GraphQL
   errors (an "Assert activity" node throws on `.errors`/null). Verified.
   Future: dead-letter/retry queue so failed leads auto-recover.
+- **Opportunity creation + routing — DONE this session** (see section 3 + the new
+  pipeline). Remaining follow-ups:
+  - **Notifications deferred** — set `ENSO_ROUTING_CHAT_WEBHOOK_URL` (Google Chat),
+    optionally `ENSO_OPS_CHAT_WEBHOOK_URL` + `ENSO_CRM_APP_URL` (deal deep-links),
+    on **both** twenty-server & twenty-worker. Currently best-effort: logs a WARN
+    when unset. Then in-app/Knock later.
+  - **viewFields** for `workspaceMember.isAvailableForRouting` + `lastAssignedAt`
+    so admins can toggle availability in the UI.
+  - **Round-robin rotation** only meaningfully tested with 1 manager (escalation
+    path). Re-verify rotation/fairness once ≥2 managers have `isAvailableForRouting=true`.
+  - **Manager×project eligibility** is a no-op today (all available members are
+    candidates). Add a junction when the team specializes by project.
+  - **Dedup race**: 3 concurrent resolve jobs for one person→project correctly
+    produced 1 deal in the smoke test, but there's no DB-level guard. If volume
+    grows, add a unique partial index / advisory lock on (person, project, open).
+  - **`ENSO_CLAIM_WINDOW_MS`** overrides the 3-min claim window (set low to test).
+- **Next:** kick the first **sequence / tasks** on claim (deferred this session).
 - **Next intake channels:** calls (Roistat/Zadarma), social (Chatwoot), Meta lead
-  ads → same pattern into `inboundActivity`. Then Opportunity creation + routing.
-- **Opportunity deal-level fields** (dealType, m2Min/Max/Final, relatedOpportunity,
-  closedAt, lostReason→SELECT) — designed, not built. Attribution belongs on
-  `inboundActivity`, not Opportunity (decided).
+  ads → same pattern into `inboundActivity` → the pipeline routes them for free
+  (channel-agnostic; opportunity source derives from activity `kind`).
 - **Company / Project field-group passes**; #25 "My People" filter; #24 row-level
   "edit own only" for Sales Manager.
 - **Lead source on Person** — derive from earliest inboundActivity (computed via hook).
@@ -143,6 +195,9 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
 ## 6. Commit history (fork-specific, on `main`)
 
 ```
+8931bf288c fix(enso): register lead-pipeline jobs in the worker (JobsModule)
+c7ed36cd28 fix(enso): derive opportunity source from inboundActivity.kind
+69009c1117 feat(enso): inboundActivity → opportunity → routing pipeline
 2a23bba61a fix(enso): stamp SYSTEM actor on mirror-write raw insert
 678c4fee1d feat(enso): composite name for inboundActivity
 28ca8474e7 fix(enso): set position on mirror-write raw insert
@@ -159,4 +214,6 @@ fd2431ff4f fix(person-project-assignment): bypass permissions computing composit
 
 Note: the `inboundActivity` object + the n8n workflow + the project-record
 renames were done via **live API**, not git — they won't show in commits.
-Metadata/data + n8n state are the source of truth for those.
+Metadata/data + n8n state are the source of truth for those. This session also
+via API/infra (not git): the two `workspaceMember` routing fields (metadata API)
+and the **twenty-worker source repoint** (Railway API — see section 2).
