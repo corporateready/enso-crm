@@ -5,7 +5,7 @@ description: The deal lifecycle. State machine with 2D state model. Field valida
 
 # Deals
 
-The core object. One deal per Person per ~14-day window per project (see [open-questions](../open-questions) #9).
+The core object. One **open** deal per Person per project — dedup is person × project over non-closed deals with no time window; a closed deal lets a fresh inquiry open a new one (#9 resolved; see [systems/lead-pipeline](../systems/lead-pipeline)).
 
 ## Schema
 

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { isDefined } from 'twenty-shared/utils';
-import { In, MoreThan, Not } from 'typeorm';
+import { In, Not } from 'typeorm';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
@@ -11,7 +11,6 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import {
   CLOSED_OPPORTUNITY_STAGES,
   coerceTrafficType,
-  DEAL_DEDUP_WINDOW_MS,
   mapOpportunitySource,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
@@ -119,15 +118,15 @@ export class OpportunityResolutionService {
             { shouldBypassPermissionChecks: true },
           );
 
-        // Dedup: an OPEN deal for this (person × project) within the window.
-        const windowStart = new Date(Date.now() - DEAL_DEDUP_WINDOW_MS);
-
+        // Dedup: an OPEN deal for this (person × project), any age. Legacy Attio
+        // matched person × project "ever exists" (no time window); we keep that
+        // and additionally exclude CLOSED deals — so a fresh inquiry after a
+        // closed-won/lost deal opens a new one instead of reviving a dead one.
         const existing = await opportunityRepository.findOne({
           where: {
             pointOfContactId: activity.personId,
             projectId: activity.projectId,
             stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
-            createdAt: MoreThan(windowStart),
           },
           order: { createdAt: 'DESC' },
         });

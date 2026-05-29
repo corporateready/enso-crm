@@ -96,8 +96,8 @@ visible/editable in the UI; add viewFields so admins can toggle availability.
 **Lead pipeline (this session) — LIVE & smoke-tested end-to-end.** `inboundActivity`
 → Opportunity → routing. Code under `src/modules/enso/lead-pipeline/`. A POST hook
 on `inboundActivity.createOne` enqueues a decomposed BullMQ pipeline on the new
-`ensoLeadPipelineQueue`: **resolve** (dedup person×project, non-closed, 14-day
-window → attach or create deal at stage ROUTING with a frozen first-touch
+`ensoLeadPipelineQueue`: **resolve** (dedup person×project over OPEN deals, no
+time window → attach or create deal at stage ROUTING with a frozen first-touch
 attribution snapshot + m2Min/Max from m2Requested; `firstContact*` left NULL) →
 **route** (honor active sticky `personProjectAssignment`, else round-robin over
 `isAvailableForRouting` members ordered by `lastAssignedAt`→active-client-count→

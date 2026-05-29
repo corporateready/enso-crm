@@ -50,7 +50,7 @@ These don't block v1 build. Deals reach `Contracting` and advance to `ClosedWon`
 | Identity: E.164 phone primary, email secondary |
 | Activities vs Interactions: two separate tables |
 | Sequences: state-machine-driven templates + ad-hoc manager tasks |
-| Deal dedup: 14-day window, same person + same project |
+| Deal dedup: same person + same project, OPEN deals only, **no time window** (matches legacy Attio "ever exists"); a closed deal doesn't dedup → fresh deal. (#9 resolved; the 14-day proposal was dropped.) |
 | Multi-tenancy: one workspace, brand as project attribute |
 | Customer.io / Respond.io / Zapier: fully retired |
 | Source of audience truth: Twenty CRM |

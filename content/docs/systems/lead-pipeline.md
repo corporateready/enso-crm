@@ -39,9 +39,15 @@ independently; opportunity-creation strategy can vary per activity `kind`.
 
 - **Skips**: `isSynthetic`, missing person/project, already-linked activity
   (idempotent).
-- **Dedup**: reuse an OPEN opportunity for the same **person × project** created
-  within a **14-day** window (`stage NOT IN (CLOSED_WON, CLOSED_LOST)`); else
+- **Dedup**: reuse an OPEN opportunity for the same **person × project**,
+  **any age** (`stage NOT IN (CLOSED_WON, CLOSED_LOST)`, **no time window**); else
   create. Attaching links the activity and stops; creating proceeds to routing.
+  This matches legacy Attio's "person × project ever exists" (verified in the
+  `Creating a Deals` workflow — `Get Deals` filtered only by `associated_people`,
+  matched on `initial_project_*`, no recency cutoff), with one improvement: Attio
+  matched *any* deal incl. closed ones; we exclude closed so a fresh inquiry after
+  a closed-won/lost deal opens a new one. (Resolves open-question #9; the
+  earlier 14-day proposal was dropped.)
 - **Frozen first-touch snapshot** at creation: `utm*`, `firstTrafficType`,
   `firstLandingPage`, `roistatVisitId`, `source`, `project`, `pointOfContact`,
   and `m2Min`/`m2Max` from the activity's `m2Requested` (single requested size →

@@ -13,10 +13,10 @@ export const SYSTEM_ACTOR = {
 // fresh inbound (re-engagement opens a new opportunity).
 export const CLOSED_OPPORTUNITY_STAGES = ['CLOSED_WON', 'CLOSED_LOST'] as const;
 
-// Dedup boundary: an inbound for a (person × project) attaches to an existing
-// open opportunity only if it was created within this window. Older/closed
-// leads start a fresh deal. (See content/docs/domains/leads.md "Resolving to a Deal".)
-export const DEAL_DEDUP_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+// Dedup is by (person × project) over OPEN deals with NO time window — an
+// inbound attaches to any non-closed deal for that pair regardless of age
+// (matches legacy Attio's "ever exists"); only a closed deal lets a fresh
+// inquiry open a new one. (See content/docs/systems/lead-pipeline.md.)
 
 // Claim window: after assignment the manager has this long to claim before the
 // opportunity is rerouted. Overridable for testing via env.

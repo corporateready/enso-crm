@@ -108,10 +108,15 @@ Once Activity is inserted, the worker resolves to a Deal:
 ```text
 SELECT id FROM deals WHERE EXISTS (
   SELECT 1 FROM deal_people WHERE deal_id = deals.id AND person_id = $1
-) AND created_at > now() - INTERVAL '14 days'
+) AND deals.project_id = $2
+  AND deals.stage NOT IN ('Closed Won', 'Closed Lost')
 ```
 
-(The 14-day window is the proposed dedup boundary — see [open-questions](../open-questions) #9.)
+(Dedup is **person × project over OPEN deals, with no time window** — #9 resolved.
+This matches legacy Attio's "ever exists" (the `Creating a Deals` workflow matched
+person × project against *all* their deals, no recency cutoff); we additionally
+exclude closed deals so a fresh inquiry after a closed-won/lost deal opens a new
+one. The earlier 14-day-window proposal was dropped.)
 
 - If a Deal exists → attach Activity to it, post a Comment to the deal owner: *"New activity on existing deal."*
 - If no Deal → create one. Stage = `Routing` for forms/social, or `Sales Accepted Lead` for answered calls *(if that stage is confirmed live — see [open-questions](../open-questions))*.
