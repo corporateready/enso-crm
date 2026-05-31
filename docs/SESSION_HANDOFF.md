@@ -181,10 +181,16 @@ Workflow **`Form Intake → CRM`** (id `c6tgJmzSkxtsXTwb`), active.
   Future: dead-letter/retry queue so failed leads auto-recover.
 - **Opportunity creation + routing — DONE this session** (see section 3 + the new
   pipeline). Remaining follow-ups:
-  - **Notifications deferred** — set `ENSO_ROUTING_CHAT_WEBHOOK_URL` (Google Chat),
-    optionally `ENSO_OPS_CHAT_WEBHOOK_URL` + `ENSO_CRM_APP_URL` (deal deep-links),
-    on **both** twenty-server & twenty-worker. Currently best-effort: logs a WARN
-    when unset. Then in-app/Knock later.
+  - **Notifications sidelined (decision 2026-05-30)** — the plan is a dedicated
+    **Google Chat app, "ENSO CRM"** (proper app/bot, not just an incoming
+    webhook), built later. The routing code already calls a Google Chat webhook
+    best-effort (env-gated on `ENSO_ROUTING_CHAT_WEBHOOK_URL` / optional
+    `ENSO_OPS_CHAT_WEBHOOK_URL` + `ENSO_CRM_APP_URL`, on both twenty-server &
+    twenty-worker); with those unset it just logs a WARN — routing/assignment all
+    work without it. When the ENSO CRM Chat app exists, point the webhook env at
+    it (or swap the `ManagerNotificationService` transport). Native alternative if
+    ever wanted: a Twenty Workflow (DATABASE_EVENT on opportunity → HTTP_REQUEST/
+    SEND_EMAIL), admin-editable. In-app/Knock still later.
   - **viewField** for `workspaceMember.isAvailableForRouting` (optional — the nav
     toggle already covers self-service availability).
   - **Random distribution** across ≥2 managers still not exercised (single-manager
