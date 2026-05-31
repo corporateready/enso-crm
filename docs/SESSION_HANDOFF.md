@@ -126,6 +126,21 @@ always-visible **"Accepting leads"** presence toggle in the nav
 Verified: project-pool routing, project-pool park, sticky auto-claim, park→resume.
 Admin assigns the pool via the Project's "Routing Team" card / Routing Members table.
 
+**Routing selection is per-opportunity uniform random** (no rotation/least-recently
+state; `lastAssignedAt` was removed). Online + project-eligible managers each get an
+independent draw; offline = dropped (no catch-up); reward is structural (claim → keep,
+unclaimed → reroute away). `routingCount` on the deal = owner changes during ROUTING
+(first assignee = 1).
+
+**Admin surfaces (this session, via live API):** a workspace-wide nav entry
+**"Workspace Members"** (`navigationMenuItem` `fe29d98f…`, type OBJECT → workspaceMember,
+`userWorkspaceId=null` = everyone) with an **"Available for routing"** column on the
+All Workspace Members table → the team online/offline roster. Presence toggle (green/
+yellow dot) lives in the nav. **Attribution is fully traceable:** person→**Inbound
+Activities** card + opportunity→**Inbound Activities** card (both visible), each activity
+carrying full source data + the opportunity's frozen first-touch snapshot; `createdBy`
+ACTOR shows who/what created each record.
+
 **project records (data):** ARTIMA `4b63d540` ENS2301 · IOANA RADU `d8f29e3b`
 ENS1901 (renamed from Newton House) · TRIUMF BOTANICA `1af69943` ENS2101 (was
 AVENEW; PostHog name "SARMIZEGETUSA") · AVRAM IANCU `52d75b8d` ENS2402 · ENSO
