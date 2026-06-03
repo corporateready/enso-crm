@@ -52,8 +52,7 @@ export class ChatwootController {
     return {
       available: true,
       ssoUrl: result.ssoUrl,
-      conversationUrl: result.conversationUrl,
-      conversationId: result.conversationId,
+      conversations: result.conversations,
     };
   }
 

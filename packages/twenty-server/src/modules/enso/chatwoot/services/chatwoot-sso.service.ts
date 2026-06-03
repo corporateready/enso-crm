@@ -1,34 +1,40 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import { isDefined } from 'twenty-shared/utils';
 
-import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
-import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
 import { ChatwootClientService } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
+import {
+  type DealConversation,
+  ChatwootConversationResolverService,
+} from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
+
+export type ChatwootEmbedConversation = {
+  conversationId: string;
+  label: string;
+  // Dashboard deep-link, loaded after the SSO session is established.
+  url: string;
+};
 
 export type ChatwootSsoResult = {
   // 5-min single-use URL — establishes the session at the Chatwoot frontend.
   ssoUrl: string;
-  // Where to navigate the iframe AFTER the session is established.
-  conversationUrl: string;
-  conversationId: string;
+  // Every conversation on the deal (newest first); the embed renders a switcher
+  // and deep-links to the selected one on the shared session.
+  conversations: ChatwootEmbedConversation[];
 };
 
-// Mints an embedded-conversation session for the CURRENT manager: resolve the
-// opportunity's Chatwoot conversation → ensure the manager has a Chatwoot agent
-// (JIT) → mint a fresh 5-min SSO login URL. Two-step by design (D6): the SSO URL
-// logs in, then the iframe deep-links to the conversation on the same-site
-// cookie. Throws when prerequisites are missing so the endpoint returns a
-// meaningful error.
+// Mints an embedded-conversation session for the CURRENT manager: gather ALL of
+// the opportunity's Chatwoot conversations → ensure the manager has a Chatwoot
+// agent (JIT) → mint a single 5-min SSO login URL (D6). Returns null when the
+// deal has no conversation. Throws when prerequisites are missing so the
+// endpoint surfaces a meaningful error.
 @Injectable()
 export class ChatwootSsoService {
-  private readonly logger = new Logger(ChatwootSsoService.name);
-
   constructor(
-    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly chatwootClient: ChatwootClientService,
     private readonly provisioningService: ChatwootAgentProvisioningService,
+    private readonly conversationResolver: ChatwootConversationResolverService,
   ) {}
 
   async mintForOpportunity(params: {
@@ -43,12 +49,12 @@ export class ChatwootSsoService {
       );
     }
 
-    const conversationId = await this.findConversationId(
+    const conversations = await this.conversationResolver.listForOpportunity(
       params.workspaceId,
       params.opportunityId,
     );
 
-    if (!isDefined(conversationId)) {
+    if (conversations.length === 0) {
       // No Chatwoot conversation on this deal — nothing to embed.
       return null;
     }
@@ -68,38 +74,29 @@ export class ChatwootSsoService {
 
     return {
       ssoUrl,
-      conversationUrl: this.chatwootClient.conversationUrl(conversationId),
-      conversationId,
+      conversations: conversations.map((conversation) => ({
+        conversationId: conversation.conversationId,
+        label: this.buildLabel(conversation),
+        url: this.chatwootClient.conversationUrl(conversation.conversationId),
+      })),
     };
   }
 
-  private async findConversationId(
-    workspaceId: string,
-    opportunityId: string,
-  ): Promise<string | undefined> {
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
+  // A short, human label for the switcher: "Instagram · 3 Jun" (channel + date),
+  // falling back to the channel or the raw id.
+  private buildLabel(conversation: DealConversation): string {
+    const channel = isDefined(conversation.platform)
+      ? conversation.platform.charAt(0).toUpperCase() +
+        conversation.platform.slice(1).toLowerCase()
+      : 'Chat';
 
-    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const activityRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'inboundActivity',
-            { shouldBypassPermissionChecks: true },
-          );
+    if (!isDefined(conversation.occurredAt)) {
+      return channel;
+    }
 
-        const activities = await activityRepository.find({
-          where: { opportunityId },
-          order: { createdAt: 'DESC' },
-        });
+    const date = new Date(conversation.occurredAt);
+    const stamp = `${date.getUTCDate()} ${date.toLocaleString('en', { month: 'short', timeZone: 'UTC' })}`;
 
-        const conversationId = activities.find((activity: any) =>
-          isDefined(activity.chatwootConversationId),
-        )?.chatwootConversationId;
-
-        return isDefined(conversationId) ? String(conversationId) : undefined;
-      },
-      systemAuthContext,
-    );
+    return `${channel} · ${stamp}`;
   }
 }
