@@ -119,8 +119,12 @@ export const ChatwootConversationEmbed = () => {
 
   const [status, setStatus] = useState<EmbedStatus>({ phase: 'loading' });
   const [selectedIndex, setSelectedIndex] = useState(0);
-  // Two-step deep-link: load the SSO URL first, then the conversation.
-  const [hasEstablishedSession, setHasEstablishedSession] = useState(false);
+  // Two-step deep-link. Loading the SSO URL logs in but the token→session-cookie
+  // exchange finishes a moment after the frame loads (client-side, no load
+  // event). Navigating to the conversation too early races that and shows the
+  // login page; so we wait a beat once the embed is ready before deep-linking.
+  // Same-site cookie persists, so the conversation then loads authenticated.
+  const [sessionEstablished, setSessionEstablished] = useState(false);
 
   useEffect(() => {
     if (!isDefined(opportunityId)) {
@@ -133,7 +137,7 @@ export const ChatwootConversationEmbed = () => {
 
     setStatus({ phase: 'loading' });
     setSelectedIndex(0);
-    setHasEstablishedSession(false);
+    setSessionEstablished(false);
 
     const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
 
@@ -185,6 +189,18 @@ export const ChatwootConversationEmbed = () => {
     };
   }, [opportunityId]);
 
+  // Once the SSO URL is rendered (status ready), let it log in, then flip to the
+  // conversation deep-link. The delay covers the iframe load + token exchange.
+  useEffect(() => {
+    if (status.phase !== 'ready' || sessionEstablished) {
+      return;
+    }
+
+    const timer = setTimeout(() => setSessionEstablished(true), 3500);
+
+    return () => clearTimeout(timer);
+  }, [status.phase, sessionEstablished]);
+
   if (status.phase === 'loading') {
     return (
       <StyledContainer $isEditMode={isPageLayoutInEditMode}>
@@ -217,11 +233,13 @@ export const ChatwootConversationEmbed = () => {
 
   const selected =
     status.conversations[selectedIndex] ?? status.conversations[0];
-  const src = hasEstablishedSession ? selected.url : status.ssoUrl;
+  // Before the session is established, load the SSO URL; after, deep-link to the
+  // selected conversation (switching tabs just re-points the same iframe).
+  const src = sessionEstablished ? selected.url : status.ssoUrl;
 
   return (
     <StyledContainer $isEditMode={isPageLayoutInEditMode}>
-      {status.conversations.length > 1 && (
+      {sessionEstablished && status.conversations.length > 1 && (
         <StyledSwitcher>
           {status.conversations.map((conversation, index) => (
             <StyledSwitcherTab
@@ -235,17 +253,9 @@ export const ChatwootConversationEmbed = () => {
         </StyledSwitcher>
       )}
       <StyledIframe
-        // Re-mount per conversation so switching reloads the iframe to the new
-        // deep-link (the SSO session cookie is already set after the first load).
-        key={hasEstablishedSession ? selected.conversationId : 'sso'}
         $isEditMode={isPageLayoutInEditMode}
         src={src}
         title="Conversation"
-        onLoad={() => {
-          if (!hasEstablishedSession) {
-            setHasEstablishedSession(true);
-          }
-        }}
         sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
         allow="encrypted-media"
         allowFullScreen
