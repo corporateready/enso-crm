@@ -1,5 +1,9 @@
 import { useIsPageLayoutInEditMode } from '@/page-layout/hooks/useIsPageLayoutInEditMode';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
+import {
+  ChatwootConversationEmbed,
+  ENSO_CHATWOOT_CONVERSATION_MARKER,
+} from '@/page-layout/widgets/iframe/components/ChatwootConversationEmbed';
 import { PageLayoutWidgetNoDataDisplay } from '@/page-layout/widgets/components/PageLayoutWidgetNoDataDisplay';
 import { WidgetSkeletonLoader } from '@/page-layout/widgets/components/WidgetSkeletonLoader';
 import { styled } from '@linaria/react';
@@ -69,6 +73,15 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+
+  // ENSO sentinel — a dynamic, per-record embed (Chatwoot conversation) that
+  // mints its own URL server-side rather than using a static `configuration.url`.
+  // A real https URL (the widget config validates `@IsUrl`) carrying a marker
+  // path; the host is irrelevant — only the marker matters. Checked after the
+  // hooks above to keep hook order stable (rules-of-hooks).
+  if (isDefined(url) && url.includes(ENSO_CHATWOOT_CONVERSATION_MARKER)) {
+    return <ChatwootConversationEmbed />;
+  }
 
   const handleIframeLoad = () => {
     setIsLoading(false);
