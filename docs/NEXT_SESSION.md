@@ -20,19 +20,15 @@ patches, Meta setup, inbox map, n8n workflow, stage-2). Then `docs/SESSION_HANDO
   `conversation_created` webhook → resolve (platform/project/PSID/referral) →
   one `inboundActivity` per conversation (idempotent) → the live pipeline →
   **Opportunity (`SOCIAL_DM`) → routing**. **Verified FB + IG + full pipeline.**
-- **Stage-2 Person-merge** (phone/email dedup) — deployed; **see immediate action**.
+- **Stage-2 Person-merge** (phone/email dedup) — **deployed + verified live**
+  (oldest kept, dup soft-deleted, FKs reassigned).
 
 ## ⚠️ Immediate next action
 
-**Push `fdd626aee5` to `main`** (the stage-2 composite-field fix — committed,
-not yet pushed; needs user approval, auto-deploys ~15–25 min). Then **re-test the
-merge**: via the CRM GraphQL API create Person A with a **valid** phone
-(`+373 6X XXX XXX`, e.g. `{primaryPhoneNumber:'69999888',primaryPhoneCountryCode:'MD',
-primaryPhoneCallingCode:'+373'}`), Person B without, an `inboundActivity` on B,
-then `updatePerson` B to the same phone → expect: oldest (A) kept, B soft-deleted,
-B's activity reassigned to A. Clean up. (Bug found last session: the merge read
-flat column names; workspace ORM returns composites **nested** — fixed in
-`fdd626aee5`. Hooks + jobs already fire; the finder just matched nothing.)
+The social channel is **complete and verified end-to-end** (Phases 0–3 + stage-2).
+The two things gating real go-live are **App Review** (to receive *public* DMs)
+and **Phase 5** (embed Chatwoot in the CRM so managers reply in-app). Pick up at
+Remaining work below.
 
 ## Remaining work
 
