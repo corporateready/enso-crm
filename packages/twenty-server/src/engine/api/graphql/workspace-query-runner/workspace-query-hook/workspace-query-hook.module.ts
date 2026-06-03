@@ -10,6 +10,7 @@ import { CalendarQueryHookModule } from 'src/modules/calendar/common/query-hooks
 import { DashboardQueryHookModule } from 'src/modules/dashboard/query-hooks/dashboard-query-hook.module';
 import { InboundActivityQueryHookModule } from 'src/modules/enso/inbound-activity/inbound-activity-query-hook.module';
 import { LeadPipelineModule } from 'src/modules/enso/lead-pipeline/lead-pipeline.module';
+import { PersonMergeModule } from 'src/modules/enso/person-merge/person-merge.module';
 import { PersonProjectAssignmentQueryHookModule } from 'src/modules/enso/person-project-assignment/person-project-assignment-query-hook.module';
 import { PersonProjectConsentQueryHookModule } from 'src/modules/enso/person-project-consent/person-project-consent-query-hook.module';
 import { PersonRelationshipQueryHookModule } from 'src/modules/enso/person-relationship/person-relationship-query-hook.module';
@@ -30,6 +31,7 @@ import { WorkspaceMemberQueryHookModule } from 'src/modules/workspace-member/que
     TaskQueryHookModule,
     InboundActivityQueryHookModule,
     LeadPipelineModule,
+    PersonMergeModule,
     PersonProjectAssignmentQueryHookModule,
     PersonProjectConsentQueryHookModule,
     PersonRelationshipQueryHookModule,
