@@ -44,6 +44,16 @@ under `packages/twenty-server/src/modules/enso/`.
 - Volume-less (Postgres holds state; mounted volume crashes on perms). `PORT=5678` set.
 - Full setup + workflow design: `content/docs/integrations/form-intake.md`.
 
+**Chatwoot social** — Railway project `enso-chatwoot` (`6f2f50fd-1f6e-4a45-ad34-a8a5f9141b1b`)
+- Self-hosted Chatwoot (our fork `corporateready/chatwoot@enso-production`, v4.14.1)
+  at **https://chat.enso.ro**: `chatwoot-web` + `chatwoot-worker` + Postgres + Redis.
+- **LIVE end-to-end:** FB + IG DMs (5 brands, 10 inboxes) → Chatwoot →
+  n8n `Social Intake → CRM` (`4cJGl1W55UFDBGTw`) → `inboundActivity` (SOCIAL_MESSAGE)
+  → pipeline → Opportunity (SOCIAL_DM) → routing. Replaces Respond.io.
+- Stage-2 Person merge-on-phone/email deployed (fix `fdd626aee5` pending push).
+- Full as-built + creds + Meta setup + remaining work:
+  `content/docs/integrations/social-intake.md`. **Resume brief: `docs/NEXT_SESSION.md`.**
+
 **n8n legacy (Elestio)** — `https://n8n-svgqc-u17606.vm.elestio.app` — 33 workflows
 (READ-only reference; the live Attio intake).
 

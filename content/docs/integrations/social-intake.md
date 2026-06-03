@@ -369,8 +369,15 @@ full pipeline → Opportunity `source=SOCIAL_DM` (routing parked — ARTIMA has 
 routing pool yet).**
 
 **Stage-2 — Person merge-on-phone/email** (the legacy "Merging Contacts" analog;
-the identity-merge the CRM lacked). **Code complete in the worktree, NOT deployed**
-(push to main = live CRM, gated on approval; not yet typechecked — no local deps).
+the identity-merge the CRM lacked). **Deployed** (`dcc7930c58` + `774924fa8f` on
+main; twenty-server + twenty-worker built clean → it typechecks). Hooks + jobs
+fire correctly (verified in worker logs). ⚠️ **A bug fix is committed but NOT yet
+pushed** (`fdd626aee5`): the live-test showed the workspace ORM returns composites
+**nested** (`person.phones.primaryPhoneNumber`, `emails.primaryEmail`,
+`name.firstName`), not flat columns — the finder read flat names so it never
+matched. The fix uses nested reads/where/patch; **needs push to main + re-test**
+to confirm the merge fires (create two People sharing a valid phone → expect
+oldest kept, dup soft-deleted, FKs reassigned).
 Files under `packages/twenty-server/src/modules/enso/person-merge/`: POST hooks on
 `person.createOne`/`updateOne` → `FindPersonDuplicatesJob` (match by `primaryEmail`
 or phone **last-9** digits, excl. self/deleted) → `MergePersonDuplicatesJob` →

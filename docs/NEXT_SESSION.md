@@ -1,107 +1,86 @@
-# Next session — Chatwoot social-messages inbound
+# Next session — Chatwoot social channel (resume point)
 
-_**The design is SETTLED — read `content/docs/integrations/social-intake.md`
-first** (the full as-planned spec; decisions D1–D10, architecture, Meta checklist,
-phased plan). Then `docs/SESSION_HANDOFF.md` (full live state + operating
-playbook), `content/docs/integrations/form-intake.md` (the template intake
-channel), `content/docs/systems/lead-pipeline.md` (the downstream pipeline this
-feeds), and `content/docs/domains/leads.md` (identity resolution + social
-activity kind)._
+_The Chatwoot social-messaging channel is **built and live end-to-end**. **Read
+`content/docs/integrations/social-intake.md` first** (full as-built: infra, fork
+patches, Meta setup, inbox map, n8n workflow, stage-2). Then `docs/SESSION_HANDOFF.md`
+(live state + operating playbook), and `content/docs/systems/lead-pipeline.md`
+(the downstream pipeline this feeds)._
 
-## Where we are
+## What's live (built last session)
 
-The **form-intake channel is live** (PostHog form → n8n → `inboundActivity`), and
-the **downstream pipeline is live and channel-agnostic**: any `inboundActivity`
-(regardless of channel) triggers a CRM-side BullMQ pipeline that dedups/creates a
-**Person**, creates/attaches an **Opportunity** (frozen attribution, m²), and
-**routes** it (project-eligible + online pool, per-opportunity random; sticky
-auto-claim; never-give-up reroute; routingCount = owner changes). So **a new
-channel only needs to produce an `inboundActivity`** — opportunity + routing come
-for free.
+- **Self-hosted Chatwoot** on Railway (our fork) at **https://chat.enso.ro** —
+  project **`enso-chatwoot`** (`6f2f50fd-1f6e-4a45-ad34-a8a5f9141b1b`):
+  `chatwoot-web` (`4295ecaa…`) + `chatwoot-worker` (`b6a992fa…`) + Postgres + Redis.
+  Built from fork **`corporateready/chatwoot@enso-production`** (v4.14.1 + patches:
+  ad-referral capture, X-Frame/CSP for iframe, `.git_sha` build fix, FB-scope fix);
+  push to that branch auto-deploys.
+- **All 5 brands connected — 10 inboxes** (FB + IG): auto-assign OFF, mapped to
+  projects. (map below).
+- **n8n "Social Intake → CRM"** (`4cJGl1W55UFDBGTw`, active): Chatwoot
+  `conversation_created` webhook → resolve (platform/project/PSID/referral) →
+  one `inboundActivity` per conversation (idempotent) → the live pipeline →
+  **Opportunity (`SOCIAL_DM`) → routing**. **Verified FB + IG + full pipeline.**
+- **Stage-2 Person-merge** (phone/email dedup) — deployed; **see immediate action**.
 
-## The mission
+## ⚠️ Immediate next action
 
-Build the **Chatwoot social-messages inbound channel** (replaces Respond.io):
+**Push `fdd626aee5` to `main`** (the stage-2 composite-field fix — committed,
+not yet pushed; needs user approval, auto-deploys ~15–25 min). Then **re-test the
+merge**: via the CRM GraphQL API create Person A with a **valid** phone
+(`+373 6X XXX XXX`, e.g. `{primaryPhoneNumber:'69999888',primaryPhoneCountryCode:'MD',
+primaryPhoneCallingCode:'+373'}`), Person B without, an `inboundActivity` on B,
+then `updatePerson` B to the same phone → expect: oldest (A) kept, B soft-deleted,
+B's activity reassigned to A. Clean up. (Bug found last session: the merge read
+flat column names; workspace ORM returns composites **nested** — fixed in
+`fdd626aee5`. Hooks + jobs already fire; the finder just matched nothing.)
 
-```
-Social DM (IG / FB / WhatsApp / Telegram / Viber via Chatwoot)
-  → Chatwoot webhook → n8n "Social Intake → CRM"  (mirror the form-intake workflow)
-  → resolve (platform, project from inbox, identity) → dedup/create Person
-  → create inboundActivity (kind = SOCIAL_MESSAGE)  ← STOP. The live pipeline does the rest:
-       → Opportunity (source SOCIAL_DM) → routing → owner/sticky.
-```
+## Remaining work
 
-This is the social analog of `form-intake`. Use that workflow as the template
-(same n8n instance, same CRM credential, same fast-ack + error-alert pattern).
+- **App Review (go-live gate):** `pages_messaging` + `instagram_business_manage_messages`
+  need **Advanced Access** to receive **public** DMs. App is Published but on
+  Standard Access → only app **testers'** DMs deliver today. Submit App Review
+  (screencast connect→receive→reply). BM is verified, so no business-verification wait.
+- **Phase 5 — embed Chatwoot in the CRM:** iframe + invisible SSO
+  (`GET /platform/api/v1/users/{id}/login`, 5-min token, then deep-link to
+  `/app/accounts/1/conversations/{id}`); needs a **Platform App** token (super-admin
+  portal) + **`crm.enso.ro`** custom domain (same-parent cookies; `ENSO_FRAME_ANCESTORS`
+  already set to `https://crm.enso.ro`); provision Chatwoot agents mapped to
+  `workspaceMember` by email; on-claim CRM hook → assign the Chatwoot conversation
+  to the mapped agent.
+- **Minor:** DB-level dedup guard (idempotency is currently webhook-side =
+  `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup
+  in stage-1 (for WhatsApp); a CRM view for project-less (Vanzari-organic)
+  `SOCIAL_MESSAGE` activities (triage).
+- **Later channels:** WhatsApp (same Meta app → Cloud API, or 360dialog), Telegram
+  (bot token). Pipeline is channel-agnostic.
 
-## `inboundActivity` is already social-ready (verify, don't rebuild)
+## Inbox → project map (n8n Resolve `INBOX_PROJECT`, by inbox_id)
 
-`kind` has `SOCIAL_MESSAGE`; `source` has `CHATWOOT` (+ `META`); plus
-`platform` (INSTAGRAM/FACEBOOK/TELEGRAM/VIBER/WHATSAPP), `chatwootConversationId`,
-`externalThreadId`, `body`, `person`, `project`, `externalId`, `distinctId`,
-`status`, `isSynthetic`, full attribution + `submittedPayload`. The pipeline maps
-`kind=SOCIAL_MESSAGE → opportunity.source = SOCIAL_DM` already.
+| inbox | brand | project |
+|---|---|---|
+| 1 / 2 | Artima FB/IG | ARTIMA `4b63d540-…` |
+| 3 / 6 | ENSO Dev Moldova FB/IG | ENSO ESTATE `2b0b2f11-…` |
+| 8 / 10 | ENSO Dev România FB/IG | ENSO LIVING `c2fc149f-…` |
+| 7 / 9 | Avram Iancu FB/IG | AVRAM IANCU `52d75b8d-…` |
+| 4 / 5 | Vânzări Imobiliare FB/IG | **null** (unknown bucket; project set in conversation / by ad `ref.proj`) |
 
-## Design — SETTLED (full spec: `content/docs/integrations/social-intake.md`)
+## Operating playbook (additions for Chatwoot)
 
-The open questions are resolved. Scope is **bigger than passive intake**: besides
-DM → `inboundActivity`, we also **embed the Chatwoot conversation inside the CRM**
-(managers reply in-app), **patch the Chatwoot fork**, and **push assignment from
-CRM into Chatwoot**. Key resolutions (decisions D1–D10 in the spec):
-
-- **Human-only**, no AI auto-reply this phase.
-- **Chatwoot = omnichannel backend**, deployed fresh on Railway from **our fork**;
-  **one Meta app** for Messenger + Instagram (Instagram **Business Login**, needs
-  Chatwoot **v4.1+**) + later WhatsApp Cloud API.
-- **Granularity:** one `inboundActivity` per conversation, idempotency key
-  `chatwootConversationId` (created on `conversation_created`/first inbound msg).
-- **Inbox → project map** (FB+IG each): ENSO Dev Moldova→ESTATE (ENS2502), ENSO Dev
-  Romania→LIVING (ENS2501), ARTIMA→ENS2301, AVRAM IANCU→ENS2402, VANZARI→ENSVI
-  (unknown bucket). Umbrella inboxes use the country default; ad `ref` can sharpen.
-- **Organic vs ads:** Chatwoot **drops Meta's ad referral** → **PATCH 1** persists
-  `referral`(`ref`/`ad_id`) into `conversation.additional_attributes`. Marketing
-  sets each ad's `ref = proj=<CODE>&utm_*…`. **Route iff a project resolves**
-  (D9): ads/brand/umbrella → route; organic-on-Vanzari → activity-only (triage).
-- **Identity:** phone → email → social handle (drop name-match).
-- **Consent:** implied for the messaged channel, source `CHATWOOT`.
-- **Embed:** iframe + invisible SSO (`/platform/api/v1/users/{id}/login`, 5-min
-  token). Needs **PATCH 2** (X-Frame-Options/CSP for `crm.enso.ro`) and the shared
-  parent domain **`crm.enso.ro` + `chat.enso.ro`** (SameSite cookies). Agents
-  mapped to managers **by email**; **CRM drives assignment**, pushed into Chatwoot.
-- **Webhook auth:** secret-in-path (Chatwoot can't send custom headers).
-- **Meta:** **Business Verification ✅ done** — no external wait. Own/agency-managed
-  assets likely run on **Standard Access** (verify in smoke test). Build is gated
-  only by our own pace; **Phase 0 = deploy Chatwoot + DNS** is the first move.
-- **Out of scope (defer):** AI auto-reply; outbound cadence; WhatsApp (until a
-  number); Telegram/TikTok; the call channel (Roistat/Zadarma).
-
-## Relevant live state
-
-- **Pipeline** (channel-agnostic): `content/docs/systems/lead-pipeline.md`.
-- **`inboundActivity`** (`cef40992-…`) — social fields ready (above).
-- **Projects + the host/path map** for reference: `form-intake.md`.
-- **personProjectConsent** (`40c511fa-…`) — per-project channel consent.
-- Routing/notifications: routing is live; **notifications sidelined** (a Google
-  Chat app "ENSO CRM" later — see SESSION_HANDOFF §5).
-
-## Operating playbook (act immediately)
-
-- Secrets in repo `/.env` (main repo root, **not** the worktree):
-  `cd <repo-root> && set -a && source .env && set +a`. CRM:
-  `$TWENTY_BASE_URL/graphql` + `/metadata`, `Bearer $TWENTY_API_KEY`. ⚠️ filter
-  `deletedAt:{is:NULL}` on data queries.
-- **Chatwoot creds:** `CHATWOOT_BASE_URL` / `CHATWOOT_ACCOUNT_ID` /
-  `CHATWOOT_API_TOKEN` keys exist in `.env` but **read empty — confirm/obtain the
-  real values** (self-hosted Chatwoot). Get the webhook + inbox setup from there.
-- **n8n (write):** `N8N_RAILWAY_URL` + `N8N_RAILWAY_API_KEY`, REST `X-N8N-API-KEY`.
-  Intake instance `https://n8n-production-d2a9.up.railway.app`; form-intake
-  workflow `c6tgJmzSkxtsXTwb`, error workflow `OOfJPijdq1s08DQ9`, CRM credential
-  `NYM0XzeLNTCwTydL`. Clone the form-intake workflow as the social template.
-- Railway CLI authed (MCP token expired — use CLI). **Push to `main` = auto-deploy;
-  needs explicit per-push approval.** ⚠️ **1 unpushed docs commit** may be pending
-  from the prior session (`git log origin/main..HEAD`) — push or carry it.
-- **Always clean up test records** (people/activities/opportunities/consents) after
-  smoke tests, filtering on a test marker.
-- New CRM hooks/jobs go under `packages/twenty-server/src/modules/enso/…`; worker
-  jobs register in `JobsModule`; query hooks in `WorkspaceQueryHookModule`. The
-  worker now builds from our repo (don't regress that).
+- **Chatwoot creds in repo `.env`:** `CHATWOOT_BASE_URL=https://chat.enso.ro`,
+  `CHATWOOT_ACCOUNT_ID=1`, `CHATWOOT_API_TOKEN` (works). Chatwoot REST:
+  `…/api/v1/accounts/1/…` with `api_access_token` header.
+- **Meta config lives in Chatwoot super-admin, NOT Railway ENV** —
+  `GlobalConfigService` reads the DB `InstallationConfig` first and the seed
+  pre-creates blank rows that shadow ENV. Set at
+  `/super_admin/app_config?config=facebook` & `?config=instagram`.
+- **Meta app:** "ENSO Chatwoot", App ID `1372861104654929`, BM **ENSO Development
+  Moldova** (verified). Verify tokens `enso-fb-7a8406d3c5b9b94668e61962` /
+  `enso-ig-d6cfc0f5d58aeaf4feb52254`. IG needs the app **Published** to deliver
+  webhooks; senders must be app **testers** until App Review.
+- **n8n (write):** `N8N_RAILWAY_*`. Social workflow `4cJGl1W55UFDBGTw`; Chatwoot
+  account **webhook id 1** → `…/webhook/chatwoot-intake-9a992cbe851c48ac`
+  (`conversation_created` only — `message_created` raced → duplicate activities).
+- **Railway:** CLI authed (token auto-refresh); GraphQL API works with the CLI
+  token + a `User-Agent` header; **GitHub-repo connect + custom-domain creation
+  need the dashboard** (CLI token not scoped). Push to `main` = auto-deploy, **needs
+  per-push approval**. Always clean up CRM test records.
