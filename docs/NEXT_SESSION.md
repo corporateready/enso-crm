@@ -1,6 +1,8 @@
 # Next session — Chatwoot social-messages inbound
 
-_Start here. Then read `docs/SESSION_HANDOFF.md` (full live state + operating
+_**The design is SETTLED — read `content/docs/integrations/social-intake.md`
+first** (the full as-planned spec; decisions D1–D10, architecture, Meta checklist,
+phased plan). Then `docs/SESSION_HANDOFF.md` (full live state + operating
 playbook), `content/docs/integrations/form-intake.md` (the template intake
 channel), `content/docs/systems/lead-pipeline.md` (the downstream pipeline this
 feeds), and `content/docs/domains/leads.md` (identity resolution + social
@@ -40,33 +42,38 @@ This is the social analog of `form-intake`. Use that workflow as the template
 `status`, `isSynthetic`, full attribution + `submittedPayload`. The pipeline maps
 `kind=SOCIAL_MESSAGE → opportunity.source = SOCIAL_DM` already.
 
-## Open design questions to settle first (confirm before building)
+## Design — SETTLED (full spec: `content/docs/integrations/social-intake.md`)
 
-1. **Where it runs** — recommend an **n8n "Social Intake → CRM"** workflow on the
-   Railway n8n (mirror form-intake; the CRM POST hook fires regardless of caller).
-   Alternative: Chatwoot webhook straight to a CRM endpoint. Decide.
-2. **Granularity / dedup** — Chatwoot fires per **message** + `conversation_created`.
-   We want **one `inboundActivity` per conversation** (or per inbound burst), not
-   per message. Recommend: create on first inbound message / `conversation_created`,
-   use **`chatwootConversationId` as the idempotency key** (skip if an activity
-   with that conversation id exists); later messages don't create new deals (the
-   person×project open-deal dedup handles that). Confirm.
-3. **Inbox → project map** — which Chatwoot inbox = which CRM project (the analog
-   of form-intake's host/path map; lives in the Resolve node). Unknown → Vanzari
-   Imobiliare fallback. Need the inbox list + mapping.
-4. **Social identity resolution** — dedup Person by **phone (WhatsApp) / email /
-   social handle**. Decide identity keys + order + fallback, and where a social
-   handle/id lives (Person field vs only `inboundActivity.externalId`). Chatwoot
-   contact carries phone/email/identifier + social profile.
-5. **Consent** — inbound social message = implied consent for that channel?
-   (`personProjectConsent.whatsapp/sms/email`...). Likely yes for the channel they
-   messaged on; decide which flags + source `CHATWOOT`.
-6. **platform mapping** — Chatwoot inbox channel type → `platform` enum; `source =
-   CHATWOOT`.
-7. **Auth** — Chatwoot webhook auth (API token in header / shared secret in path),
-   like the form-intake `x-intake-secret`.
-8. **Out of scope (defer):** outbound agent replies / cadence via Chatwoot; the
-   real-time call channel (Roistat/Zadarma) is a separate later session.
+The open questions are resolved. Scope is **bigger than passive intake**: besides
+DM → `inboundActivity`, we also **embed the Chatwoot conversation inside the CRM**
+(managers reply in-app), **patch the Chatwoot fork**, and **push assignment from
+CRM into Chatwoot**. Key resolutions (decisions D1–D10 in the spec):
+
+- **Human-only**, no AI auto-reply this phase.
+- **Chatwoot = omnichannel backend**, deployed fresh on Railway from **our fork**;
+  **one Meta app** for Messenger + Instagram (Instagram **Business Login**, needs
+  Chatwoot **v4.1+**) + later WhatsApp Cloud API.
+- **Granularity:** one `inboundActivity` per conversation, idempotency key
+  `chatwootConversationId` (created on `conversation_created`/first inbound msg).
+- **Inbox → project map** (FB+IG each): ENSO Dev Moldova→ESTATE (ENS2502), ENSO Dev
+  Romania→LIVING (ENS2501), ARTIMA→ENS2301, AVRAM IANCU→ENS2402, VANZARI→ENSVI
+  (unknown bucket). Umbrella inboxes use the country default; ad `ref` can sharpen.
+- **Organic vs ads:** Chatwoot **drops Meta's ad referral** → **PATCH 1** persists
+  `referral`(`ref`/`ad_id`) into `conversation.additional_attributes`. Marketing
+  sets each ad's `ref = proj=<CODE>&utm_*…`. **Route iff a project resolves**
+  (D9): ads/brand/umbrella → route; organic-on-Vanzari → activity-only (triage).
+- **Identity:** phone → email → social handle (drop name-match).
+- **Consent:** implied for the messaged channel, source `CHATWOOT`.
+- **Embed:** iframe + invisible SSO (`/platform/api/v1/users/{id}/login`, 5-min
+  token). Needs **PATCH 2** (X-Frame-Options/CSP for `crm.enso.ro`) and the shared
+  parent domain **`crm.enso.ro` + `chat.enso.ro`** (SameSite cookies). Agents
+  mapped to managers **by email**; **CRM drives assignment**, pushed into Chatwoot.
+- **Webhook auth:** secret-in-path (Chatwoot can't send custom headers).
+- **Meta:** **Business Verification ✅ done** — no external wait. Own/agency-managed
+  assets likely run on **Standard Access** (verify in smoke test). Build is gated
+  only by our own pace; **Phase 0 = deploy Chatwoot + DNS** is the first move.
+- **Out of scope (defer):** AI auto-reply; outbound cadence; WhatsApp (until a
+  number); Telegram/TikTok; the call channel (Roistat/Zadarma).
 
 ## Relevant live state
 
