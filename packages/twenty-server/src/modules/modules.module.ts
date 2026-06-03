@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CalendarModule } from 'src/modules/calendar/calendar.module';
 import { ConnectedAccountModule } from 'src/modules/connected-account/connected-account.module';
-import { ChatwootModule } from 'src/modules/enso/chatwoot/chatwoot.module';
+import { ChatwootApiModule } from 'src/modules/enso/chatwoot/chatwoot-api.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
 import { WorkflowModule } from 'src/modules/workflow/workflow.module';
 import { WorkspaceMemberModule } from 'src/modules/workspace-member/workspace-member.module';
@@ -12,7 +12,7 @@ import { WorkspaceMemberModule } from 'src/modules/workspace-member/workspace-me
     MessagingModule,
     CalendarModule,
     ConnectedAccountModule,
-    ChatwootModule,
+    ChatwootApiModule,
     WorkflowModule,
     WorkspaceMemberModule,
   ],
