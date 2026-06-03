@@ -1,9 +1,39 @@
 # Phase 5 — embedded Chatwoot conversation: go-live runbook
 
-_The Phase-5 **code** is built, typechecked, and lint-clean on branch
-`claude/adoring-darwin-c13f55` (not yet pushed). This runbook is the set of
-**portal/infra steps only you can do** + the verification path. Nothing here is
-auto-deployed — push to `main` needs your explicit approval._
+_**STATUS: LIVE + VERIFIED (2026-06-04).** Merged to `main`, deployed on
+`crm.enso.ro`. Verified: on-claim assignment push (claim → conversation
+auto-assigned to the owner) and the in-CRM conversation view + reply._
+
+> **UI evolved past the iframe.** PRs #3–#6 embedded the Chatwoot dashboard via
+> iframe + SSO; it worked but showed Chatwoot's whole UI (sidebar/inbox) and
+> couldn't be stripped (no chrome-free URL, cross-origin CSS blocked). **Final
+> approach = a NATIVE chat panel** (`ChatwootConversationEmbed`): our server
+> (`ChatwootMessagingService` + `rest/enso/chatwoot/{conversations,messages,reply}`)
+> proxies Chatwoot's API with the account token (token stays server-side); the
+> frontend renders messages (oldest→newest, `column-reverse` keeps newest pinned)
+> + a reply box, polling every 3s. Lists all of a deal's conversations
+> (newest-first switcher). Replies are attributed to the calling manager via their
+> own agent access token (`GET /platform/api/v1/users/{id}` → `access_token`).
+> The iframe/SSO path (`ChatwootSsoService`, deep-link) was **removed**; the SSO
+> token mint + user-1 app-ownership are no longer needed for the view (kept only
+> for reference below). `CHATWOOT_PLATFORM_TOKEN` is still used — now for
+> provisioning + per-agent reply tokens.
+
+> **Boot-crash lesson (PR #3 → #4):** a REST controller's guards
+> (`JwtAuthGuard` needs `AccessTokenService`, `SettingsPermissionGuard` needs
+> `PermissionsService`) must be resolvable in the controller's own module. The
+> controller lives in `ChatwootApiModule`, which imports `TokenModule` +
+> `WorkspaceCacheStorageModule` + `PermissionsModule` (mirrors the AI controller).
+> Typecheck does NOT catch this — it's a runtime DI boot failure.
+>
+> **Embed deep-link lesson (PR #5 → #6):** the SSO URL only logs in *after* a
+> client-side token exchange that completes a beat after the iframe load event.
+> Navigating to the conversation immediately races it → login screen / inbox. Fix:
+> load SSO, wait ~3.5s, then re-point the same iframe to the conversation.
+>
+> **Frontend deploy note:** the built bundle is fingerprinted (`/assets/index-*.js`)
+> and code-split — to confirm a front change shipped, watch the bundle hash flip,
+> don't grep the entrypoint for a lazy-chunk symbol.
 
 ## What the code does (already written)
 

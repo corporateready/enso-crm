@@ -4,10 +4,10 @@ import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/serv
 import { ChatwootAssignmentService } from 'src/modules/enso/chatwoot/services/chatwoot-assignment.service';
 import { ChatwootClientService } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
 import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
-import { ChatwootSsoService } from 'src/modules/enso/chatwoot/services/chatwoot-sso.service';
+import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
 
-// Phase 5 — the embedded Chatwoot conversation, SERVICES ONLY (no controller).
-// Lean on purpose: imported by LeadPipelineModule (the on-claim hook uses
+// Phase 5 — the Chatwoot integration, SERVICES ONLY (no controller). Lean on
+// purpose: imported by LeadPipelineModule (the on-claim hook uses
 // ChatwootAssignmentService) inside the query-hook graph, so it must not drag in
 // auth/permission modules. The REST controller + its guard dependencies live in
 // ChatwootApiModule (HTTP graph) instead.
@@ -17,13 +17,13 @@ import { ChatwootSsoService } from 'src/modules/enso/chatwoot/services/chatwoot-
     ChatwootConversationResolverService,
     ChatwootAssignmentService,
     ChatwootAgentProvisioningService,
-    ChatwootSsoService,
+    ChatwootMessagingService,
   ],
   exports: [
     ChatwootClientService,
     ChatwootAssignmentService,
     ChatwootAgentProvisioningService,
-    ChatwootSsoService,
+    ChatwootMessagingService,
   ],
 })
 export class ChatwootModule {}

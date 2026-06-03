@@ -25,27 +25,33 @@ patches, Meta setup, inbox map, n8n workflow, stage-2). Then `docs/SESSION_HANDO
 
 ## ⚠️ Immediate next action
 
-Phases 0–3 + stage-2 are **live + verified**. **Phase 5 (embedded conversation) is
-CODE COMPLETE** on this branch (`claude/adoring-darwin-c13f55`, **not pushed** —
-push to `main` needs approval). It's typecheck + lint clean. Pick up by running the
-**go-live runbook `docs/PHASE5_GATES.md`**: do the 2 portal gates (Platform-App
-token + `crm.enso.ro` domain), set `CHATWOOT_PLATFORM_TOKEN`, push to deploy, add
-the Conversation tab via the page-layout API, then verify on-claim push + the embed.
+Phases 0–3 + stage-2 + **Phase 5 are LIVE + verified end-to-end** (2026-06-04).
+The social channel is complete: DM → pipeline → Opportunity → routing → claim →
+**conversation assigned in Chatwoot + a NATIVE chat panel in the deal (read +
+reply in-CRM, no Chatwoot UI)**. The view is `ChatwootConversationEmbed` (front) +
+`ChatwootMessagingService` / `rest/enso/chatwoot/{conversations,messages,reply}`
+(server proxies Chatwoot's API, token server-side; 3s poll; replies attributed to
+the manager). The iframe/SSO approach was tried then replaced — see
+`docs/PHASE5_GATES.md`. Only deliberately-open item: **App Review** for public DMs.
 
 ## Remaining work
 
-- **Phase 5 go-live (gates only — code done):** see `docs/PHASE5_GATES.md`.
-  (1) **Platform-App token** in Chatwoot super-admin (Platform API 401s with the
-  account token — confirmed). (2) **`crm.enso.ro`** custom domain on twenty-server
-  + DNS (same-parent cookie, D8; `ENSO_FRAME_ANCESTORS=https://crm.enso.ro` on the
-  Chatwoot service). (3) env `CHATWOOT_PLATFORM_TOKEN` (+ confirm
-  `CHATWOOT_BASE_URL`/`ACCOUNT_ID`/`API_TOKEN` on twenty-server). The **on-claim
-  push** works without (1)/(2). Verify `chatwootConversationId` = Chatwoot
-  **display_id**. Built: `packages/twenty-server/src/modules/enso/chatwoot/` +
-  `ChatwootConversationEmbed` (front).
-- **App Review (deferred):** `pages_messaging` + `instagram_business_manage_messages`
-  need **Advanced Access** for **public** DMs. Test-app/tester DMs deliver today.
-  Submit later (screencast connect→receive→reply); BM verified, no wait.
+- **App Review (go-live for PUBLIC DMs — deferred):** `pages_messaging` +
+  `instagram_business_manage_messages` need **Advanced Access**. Test-app/tester
+  DMs deliver today; public DMs don't until reviewed. Submit (screencast
+  connect→receive→reply); BM verified, no business-verification wait.
+- **Phase 5 polish (optional):** hide the Conversation tab when a deal has no chat
+  (needs a `hasChatwootConversation` field the pipeline sets + a conditional tab —
+  today it shows a calm "No conversation linked yet" empty state); true websocket
+  push instead of the 3s poll (the agent `pubsub_token` is already available from
+  `GET /platform/api/v1/users/{id}` — wire Chatwoot's ActionCable); attachments /
+  images in the panel (text-only today); typing/read receipts.
+- **Minor (pre-existing):** DB-level dedup guard; consent upsert in n8n; phone/email
+  dedup in stage-1 (WhatsApp); CRM triage view for project-less SOCIAL_MESSAGE.
+- **Later channels:** WhatsApp (same Meta app → Cloud API/360dialog), Telegram
+  (bot token). Pipeline + embed are channel-agnostic.
+
+**Phase 5 as-built + the boot/deep-link lessons: `docs/PHASE5_GATES.md`.**
 - **Minor:** DB-level dedup guard (idempotency is currently webhook-side =
   `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup
   in stage-1 (for WhatsApp); a CRM view for project-less (Vanzari-organic)
