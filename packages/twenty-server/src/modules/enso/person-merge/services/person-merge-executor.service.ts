@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { isDefined } from 'twenty-shared/utils';
 import { In, IsNull } from 'typeorm';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
@@ -9,15 +8,17 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import { PERSON_RELATION_REASSIGNMENTS } from 'src/modules/enso/person-merge/person-merge.constants';
 
+// Composite fields come back nested from the workspace ORM.
 type PersonRow = {
   id: string;
   createdAt: Date;
-  nameFirstName?: string | null;
-  nameLastName?: string | null;
-  primaryEmail?: string | null;
-  primaryPhoneNumber?: string | null;
-  primaryPhoneCountryCode?: string | null;
-  primaryPhoneCallingCode?: string | null;
+  name?: { firstName?: string | null; lastName?: string | null } | null;
+  emails?: { primaryEmail?: string | null } | null;
+  phones?: {
+    primaryPhoneNumber?: string | null;
+    primaryPhoneCountryCode?: string | null;
+    primaryPhoneCallingCode?: string | null;
+  } | null;
   companyId?: string | null;
 };
 
@@ -71,6 +72,8 @@ export class PersonMergeExecutorService {
       const duplicateIds = duplicates.map((d) => d.id);
 
       // 1) Re-point every person-FK relation from the duplicates to the keeper.
+      // These FKs (personId / pointOfContactId / relatedPersonId) are flat
+      // columns on the related objects, not composites.
       for (const { object, field } of PERSON_RELATION_REASSIGNMENTS) {
         try {
           const repository =
@@ -94,30 +97,35 @@ export class PersonMergeExecutorService {
       }
 
       // 2) Backfill the keeper's empty contact/name/company from a duplicate.
+      // Composite fields are written nested.
       const patch: Record<string, unknown> = {};
 
-      if (!keeper.primaryEmail) {
-        const d = duplicates.find((x) => x.primaryEmail);
+      if (!keeper.emails?.primaryEmail) {
+        const d = duplicates.find((x) => x.emails?.primaryEmail);
 
-        if (d) patch.primaryEmail = d.primaryEmail;
+        if (d) patch.emails = { primaryEmail: d.emails!.primaryEmail };
       }
 
-      if (!keeper.primaryPhoneNumber) {
-        const d = duplicates.find((x) => x.primaryPhoneNumber);
+      if (!keeper.phones?.primaryPhoneNumber) {
+        const d = duplicates.find((x) => x.phones?.primaryPhoneNumber);
 
         if (d) {
-          patch.primaryPhoneNumber = d.primaryPhoneNumber;
-          patch.primaryPhoneCountryCode = d.primaryPhoneCountryCode;
-          patch.primaryPhoneCallingCode = d.primaryPhoneCallingCode;
+          patch.phones = {
+            primaryPhoneNumber: d.phones!.primaryPhoneNumber,
+            primaryPhoneCountryCode: d.phones!.primaryPhoneCountryCode,
+            primaryPhoneCallingCode: d.phones!.primaryPhoneCallingCode,
+          };
         }
       }
 
-      if (!keeper.nameFirstName) {
-        const d = duplicates.find((x) => x.nameFirstName);
+      if (!keeper.name?.firstName) {
+        const d = duplicates.find((x) => x.name?.firstName);
 
         if (d) {
-          patch.nameFirstName = d.nameFirstName;
-          patch.nameLastName = d.nameLastName;
+          patch.name = {
+            firstName: d.name!.firstName,
+            lastName: d.name!.lastName,
+          };
         }
       }
 

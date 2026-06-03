@@ -8,11 +8,12 @@ import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspac
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { PHONE_MATCH_DIGITS } from 'src/modules/enso/person-merge/person-merge.constants';
 
+// Person rows come back from the workspace ORM with NESTED composite fields
+// (emails.primaryEmail, phones.primaryPhoneNumber), not flat columns.
 type PersonRow = {
   id: string;
-  primaryEmail?: string | null;
-  primaryPhoneNumber?: string | null;
-  deletedAt?: Date | null;
+  emails?: { primaryEmail?: string | null } | null;
+  phones?: { primaryPhoneNumber?: string | null } | null;
 };
 
 // Finds OTHER active people that share the trigger person's email or phone
@@ -54,8 +55,11 @@ export class PersonDuplicateFinderService {
         return null;
       }
 
-      const email = (me.primaryEmail || '').trim().toLowerCase();
-      const phoneDigits = (me.primaryPhoneNumber || '').replace(/\D/g, '');
+      const email = (me.emails?.primaryEmail || '').trim().toLowerCase();
+      const phoneDigits = (me.phones?.primaryPhoneNumber || '').replace(
+        /\D/g,
+        '',
+      );
       const last9 =
         phoneDigits.length >= 7 ? phoneDigits.slice(-PHONE_MATCH_DIGITS) : null;
 
@@ -65,41 +69,42 @@ export class PersonDuplicateFinderService {
         return null;
       }
 
-      const matches = new Map<string, PersonRow>();
+      const matchIds = new Set<string>();
 
+      // Composite fields are TypeORM embedded columns → nested where.
       if (email) {
         const byEmail: PersonRow[] = await personRepository.find({
           where: {
-            primaryEmail: ILike(email),
+            emails: { primaryEmail: ILike(email) },
             id: Not(personId),
             deletedAt: IsNull(),
           },
         });
 
-        for (const p of byEmail) matches.set(p.id, p);
+        for (const p of byEmail) matchIds.add(p.id);
       }
 
       if (last9) {
         const byPhone: PersonRow[] = await personRepository.find({
           where: {
-            primaryPhoneNumber: ILike(`%${last9}`),
+            phones: { primaryPhoneNumber: ILike(`%${last9}`) },
             id: Not(personId),
             deletedAt: IsNull(),
           },
         });
 
-        for (const p of byPhone) matches.set(p.id, p);
+        for (const p of byPhone) matchIds.add(p.id);
       }
 
-      if (matches.size === 0) {
+      if (matchIds.size === 0) {
         return null;
       }
 
       this.logger.log(
-        `Person ${personId} has ${matches.size} phone/email duplicate(s).`,
+        `Person ${personId} has ${matchIds.size} phone/email duplicate(s).`,
       );
 
-      return [personId, ...matches.keys()];
+      return [personId, ...matchIds];
     }, systemAuthContext);
   }
 }
