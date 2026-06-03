@@ -6,11 +6,13 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { ChatwootClientService } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
+import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
 
 // On claim (deal leaves ROUTING with an owner), push that assignment INTO
-// Chatwoot so the conversation lands in the manager's queue — keeping the CRM
-// the single source of truth (Chatwoot auto-assignment stays OFF). Uses the
-// Application API (account token, already live — no Platform-App gate).
+// Chatwoot for EVERY conversation on the deal — so all the threads land in the
+// owner's queue, keeping the CRM the single source of truth (Chatwoot
+// auto-assignment stays OFF). Uses the Application API (account token, already
+// live — no Platform-App gate).
 //
 // Best-effort: a missing conversation, an unmapped agent, or a Chatwoot outage
 // must NEVER fail the claim. The CRM owner is authoritative regardless.
@@ -21,6 +23,7 @@ export class ChatwootAssignmentService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly chatwootClient: ChatwootClientService,
+    private readonly conversationResolver: ChatwootConversationResolverService,
   ) {}
 
   async pushAssignmentOnClaim(
@@ -38,34 +41,48 @@ export class ChatwootAssignmentService {
     }
 
     try {
-      const target = await this.resolveAssignmentTarget(
+      const ownerEmail = await this.resolveClaimedOwnerEmail(
         workspaceId,
         opportunityId,
       );
 
-      if (!target) {
+      if (!isDefined(ownerEmail)) {
         return;
       }
 
-      const agentId = await this.chatwootClient.findAgentIdByEmail(
-        target.ownerEmail,
+      const conversations = await this.conversationResolver.listForOpportunity(
+        workspaceId,
+        opportunityId,
       );
+
+      if (conversations.length === 0) {
+        return;
+      }
+
+      const agentId = await this.chatwootClient.findAgentIdByEmail(ownerEmail);
 
       if (!isDefined(agentId)) {
         this.logger.warn(
-          `No Chatwoot agent for ${target.ownerEmail} — conversation ${target.conversationId} left unassigned (provision agents to enable push).`,
+          `No Chatwoot agent for ${ownerEmail} — ${conversations.length} conversation(s) on deal ${opportunityId} left unassigned (provision agents to enable push).`,
         );
 
         return;
       }
 
-      await this.chatwootClient.assignConversation(
-        target.conversationId,
-        agentId,
+      // Assign each conversation; one failure shouldn't skip the rest.
+      const outcomes = await Promise.allSettled(
+        conversations.map((conversation) =>
+          this.chatwootClient.assignConversation(
+            conversation.conversationId,
+            agentId,
+          ),
+        ),
       );
 
+      const assigned = outcomes.filter((o) => o.status === 'fulfilled').length;
+
       this.logger.log(
-        `Assigned Chatwoot conversation ${target.conversationId} → ${target.ownerEmail} (deal ${opportunityId}).`,
+        `Assigned ${assigned}/${conversations.length} Chatwoot conversation(s) → ${ownerEmail} (deal ${opportunityId}).`,
       );
     } catch (error) {
       this.logger.error(
@@ -74,12 +91,11 @@ export class ChatwootAssignmentService {
     }
   }
 
-  // Returns the conversation to (re)assign and the owner's email, or null when
-  // the deal isn't a claimed social deal we can act on.
-  private async resolveAssignmentTarget(
+  // The owner's email, or null when the deal isn't a claimed deal we act on.
+  private async resolveClaimedOwnerEmail(
     workspaceId: string,
     opportunityId: string,
-  ): Promise<{ conversationId: string; ownerEmail: string } | null> {
+  ): Promise<string | null> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -104,28 +120,6 @@ export class ChatwootAssignmentService {
           return null;
         }
 
-        const activityRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'inboundActivity',
-            { shouldBypassPermissionChecks: true },
-          );
-
-        // A deal can hold several activities; take the most recent one that
-        // actually carries a Chatwoot conversation id.
-        const activities = await activityRepository.find({
-          where: { opportunityId },
-          order: { createdAt: 'DESC' },
-        });
-
-        const conversationId = activities.find((activity: any) =>
-          isDefined(activity.chatwootConversationId),
-        )?.chatwootConversationId;
-
-        if (!isDefined(conversationId)) {
-          return null;
-        }
-
         const workspaceMemberRepository =
           await this.globalWorkspaceOrmManager.getRepository<any>(
             workspaceId,
@@ -137,13 +131,7 @@ export class ChatwootAssignmentService {
           where: { id: opportunity.ownerId },
         });
 
-        const ownerEmail: string | undefined = owner?.userEmail;
-
-        if (!isDefined(ownerEmail)) {
-          return null;
-        }
-
-        return { conversationId: String(conversationId), ownerEmail };
+        return owner?.userEmail ?? null;
       },
       systemAuthContext,
     );

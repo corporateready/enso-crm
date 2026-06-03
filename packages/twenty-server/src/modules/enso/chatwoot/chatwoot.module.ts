@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
 import { ChatwootAssignmentService } from 'src/modules/enso/chatwoot/services/chatwoot-assignment.service';
 import { ChatwootClientService } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
+import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
 import { ChatwootSsoService } from 'src/modules/enso/chatwoot/services/chatwoot-sso.service';
 
 // Phase 5 — the embedded Chatwoot conversation, SERVICES ONLY (no controller).
@@ -13,6 +14,7 @@ import { ChatwootSsoService } from 'src/modules/enso/chatwoot/services/chatwoot-
 @Module({
   providers: [
     ChatwootClientService,
+    ChatwootConversationResolverService,
     ChatwootAssignmentService,
     ChatwootAgentProvisioningService,
     ChatwootSsoService,
