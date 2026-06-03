@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { ChatwootModule } from 'src/modules/enso/chatwoot/chatwoot.module';
 import { InboundActivityCreateOnePostQueryHook } from 'src/modules/enso/lead-pipeline/query-hooks/inbound-activity-create-one.post-query-hook';
 import { OpportunityUpdateOnePostQueryHook } from 'src/modules/enso/lead-pipeline/query-hooks/opportunity-update-one.post-query-hook';
 import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services/opportunity-claim.service';
@@ -12,6 +13,9 @@ import { PersonProjectAssignmentNameService } from 'src/modules/enso/person-proj
 // (loaded by JobsModule) — the worker boots QueueWorkerModule, which does NOT
 // import the query-hook graph, so jobs must be registered there separately.
 @Module({
+  // ChatwootModule exports ChatwootAssignmentService — the on-claim hook pushes
+  // the conversation assignment into Chatwoot (best-effort).
+  imports: [ChatwootModule],
   providers: [
     InboundActivityCreateOnePostQueryHook,
     OpportunityUpdateOnePostQueryHook,

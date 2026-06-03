@@ -51,6 +51,16 @@ under `packages/twenty-server/src/modules/enso/`.
   n8n `Social Intake → CRM` (`4cJGl1W55UFDBGTw`) → `inboundActivity` (SOCIAL_MESSAGE)
   → pipeline → Opportunity (SOCIAL_DM) → routing. Replaces Respond.io.
 - Stage-2 Person merge-on-phone/email deployed (fix `fdd626aee5` pending push).
+- **Phase 5 (embedded conversation) — CODE COMPLETE, not pushed** (branch
+  `claude/adoring-darwin-c13f55`, typecheck+lint clean):
+  `packages/twenty-server/src/modules/enso/chatwoot/` (`ChatwootModule` →
+  `ModulesModule`) — client wrapper, **on-claim conversation-assignment push**
+  (wired into the `opportunity.updateOne` claim hook, account-token, no gate),
+  agent provisioning by email, SSO-mint controller (`rest/enso/chatwoot/sso` +
+  `/provision-agents`); front `ChatwootConversationEmbed` (IframeWidget delegates
+  on the `__enso_chatwoot_conversation` marker URL). Go-live gated on a
+  Platform-App token + `crm.enso.ro` domain + `CHATWOOT_PLATFORM_TOKEN` env →
+  **runbook `docs/PHASE5_GATES.md`**.
 - Full as-built + creds + Meta setup + remaining work:
   `content/docs/integrations/social-intake.md`. **Resume brief: `docs/NEXT_SESSION.md`.**
 

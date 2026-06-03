@@ -25,24 +25,27 @@ patches, Meta setup, inbox map, n8n workflow, stage-2). Then `docs/SESSION_HANDO
 
 ## ⚠️ Immediate next action
 
-The social channel is **complete and verified end-to-end** (Phases 0–3 + stage-2).
-The two things gating real go-live are **App Review** (to receive *public* DMs)
-and **Phase 5** (embed Chatwoot in the CRM so managers reply in-app). Pick up at
-Remaining work below.
+Phases 0–3 + stage-2 are **live + verified**. **Phase 5 (embedded conversation) is
+CODE COMPLETE** on this branch (`claude/adoring-darwin-c13f55`, **not pushed** —
+push to `main` needs approval). It's typecheck + lint clean. Pick up by running the
+**go-live runbook `docs/PHASE5_GATES.md`**: do the 2 portal gates (Platform-App
+token + `crm.enso.ro` domain), set `CHATWOOT_PLATFORM_TOKEN`, push to deploy, add
+the Conversation tab via the page-layout API, then verify on-claim push + the embed.
 
 ## Remaining work
 
-- **App Review (go-live gate):** `pages_messaging` + `instagram_business_manage_messages`
-  need **Advanced Access** to receive **public** DMs. App is Published but on
-  Standard Access → only app **testers'** DMs deliver today. Submit App Review
-  (screencast connect→receive→reply). BM is verified, so no business-verification wait.
-- **Phase 5 — embed Chatwoot in the CRM:** iframe + invisible SSO
-  (`GET /platform/api/v1/users/{id}/login`, 5-min token, then deep-link to
-  `/app/accounts/1/conversations/{id}`); needs a **Platform App** token (super-admin
-  portal) + **`crm.enso.ro`** custom domain (same-parent cookies; `ENSO_FRAME_ANCESTORS`
-  already set to `https://crm.enso.ro`); provision Chatwoot agents mapped to
-  `workspaceMember` by email; on-claim CRM hook → assign the Chatwoot conversation
-  to the mapped agent.
+- **Phase 5 go-live (gates only — code done):** see `docs/PHASE5_GATES.md`.
+  (1) **Platform-App token** in Chatwoot super-admin (Platform API 401s with the
+  account token — confirmed). (2) **`crm.enso.ro`** custom domain on twenty-server
+  + DNS (same-parent cookie, D8; `ENSO_FRAME_ANCESTORS=https://crm.enso.ro` on the
+  Chatwoot service). (3) env `CHATWOOT_PLATFORM_TOKEN` (+ confirm
+  `CHATWOOT_BASE_URL`/`ACCOUNT_ID`/`API_TOKEN` on twenty-server). The **on-claim
+  push** works without (1)/(2). Verify `chatwootConversationId` = Chatwoot
+  **display_id**. Built: `packages/twenty-server/src/modules/enso/chatwoot/` +
+  `ChatwootConversationEmbed` (front).
+- **App Review (deferred):** `pages_messaging` + `instagram_business_manage_messages`
+  need **Advanced Access** for **public** DMs. Test-app/tester DMs deliver today.
+  Submit later (screencast connect→receive→reply); BM verified, no wait.
 - **Minor:** DB-level dedup guard (idempotency is currently webhook-side =
   `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup
   in stage-1 (for WhatsApp); a CRM view for project-less (Vanzari-organic)
