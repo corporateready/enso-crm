@@ -71,6 +71,14 @@ export class ChatwootClientService {
     return process.env.CHATWOOT_ACCOUNT_ID || '1';
   }
 
+  // ActionCable endpoint for realtime push, derived from the base URL
+  // (https → wss). Chatwoot mounts the cable at `/cable`.
+  get websocketUrl(): string | undefined {
+    const base = this.baseUrl;
+
+    return isDefined(base) ? `${base.replace(/^http/, 'ws')}/cable` : undefined;
+  }
+
   private get apiToken(): string | undefined {
     return process.env.CHATWOOT_API_TOKEN || undefined;
   }
@@ -354,5 +362,19 @@ export class ChatwootClientService {
     );
 
     return data.access_token ?? undefined;
+  }
+
+  // The agent's realtime pubsub token — authenticates the ActionCable
+  // RoomChannel subscription (the browser receives push events keyed by it).
+  async getUserPubsubToken(userId: number): Promise<string | undefined> {
+    if (!this.isPlatformConfigured()) {
+      return undefined;
+    }
+
+    const { data } = await this.platformApi().get<{ pubsub_token?: string }>(
+      `/users/${userId}`,
+    );
+
+    return data.pubsub_token ?? undefined;
   }
 }

@@ -433,8 +433,13 @@ created + last-message dates) → click a row → the **thread** (oldest→newes
 `column-reverse` pins newest; `min-height:0` keeps the composer in view) + composer
 (reply, emoji, canned responses via `/`, file/image attachments incl.
 **drag-and-drop**; images fetched through an authed attachment proxy → object URL).
-Polls every 3s ("live"; true websocket is a ready follow-up — `pubsub_token` is
-exposed). Mobile-friendly.
+**Realtime:** subscribes to Chatwoot's ActionCable `RoomChannel` with the agent's
+`pubsub_token` (server `GET realtime` mints cable URL + token) and refetches on
+`message.*`/`conversation.*` push; polling is the **fallback** (fast 3s while the
+socket is down, slow 20s safety net while it's up, gives up reconnecting after 5
+tries). ⚠️ Cross-origin cable handshake (`crm.` → `chat.`) depends on Chatwoot's
+`allowed_request_origins` accepting the CRM origin — if it doesn't, the socket
+fails and the 3s poll carries on (pure enhancement, no regression). Mobile-friendly.
 
 **Live workspace wiring (via page-layout REST API, not seed config):** Conversation
 tab on **Opportunity** (layout `5d5457be…`, tab `bb3a88b5…`, widget `7b7e11e6…`)
@@ -456,6 +461,19 @@ from the account API IS the display id used everywhere.
 **Deliberately omitted:** Chatwoot assign/resolve/private-notes in the panel
 (assignment is CRM-driven; deal stage tracks lifecycle).
 
+**Phase-5 polish — added (pending live verify):** (1) **websocket push** — the
+panel now subscribes to Chatwoot ActionCable (`pubsub_token`) with a poll
+fallback (server: `ChatwootClientService.websocketUrl`/`getUserPubsubToken`,
+`ChatwootMessagingService.getRealtimeCredentials`, `GET rest/enso/chatwoot/realtime`;
+front: realtime effect in `ChatwootConversationEmbed`); verify the cross-origin
+cable handshake on deploy. (2) **hide-tab-when-no-chat** — the Conversation tab
+renders only when the record has a chat (server: `hasConversation` +
+`GET has-conversation`; front: `useHasChatwootConversation` filters the tab in
+`PageLayoutTabsRenderer`, shown in edit mode + on check error). Done **client-side
+via a cheap DB-only presence check**, not a `hasChatwootConversation` field —
+simpler, no metadata/migration/pipeline changes.
+
 **Remaining:** App Review for *public* DMs (deferred — tester DMs work today);
-optional websocket push / attachment thumbnails; hide-tab-when-no-chat; a DB-level
-dedup guard; consent upsert; phone/email dedup in stage-1 (WhatsApp).
+attachment thumbnails; a DB-level dedup guard; consent upsert; phone/email dedup
+in stage-1 (WhatsApp); possibly a Chatwoot-fork `allowed_request_origins` tweak if
+the websocket handshake is rejected cross-origin.

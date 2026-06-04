@@ -85,6 +85,36 @@ export class ChatwootController {
     return { messages };
   }
 
+  // Does this record have any Chatwoot conversation? Drives tab visibility.
+  @Get('has-conversation')
+  @UseGuards(NoPermissionGuard)
+  async hasConversation(
+    @Query('recordType') recordType: string,
+    @Query('recordId') recordId: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ) {
+    const hasConversation = await this.messagingService.hasConversation(
+      workspace.id,
+      toRecordType(recordType),
+      recordId,
+    );
+
+    return { hasConversation };
+  }
+
+  // Realtime credentials for the current user's Chatwoot agent (cable URL +
+  // pubsub token) so the panel can subscribe to push instead of polling.
+  @Get('realtime')
+  @UseGuards(NoPermissionGuard)
+  async realtime(@AuthUser() user: UserEntity) {
+    const realtime = await this.messagingService.getRealtimeCredentials({
+      email: user.email,
+      name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+    });
+
+    return { realtime };
+  }
+
   @Get('canned-responses')
   @UseGuards(NoPermissionGuard)
   async cannedResponses() {
