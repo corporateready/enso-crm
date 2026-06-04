@@ -25,7 +25,10 @@ import { SettingsPermissionGuard } from 'src/engine/guards/settings-permission.g
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { ChatwootReplyInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-reply.input';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
-import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
+import {
+  type ChatwootRecordType,
+  ChatwootMessagingService,
+} from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
 
 type UploadedMulterFile = {
   buffer: Buffer;
@@ -33,9 +36,12 @@ type UploadedMulterFile = {
   mimetype: string;
 };
 
+const toRecordType = (value: string | undefined): ChatwootRecordType =>
+  value === 'person' ? 'person' : 'opportunity';
+
 // Server side of the native in-CRM chat panel (Phase 5). All endpoints require a
-// logged-in user and only touch conversations belonging to the given opportunity.
-// Chatwoot's API is proxied with the account token server-side.
+// logged-in user and only touch conversations belonging to the given record (an
+// opportunity or a person). Chatwoot is proxied with the account token server-side.
 @Controller('rest/enso/chatwoot')
 @UseGuards(JwtAuthGuard, WorkspaceAuthGuard)
 @UseFilters(RestApiExceptionFilter)
@@ -48,12 +54,14 @@ export class ChatwootController {
   @Get('conversations')
   @UseGuards(NoPermissionGuard)
   async conversations(
-    @Query('opportunityId') opportunityId: string,
+    @Query('recordType') recordType: string,
+    @Query('recordId') recordId: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ) {
     const conversations = await this.messagingService.listConversations(
       workspace.id,
-      opportunityId,
+      toRecordType(recordType),
+      recordId,
     );
 
     return { conversations };
@@ -62,13 +70,15 @@ export class ChatwootController {
   @Get('messages')
   @UseGuards(NoPermissionGuard)
   async messages(
-    @Query('opportunityId') opportunityId: string,
+    @Query('recordType') recordType: string,
+    @Query('recordId') recordId: string,
     @Query('conversationId') conversationId: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ) {
     const messages = await this.messagingService.listMessages(
       workspace.id,
-      opportunityId,
+      toRecordType(recordType),
+      recordId,
       conversationId,
     );
 
@@ -87,14 +97,16 @@ export class ChatwootController {
   @Get('attachment')
   @UseGuards(NoPermissionGuard)
   async attachment(
-    @Query('opportunityId') opportunityId: string,
+    @Query('recordType') recordType: string,
+    @Query('recordId') recordId: string,
     @Query('conversationId') conversationId: string,
     @Query('url') url: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ) {
     const { data, contentType } = await this.messagingService.fetchAttachment({
       workspaceId: workspace.id,
-      opportunityId,
+      recordType: toRecordType(recordType),
+      recordId,
       conversationId,
       url,
     });
@@ -102,7 +114,7 @@ export class ChatwootController {
     return new StreamableFile(data, { type: contentType });
   }
 
-  // Send a reply or private note (with optional file/image attachments).
+  // Send a reply (with optional file/image attachments).
   @Post('reply')
   @UseGuards(NoPermissionGuard)
   @UseInterceptors(FilesInterceptor('attachments', 5))
@@ -120,10 +132,10 @@ export class ChatwootController {
 
     const message = await this.messagingService.sendReply({
       workspaceId: workspace.id,
-      opportunityId: body.opportunityId,
+      recordType: body.recordType,
+      recordId: body.recordId,
       conversationId: body.conversationId,
       content: body.content,
-      isPrivate: body.isPrivate === 'true',
       attachments: attachments.length > 0 ? attachments : undefined,
       userEmail: user.email,
       userName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),

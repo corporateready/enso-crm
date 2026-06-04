@@ -1,5 +1,5 @@
 import {
-  IsBooleanString,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -10,8 +10,11 @@ import {
 // Sent as multipart/form-data (so attachments can ride along); text fields
 // arrive as strings. Content is optional when there are attachments.
 export class ChatwootReplyInput {
+  @IsIn(['opportunity', 'person'])
+  recordType: 'opportunity' | 'person';
+
   @IsUUID()
-  opportunityId: string;
+  recordId: string;
 
   @IsString()
   @IsNotEmpty()
@@ -21,8 +24,4 @@ export class ChatwootReplyInput {
   @IsString()
   @MaxLength(20_000)
   content?: string;
-
-  @IsOptional()
-  @IsBooleanString()
-  isPrivate?: string;
 }
