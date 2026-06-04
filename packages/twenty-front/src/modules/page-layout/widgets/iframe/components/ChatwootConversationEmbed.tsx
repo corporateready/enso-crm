@@ -71,6 +71,7 @@ type Conversation = {
   label: string;
   contactName: string | null;
   channelType: string | null;
+  opportunityName: string | null;
 };
 
 type Attachment = {
@@ -103,6 +104,7 @@ const StyledContainer = styled.div`
      expanding to content (which pushed the composer below the fold). */
   min-height: 0;
   overflow: hidden;
+  position: relative;
   width: 100%;
 `;
 
@@ -338,6 +340,20 @@ const StyledMessage = styled.div`
   text-align: center;
 `;
 
+const StyledDropOverlay = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.transparent.strong};
+  border: 2px dashed ${themeCssVariables.color.blue};
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${themeCssVariables.font.color.primary};
+  display: flex;
+  font-size: ${themeCssVariables.font.size.md};
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  z-index: 20;
+`;
+
 // Image attachment: its proxy URL needs the Bearer header (which <img src> can't
 // send), so fetch the bytes and render via an object URL.
 const AttachmentImage = ({ src }: { src: string }) => {
@@ -389,7 +405,14 @@ const downloadAttachment = (src: string, fileName: string) => {
 
 export const ChatwootConversationEmbed = () => {
   const { targetRecordIdentifier } = useLayoutRenderingContext();
-  const opportunityId = targetRecordIdentifier?.id;
+  const recordId = targetRecordIdentifier?.id;
+  // The panel works from an opportunity (the deal's chats) or a person (all their
+  // chats across deals, labelled by opportunity).
+  const recordType =
+    targetRecordIdentifier?.targetObjectNameSingular === 'person'
+      ? 'person'
+      : 'opportunity';
+  const isPersonView = recordType === 'person';
 
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -401,13 +424,16 @@ export const ChatwootConversationEmbed = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const recordQuery = `recordType=${recordType}&recordId=${recordId}`;
 
   const attachmentUrl = (dataUrl: string): string =>
-    `${apiBase}/attachment?opportunityId=${opportunityId}&conversationId=${selectedId}&url=${encodeURIComponent(dataUrl)}`;
+    `${apiBase}/attachment?${recordQuery}&conversationId=${selectedId}&url=${encodeURIComponent(dataUrl)}`;
 
   // Initial load: conversations + canned responses.
   useEffect(() => {
-    if (!isDefined(opportunityId)) {
+    if (!isDefined(recordId)) {
       setLoading(false);
 
       return;
@@ -416,7 +442,7 @@ export const ChatwootConversationEmbed = () => {
     let cancelled = false;
 
     Promise.all([
-      fetch(`${apiBase}/conversations?opportunityId=${opportunityId}`, {
+      fetch(`${apiBase}/conversations?${recordQuery}`, {
         headers: authHeaders(),
       }).then((r) => (r.ok ? r.json() : { conversations: [] })),
       fetch(`${apiBase}/canned-responses`, { headers: authHeaders() }).then(
@@ -444,21 +470,20 @@ export const ChatwootConversationEmbed = () => {
     return () => {
       cancelled = true;
     };
-  }, [opportunityId]);
+  }, [recordId, recordType, recordQuery]);
 
   // Poll the selected conversation's messages.
   useEffect(() => {
-    if (!isDefined(opportunityId) || !isDefined(selectedId)) {
+    if (!isDefined(recordId) || !isDefined(selectedId)) {
       return;
     }
 
     let cancelled = false;
 
     const load = () => {
-      fetch(
-        `${apiBase}/messages?opportunityId=${opportunityId}&conversationId=${selectedId}`,
-        { headers: authHeaders() },
-      )
+      fetch(`${apiBase}/messages?${recordQuery}&conversationId=${selectedId}`, {
+        headers: authHeaders(),
+      })
         .then((r) => (r.ok ? r.json() : { messages: [] }))
         .then((data: { messages?: Message[] }) => {
           if (!cancelled) {
@@ -475,13 +500,13 @@ export const ChatwootConversationEmbed = () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [opportunityId, selectedId]);
+  }, [recordId, recordType, recordQuery, selectedId]);
 
   const send = () => {
     const content = draft.trim();
 
     if (
-      !isDefined(opportunityId) ||
+      !isDefined(recordId) ||
       !isDefined(selectedId) ||
       (content === '' && files.length === 0)
     ) {
@@ -492,7 +517,8 @@ export const ChatwootConversationEmbed = () => {
 
     const form = new FormData();
 
-    form.append('opportunityId', opportunityId);
+    form.append('recordType', recordType);
+    form.append('recordId', recordId);
     form.append('conversationId', selectedId);
     form.append('content', content);
     files.forEach((file) => form.append('attachments', file));
@@ -548,7 +574,28 @@ export const ChatwootConversationEmbed = () => {
   }
 
   return (
-    <StyledContainer>
+    <StyledContainer
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        const dropped = Array.from(event.dataTransfer.files ?? []);
+
+        if (dropped.length > 0) {
+          setFiles((current) => [...current, ...dropped]);
+        }
+      }}
+    >
+      {isDragging && (
+        <StyledDropOverlay>{t`Drop files to attach`}</StyledDropOverlay>
+      )}
       <StyledSwitcher>
         {conversations.map((conversation) => (
           <StyledTab
@@ -556,7 +603,9 @@ export const ChatwootConversationEmbed = () => {
             $active={conversation.conversationId === selectedId}
             onClick={() => setSelectedId(conversation.conversationId)}
           >
-            {conversation.label}
+            {isPersonView && isDefined(conversation.opportunityName)
+              ? `${conversation.label} · ${conversation.opportunityName}`
+              : conversation.label}
           </StyledTab>
         ))}
       </StyledSwitcher>

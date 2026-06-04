@@ -11,19 +11,24 @@ import {
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
 import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
 
+export type ChatwootRecordType = 'opportunity' | 'person';
+
 export type DealConversationSummary = {
   conversationId: string;
   label: string;
   contactName: string | null;
   channelType: string | null;
-  status: string | null;
-  assigneeName: string | null;
+  // Which opportunity this conversation belongs to (shown in the person view).
+  opportunityId: string | null;
+  opportunityName: string | null;
   lastActivityAt: number | null;
 };
 
-// Read/reply/manage for the native in-CRM chat panel. Every conversation-scoped
-// method enforces that the conversation belongs to the opportunity, then proxies
-// Chatwoot's API with the account token (token never reaches the browser).
+// Read/reply for the native in-CRM chat panel, record-agnostic: works from an
+// opportunity (that deal's conversations) or a person (all their conversations
+// across deals, each labelled with its opportunity). Every conversation-scoped
+// method enforces the conversation belongs to the record, then proxies Chatwoot
+// with the account token (token never reaches the browser).
 @Injectable()
 export class ChatwootMessagingService {
   constructor(
@@ -34,49 +39,49 @@ export class ChatwootMessagingService {
 
   async listConversations(
     workspaceId: string,
-    opportunityId: string,
+    recordType: ChatwootRecordType,
+    recordId: string,
   ): Promise<DealConversationSummary[]> {
     if (!this.chatwootClient.isConfigured()) {
       return [];
     }
 
-    const conversations = await this.conversationResolver.listForOpportunity(
+    const conversations = await this.conversationResolver.listForRecord(
       workspaceId,
-      opportunityId,
+      recordType,
+      recordId,
     );
 
     const summaries = await Promise.all(
       conversations.map(async (conversation) => {
+        let contactName: string | null = null;
+        let channelType: string | null = conversation.platform;
+        let lastActivityAt: number | null = conversation.occurredAt
+          ? Date.parse(conversation.occurredAt)
+          : null;
+
         try {
           const meta = await this.chatwootClient.getConversationMeta(
             conversation.conversationId,
           );
 
-          return {
-            conversationId: conversation.conversationId,
-            label:
-              meta.contactName ??
-              meta.channelType ??
-              `#${conversation.conversationId}`,
-            contactName: meta.contactName,
-            channelType: meta.channelType ?? conversation.platform,
-            status: meta.status,
-            assigneeName: meta.assigneeName,
-            lastActivityAt: meta.lastActivityAt,
-          };
+          contactName = meta.contactName;
+          channelType = meta.channelType ?? conversation.platform;
+          lastActivityAt = meta.lastActivityAt ?? lastActivityAt;
         } catch {
-          return {
-            conversationId: conversation.conversationId,
-            label: conversation.platform ?? `#${conversation.conversationId}`,
-            contactName: null,
-            channelType: conversation.platform,
-            status: null,
-            assigneeName: null,
-            lastActivityAt: conversation.occurredAt
-              ? Date.parse(conversation.occurredAt)
-              : null,
-          };
+          // Chatwoot hiccup on one conversation shouldn't drop the whole list.
         }
+
+        return {
+          conversationId: conversation.conversationId,
+          label:
+            contactName ?? channelType ?? `#${conversation.conversationId}`,
+          contactName,
+          channelType,
+          opportunityId: conversation.opportunityId,
+          opportunityName: conversation.opportunityName,
+          lastActivityAt,
+        };
       }),
     );
 
@@ -87,12 +92,14 @@ export class ChatwootMessagingService {
 
   async listMessages(
     workspaceId: string,
-    opportunityId: string,
+    recordType: ChatwootRecordType,
+    recordId: string,
     conversationId: string,
   ): Promise<ChatwootMessage[]> {
-    await this.assertConversationOnDeal(
+    await this.assertConversationOnRecord(
       workspaceId,
-      opportunityId,
+      recordType,
+      recordId,
       conversationId,
     );
 
@@ -101,17 +108,18 @@ export class ChatwootMessagingService {
 
   async sendReply(params: {
     workspaceId: string;
-    opportunityId: string;
+    recordType: ChatwootRecordType;
+    recordId: string;
     conversationId: string;
     content?: string;
-    isPrivate?: boolean;
     attachments?: ChatwootUploadFile[];
     userEmail: string;
     userName: string;
   }): Promise<ChatwootMessage> {
-    await this.assertConversationOnDeal(
+    await this.assertConversationOnRecord(
       params.workspaceId,
-      params.opportunityId,
+      params.recordType,
+      params.recordId,
       params.conversationId,
     );
 
@@ -122,7 +130,6 @@ export class ChatwootMessagingService {
 
     return this.chatwootClient.sendMessage(params.conversationId, {
       content: params.content,
-      isPrivate: params.isPrivate,
       attachments: params.attachments,
       asToken,
     });
@@ -136,20 +143,20 @@ export class ChatwootMessagingService {
     return this.chatwootClient.listCannedResponses();
   }
 
-  // Stream an attachment after verifying its conversation belongs to the deal.
   async fetchAttachment(params: {
     workspaceId: string;
-    opportunityId: string;
+    recordType: ChatwootRecordType;
+    recordId: string;
     conversationId: string;
     url: string;
   }): Promise<{ data: Buffer; contentType: string }> {
-    await this.assertConversationOnDeal(
+    await this.assertConversationOnRecord(
       params.workspaceId,
-      params.opportunityId,
+      params.recordType,
+      params.recordId,
       params.conversationId,
     );
 
-    // Only proxy URLs on our Chatwoot host (no SSRF to arbitrary hosts).
     const base = this.chatwootClient.baseUrl ?? '';
 
     if (base === '' || !params.url.startsWith(base)) {
@@ -173,14 +180,18 @@ export class ChatwootMessagingService {
       : undefined;
   }
 
-  private async assertConversationOnDeal(
+  // The conversation must belong to the record (deal or person) — prevents
+  // reading/replying to arbitrary conversations by id.
+  private async assertConversationOnRecord(
     workspaceId: string,
-    opportunityId: string,
+    recordType: ChatwootRecordType,
+    recordId: string,
     conversationId: string,
   ): Promise<void> {
-    const conversations = await this.conversationResolver.listForOpportunity(
+    const conversations = await this.conversationResolver.listForRecord(
       workspaceId,
-      opportunityId,
+      recordType,
+      recordId,
     );
 
     const belongs = conversations.some(
@@ -189,7 +200,7 @@ export class ChatwootMessagingService {
 
     if (!belongs) {
       throw new ForbiddenException(
-        'Conversation does not belong to this opportunity.',
+        'Conversation does not belong to this record.',
       );
     }
   }
