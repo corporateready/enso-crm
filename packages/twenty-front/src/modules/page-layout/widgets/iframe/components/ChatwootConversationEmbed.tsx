@@ -65,6 +65,9 @@ const StyledMessages = styled.div`
   flex: 1;
   flex-direction: column-reverse;
   gap: ${themeCssVariables.spacing[2]};
+  /* min-height:0 lets this scroll INSIDE the panel instead of growing and
+     pushing the composer below the fold. */
+  min-height: 0;
   overflow-y: auto;
   padding: ${themeCssVariables.spacing[3]};
 `;
@@ -313,7 +316,7 @@ export const ChatwootConversationEmbed = () => {
 
   return (
     <StyledContainer>
-      {conversations.length > 1 && (
+      {conversations.length > 0 && (
         <StyledSwitcher>
           {conversations.map((conversation) => (
             <StyledTab
