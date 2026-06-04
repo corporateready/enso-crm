@@ -23,9 +23,7 @@ import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { SettingsPermissionGuard } from 'src/engine/guards/settings-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
-import { ChatwootReassignInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-reassign.input';
 import { ChatwootReplyInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-reply.input';
-import { ChatwootStatusInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-status.input';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
 import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
 
@@ -75,14 +73,6 @@ export class ChatwootController {
     );
 
     return { messages };
-  }
-
-  @Get('agents')
-  @UseGuards(NoPermissionGuard)
-  async agents() {
-    const agents = await this.messagingService.listAgents();
-
-    return { agents };
   }
 
   @Get('canned-responses')
@@ -140,41 +130,6 @@ export class ChatwootController {
     });
 
     return { message };
-  }
-
-  @Post('status')
-  @UseGuards(NoPermissionGuard)
-  async status(
-    @Body() body: ChatwootStatusInput,
-    @AuthWorkspace() workspace: WorkspaceEntity,
-    @AuthUser() user: UserEntity,
-  ) {
-    await this.messagingService.setStatus({
-      workspaceId: workspace.id,
-      opportunityId: body.opportunityId,
-      conversationId: body.conversationId,
-      status: body.status,
-      userEmail: user.email,
-      userName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
-    });
-
-    return { ok: true };
-  }
-
-  @Post('reassign')
-  @UseGuards(NoPermissionGuard)
-  async reassign(
-    @Body() body: ChatwootReassignInput,
-    @AuthWorkspace() workspace: WorkspaceEntity,
-  ) {
-    await this.messagingService.reassign({
-      workspaceId: workspace.id,
-      opportunityId: body.opportunityId,
-      conversationId: body.conversationId,
-      assigneeId: body.assigneeId,
-    });
-
-    return { ok: true };
   }
 
   // Admin: bulk-provision Chatwoot agents for all routing-eligible members.

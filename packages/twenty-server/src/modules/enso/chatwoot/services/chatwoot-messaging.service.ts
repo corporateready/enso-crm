@@ -3,7 +3,6 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { isDefined } from 'twenty-shared/utils';
 
 import {
-  type ChatwootAgentSummary,
   type ChatwootCannedResponse,
   type ChatwootMessage,
   type ChatwootUploadFile,
@@ -127,58 +126,6 @@ export class ChatwootMessagingService {
       attachments: params.attachments,
       asToken,
     });
-  }
-
-  async setStatus(params: {
-    workspaceId: string;
-    opportunityId: string;
-    conversationId: string;
-    status: 'open' | 'resolved' | 'pending';
-    userEmail: string;
-    userName: string;
-  }): Promise<void> {
-    await this.assertConversationOnDeal(
-      params.workspaceId,
-      params.opportunityId,
-      params.conversationId,
-    );
-
-    const asToken = await this.resolveAgentToken(
-      params.userEmail,
-      params.userName,
-    );
-
-    await this.chatwootClient.toggleStatus(
-      params.conversationId,
-      params.status,
-      asToken,
-    );
-  }
-
-  async reassign(params: {
-    workspaceId: string;
-    opportunityId: string;
-    conversationId: string;
-    assigneeId: number;
-  }): Promise<void> {
-    await this.assertConversationOnDeal(
-      params.workspaceId,
-      params.opportunityId,
-      params.conversationId,
-    );
-
-    await this.chatwootClient.assignConversation(
-      params.conversationId,
-      params.assigneeId,
-    );
-  }
-
-  async listAgents(): Promise<ChatwootAgentSummary[]> {
-    if (!this.chatwootClient.isConfigured()) {
-      return [];
-    }
-
-    return this.chatwootClient.listAgents();
   }
 
   async listCannedResponses(): Promise<ChatwootCannedResponse[]> {
