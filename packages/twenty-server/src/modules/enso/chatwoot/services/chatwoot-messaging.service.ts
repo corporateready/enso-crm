@@ -15,13 +15,36 @@ export type ChatwootRecordType = 'opportunity' | 'person';
 
 export type DealConversationSummary = {
   conversationId: string;
-  label: string;
+  // Clean channel label, e.g. "Instagram".
+  channel: string | null;
   contactName: string | null;
-  channelType: string | null;
-  // Which opportunity this conversation belongs to (shown in the person view).
+  personName: string | null;
   opportunityId: string | null;
   opportunityName: string | null;
+  projectName: string | null;
+  createdAt: string | null;
   lastActivityAt: number | null;
+};
+
+// "INSTAGRAM" / "Channel::FacebookPage" → "Instagram" / "Facebook".
+const cleanChannel = (
+  platform: string | null,
+  metaChannel: string | null,
+): string | null => {
+  const raw = platform ?? metaChannel?.replace(/^Channel::/, '') ?? null;
+
+  if (!raw) {
+    return null;
+  }
+
+  const lower = raw.toLowerCase();
+
+  if (lower.includes('insta')) return 'Instagram';
+  if (lower.includes('face') || lower.includes('messenger')) return 'Facebook';
+  if (lower.includes('whats')) return 'WhatsApp';
+  if (lower.includes('tele')) return 'Telegram';
+
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
 };
 
 // Read/reply for the native in-CRM chat panel, record-agnostic: works from an
@@ -55,9 +78,9 @@ export class ChatwootMessagingService {
     const summaries = await Promise.all(
       conversations.map(async (conversation) => {
         let contactName: string | null = null;
-        let channelType: string | null = conversation.platform;
-        let lastActivityAt: number | null = conversation.occurredAt
-          ? Date.parse(conversation.occurredAt)
+        let metaChannel: string | null = null;
+        let lastActivityAt: number | null = conversation.createdAt
+          ? Date.parse(conversation.createdAt)
           : null;
 
         try {
@@ -66,7 +89,7 @@ export class ChatwootMessagingService {
           );
 
           contactName = meta.contactName;
-          channelType = meta.channelType ?? conversation.platform;
+          metaChannel = meta.channelType;
           lastActivityAt = meta.lastActivityAt ?? lastActivityAt;
         } catch {
           // Chatwoot hiccup on one conversation shouldn't drop the whole list.
@@ -74,12 +97,13 @@ export class ChatwootMessagingService {
 
         return {
           conversationId: conversation.conversationId,
-          label:
-            contactName ?? channelType ?? `#${conversation.conversationId}`,
+          channel: cleanChannel(conversation.platform, metaChannel),
           contactName,
-          channelType,
+          personName: conversation.personName,
           opportunityId: conversation.opportunityId,
           opportunityName: conversation.opportunityName,
+          projectName: conversation.projectName,
+          createdAt: conversation.createdAt,
           lastActivityAt,
         };
       }),

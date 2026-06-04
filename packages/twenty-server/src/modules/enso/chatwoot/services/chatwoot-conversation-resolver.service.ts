@@ -6,21 +6,25 @@ import { In } from 'typeorm';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 
-// One conversation linked to a record (via an inboundActivity carrying a
-// chatwootConversationId). For the person view we also carry which opportunity
-// the conversation belongs to, so the UI can label it.
+// One conversation linked to a record, with the CRM context needed for the list
+// row (person / opportunity / project / created date).
 export type DealConversation = {
   conversationId: string;
   platform: string | null;
-  occurredAt: string | null;
+  // When the inbound activity occurred ≈ the conversation's first-seen date.
+  createdAt: string | null;
   opportunityId: string | null;
   opportunityName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  personId: string | null;
+  personName: string | null;
 };
 
 // Resolves the DISTINCT Chatwoot conversations attached to a record, newest
-// first (dedup by chatwootConversationId, keep the most recent activity per
-// conversation). For an opportunity → that deal's conversations; for a person →
-// every conversation across all their deals, each labelled with its opportunity.
+// first (dedup by chatwootConversationId). For an opportunity → that deal's
+// conversations; for a person → every conversation across all their deals. Each
+// is enriched with opportunity / project / person names for the list view.
 @Injectable()
 export class ChatwootConversationResolverService {
   constructor(
@@ -85,53 +89,98 @@ export class ChatwootConversationResolverService {
           conversations.push({
             conversationId: String(conversationId),
             platform: activity.platform ?? null,
-            occurredAt: activity.occurredAt
+            createdAt: activity.occurredAt
               ? new Date(activity.occurredAt).toISOString()
               : null,
             opportunityId: activity.opportunityId ?? null,
             opportunityName: null,
+            projectId: activity.projectId ?? null,
+            projectName: null,
+            personId: activity.personId ?? null,
+            personName: null,
           });
         }
 
-        // Label each conversation with its opportunity name (for the person view).
-        const opportunityIds = [
-          ...new Set(
-            conversations
-              .map((conversation) => conversation.opportunityId)
-              .filter((id): id is string => isDefined(id)),
-          ),
-        ];
-
-        if (opportunityIds.length > 0) {
-          const opportunityRepository =
-            await this.globalWorkspaceOrmManager.getRepository<any>(
-              workspaceId,
-              'opportunity',
-              { shouldBypassPermissionChecks: true },
-            );
-
-          const opportunities = await opportunityRepository.find({
-            where: { id: In(opportunityIds) },
-          });
-
-          const nameById = new Map<string, string>(
-            opportunities.map((opportunity: any) => [
-              opportunity.id,
-              opportunity.name,
-            ]),
-          );
-
-          for (const conversation of conversations) {
-            if (isDefined(conversation.opportunityId)) {
-              conversation.opportunityName =
-                nameById.get(conversation.opportunityId) ?? null;
-            }
-          }
-        }
+        await this.attachNames(workspaceId, conversations);
 
         return conversations;
       },
       systemAuthContext,
     );
+  }
+
+  // Batch-resolve opportunity / project / person display names.
+  private async attachNames(
+    workspaceId: string,
+    conversations: DealConversation[],
+  ): Promise<void> {
+    const collect = (key: 'opportunityId' | 'projectId' | 'personId') => [
+      ...new Set(
+        conversations
+          .map((conversation) => conversation[key])
+          .filter((id): id is string => isDefined(id)),
+      ),
+    ];
+
+    const opportunityIds = collect('opportunityId');
+    const projectIds = collect('projectId');
+    const personIds = collect('personId');
+
+    const repo = (objectName: string) =>
+      this.globalWorkspaceOrmManager.getRepository<any>(
+        workspaceId,
+        objectName,
+        { shouldBypassPermissionChecks: true },
+      );
+
+    if (opportunityIds.length > 0) {
+      const rows = await (
+        await repo('opportunity')
+      ).find({
+        where: { id: In(opportunityIds) },
+      });
+      const byId = new Map(rows.map((r: any) => [r.id, r.name]));
+
+      for (const c of conversations) {
+        if (isDefined(c.opportunityId)) {
+          c.opportunityName = byId.get(c.opportunityId) ?? null;
+        }
+      }
+    }
+
+    if (projectIds.length > 0) {
+      const rows = await (
+        await repo('project')
+      ).find({
+        where: { id: In(projectIds) },
+      });
+      const byId = new Map(rows.map((r: any) => [r.id, r.name]));
+
+      for (const c of conversations) {
+        if (isDefined(c.projectId)) {
+          c.projectName = byId.get(c.projectId) ?? null;
+        }
+      }
+    }
+
+    if (personIds.length > 0) {
+      const rows = await (
+        await repo('person')
+      ).find({
+        where: { id: In(personIds) },
+      });
+      const byId = new Map(
+        rows.map((r: any) => [
+          r.id,
+          `${r.name?.firstName ?? ''} ${r.name?.lastName ?? ''}`.trim() || null,
+        ]),
+      );
+
+      for (const c of conversations) {
+        if (isDefined(c.personId)) {
+          c.personName = byId.get(c.personId) ?? null;
+        }
+      }
+    }
   }
 }
