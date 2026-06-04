@@ -416,6 +416,29 @@ const StyledDetailTitle = styled.div`
   white-space: nowrap;
 `;
 
+// Opportunity names are auto-composed as "Social | {project}", so showing the
+// project again is redundant — only append it when it isn't already in the name.
+const dealContext = (
+  opportunityName: string | null,
+  projectName: string | null,
+): string => {
+  const parts: string[] = [];
+
+  if (isDefined(opportunityName)) {
+    parts.push(opportunityName);
+  }
+
+  if (
+    isDefined(projectName) &&
+    (!isDefined(opportunityName) ||
+      !opportunityName.toLowerCase().includes(projectName.toLowerCase()))
+  ) {
+    parts.push(projectName);
+  }
+
+  return parts.join(' · ');
+};
+
 const formatDate = (value: string | number | null): string => {
   if (!isDefined(value)) {
     return '';
@@ -677,12 +700,15 @@ export const ChatwootConversationEmbed = () => {
                   </StyledStatus>
                 )}
               </StyledRowTitle>
-              {(isDefined(conversation.opportunityName) ||
-                isDefined(conversation.projectName)) && (
+              {dealContext(
+                conversation.opportunityName,
+                conversation.projectName,
+              ) !== '' && (
                 <StyledRowSub>
-                  {[conversation.opportunityName, conversation.projectName]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  {dealContext(
+                    conversation.opportunityName,
+                    conversation.projectName,
+                  )}
                 </StyledRowSub>
               )}
               <StyledRowDates>
