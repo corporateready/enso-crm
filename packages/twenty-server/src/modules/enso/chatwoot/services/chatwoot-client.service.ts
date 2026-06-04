@@ -12,6 +12,7 @@ export type ChatwootConversationMeta = {
   status: string | null;
   assigneeName: string | null;
   assigneeId: number | null;
+  createdAt: number | null;
   lastActivityAt: number | null;
 };
 
@@ -199,6 +200,11 @@ export class ChatwootClientService {
       status: data?.status ?? null,
       assigneeName: assignee?.name ?? null,
       assigneeId: assignee?.id ?? null,
+      createdAt: isDefined(data?.created_at)
+        ? data.created_at * 1000
+        : isDefined(data?.timestamp)
+          ? data.timestamp * 1000
+          : null,
       lastActivityAt: isDefined(data?.last_activity_at)
         ? data.last_activity_at * 1000
         : null,

@@ -17,6 +17,8 @@ export type DealConversationSummary = {
   conversationId: string;
   // Clean channel label, e.g. "Instagram".
   channel: string | null;
+  // Chatwoot conversation status: open | resolved | pending | snoozed.
+  status: string | null;
   contactName: string | null;
   personName: string | null;
   opportunityId: string | null;
@@ -79,6 +81,8 @@ export class ChatwootMessagingService {
       conversations.map(async (conversation) => {
         let contactName: string | null = null;
         let metaChannel: string | null = null;
+        let status: string | null = null;
+        let createdAt: string | null = conversation.createdAt;
         let lastActivityAt: number | null = conversation.createdAt
           ? Date.parse(conversation.createdAt)
           : null;
@@ -90,6 +94,10 @@ export class ChatwootMessagingService {
 
           contactName = meta.contactName;
           metaChannel = meta.channelType;
+          status = meta.status;
+          if (isDefined(meta.createdAt)) {
+            createdAt = new Date(meta.createdAt).toISOString();
+          }
           lastActivityAt = meta.lastActivityAt ?? lastActivityAt;
         } catch {
           // Chatwoot hiccup on one conversation shouldn't drop the whole list.
@@ -98,12 +106,13 @@ export class ChatwootMessagingService {
         return {
           conversationId: conversation.conversationId,
           channel: cleanChannel(conversation.platform, metaChannel),
+          status,
           contactName,
           personName: conversation.personName,
           opportunityId: conversation.opportunityId,
           opportunityName: conversation.opportunityName,
           projectName: conversation.projectName,
-          createdAt: conversation.createdAt,
+          createdAt,
           lastActivityAt,
         };
       }),
