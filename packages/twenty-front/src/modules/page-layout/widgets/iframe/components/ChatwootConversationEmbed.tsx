@@ -13,11 +13,12 @@ import { themeCssVariables } from 'twenty-ui/theme-constants';
 export const ENSO_CHATWOOT_CONVERSATION_MARKER = '__enso_chatwoot_conversation';
 
 // ENSO Phase 5 — native, chrome-free chat for the deal's Chatwoot conversation(s).
-// Backed by our server proxying Chatwoot (token server-side). Features: multiple
-// conversations (newest-first list), messages oldest→newest (column-reverse pins
-// newest to the bottom), reply + private notes, file/image attachments, emoji,
-// canned responses (type "/"), conversation status (resolve/reopen/pending) +
-// reassign. Polls every 3s. Mobile-friendly.
+// Backed by our server proxying Chatwoot (token server-side). Focused on the
+// messaging itself: conversation list (newest first), thread oldest→newest
+// (column-reverse pins newest to the bottom), reply with emoji / canned responses
+// (type "/") / file & image attachments. Polls every 3s. Mobile-friendly.
+// (Chatwoot's assign/resolve/notes are intentionally omitted — assignment is
+// CRM-driven, and the deal stage tracks lifecycle.)
 const POLL_MS = 3000;
 
 const QUICK_EMOJIS = [
@@ -70,8 +71,6 @@ type Conversation = {
   label: string;
   contactName: string | null;
   channelType: string | null;
-  status: string | null;
-  assigneeName: string | null;
 };
 
 type Attachment = {
@@ -91,7 +90,6 @@ type Message = {
   attachments: Attachment[];
 };
 
-type Agent = { id: number; name: string | null; email: string | null };
 type Canned = { shortCode: string; content: string };
 
 const StyledContainer = styled.div`
@@ -101,45 +99,11 @@ const StyledContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* This component is a grid item inside WidgetCardContent; min-height:0 stops it
+     expanding to content (which pushed the composer below the fold). */
+  min-height: 0;
   overflow: hidden;
   width: 100%;
-`;
-
-const StyledHeader = styled.div`
-  align-items: center;
-  border-bottom: 1px solid ${themeCssVariables.border.color.light};
-  display: flex;
-  flex-shrink: 0;
-  gap: ${themeCssVariables.spacing[2]};
-  justify-content: space-between;
-  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
-`;
-
-const StyledHeaderTitle = styled.div`
-  color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.medium};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const StyledHeaderActions = styled.div`
-  align-items: center;
-  display: flex;
-  flex-shrink: 0;
-  gap: ${themeCssVariables.spacing[1]};
-`;
-
-const StyledSmallButton = styled.button`
-  background: ${themeCssVariables.background.transparent.light};
-  border: 1px solid ${themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${themeCssVariables.font.color.secondary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.xs};
-  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
-  white-space: nowrap;
 `;
 
 const StyledSwitcher = styled.div`
@@ -185,16 +149,14 @@ const StyledRow = styled.div<{ $incoming: boolean }>`
   width: 100%;
 `;
 
-const StyledBubble = styled.div<{ $incoming: boolean; $note: boolean }>`
-  background: ${({ $incoming, $note }) =>
-    $note
-      ? themeCssVariables.color.yellow
-      : $incoming
-        ? themeCssVariables.background.secondary
-        : themeCssVariables.color.blue};
+const StyledBubble = styled.div<{ $incoming: boolean }>`
+  background: ${({ $incoming }) =>
+    $incoming
+      ? themeCssVariables.background.secondary
+      : themeCssVariables.color.blue};
   border-radius: ${themeCssVariables.border.radius.md};
-  color: ${({ $incoming, $note }) =>
-    $incoming || $note
+  color: ${({ $incoming }) =>
+    $incoming
       ? themeCssVariables.font.color.primary
       : themeCssVariables.font.color.inverted};
   font-size: ${themeCssVariables.font.size.md};
@@ -221,9 +183,11 @@ const StyledImage = styled.img`
 const StyledFileLink = styled.button`
   background: none;
   border: none;
-  color: ${themeCssVariables.color.blue};
+  color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
+  display: block;
   font-size: ${themeCssVariables.font.size.sm};
+  margin-top: ${themeCssVariables.spacing[1]};
   padding: 0;
   text-decoration: underline;
 `;
@@ -238,55 +202,39 @@ const StyledComposer = styled.div`
   position: relative;
 `;
 
-const StyledModeTabs = styled.div`
-  display: flex;
-  gap: ${themeCssVariables.spacing[1]};
-`;
-
-const StyledModeTab = styled.button<{ $active: boolean }>`
-  background: none;
-  border: none;
-  border-bottom: 2px solid
-    ${({ $active }) => ($active ? themeCssVariables.color.blue : 'transparent')};
-  color: ${({ $active }) =>
-    $active
-      ? themeCssVariables.font.color.primary
-      : themeCssVariables.font.color.tertiary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.sm};
-  padding: ${themeCssVariables.spacing[1]};
-`;
-
 const StyledInputRow = styled.div`
-  align-items: flex-end;
+  align-items: center;
   display: flex;
   gap: ${themeCssVariables.spacing[2]};
 `;
 
-const StyledTextarea = styled.textarea<{ $note: boolean }>`
-  background: ${({ $note }) =>
-    $note
-      ? themeCssVariables.color.yellow
-      : themeCssVariables.background.secondary};
+const StyledTextarea = styled.textarea`
+  background: ${themeCssVariables.background.secondary};
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
+  box-sizing: border-box;
   color: ${themeCssVariables.font.color.primary};
   flex: 1;
   font-family: inherit;
   font-size: ${themeCssVariables.font.size.md};
+  height: 36px;
   max-height: 120px;
-  min-height: 36px;
   padding: ${themeCssVariables.spacing[2]};
   resize: none;
 `;
 
 const StyledIconButton = styled.button`
+  align-items: center;
   background: ${themeCssVariables.background.transparent.light};
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
+  box-sizing: border-box;
   cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
   font-size: ${themeCssVariables.font.size.md};
   height: 36px;
+  justify-content: center;
   width: 36px;
 `;
 
@@ -294,8 +242,10 @@ const StyledSend = styled.button`
   background: ${themeCssVariables.color.blue};
   border: none;
   border-radius: ${themeCssVariables.border.radius.sm};
+  box-sizing: border-box;
   color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
+  flex-shrink: 0;
   font-size: ${themeCssVariables.font.size.sm};
   font-weight: ${themeCssVariables.font.weight.medium};
   height: 36px;
@@ -340,7 +290,7 @@ const StyledPopover = styled.div`
   box-shadow: ${themeCssVariables.boxShadow.strong};
   left: ${themeCssVariables.spacing[2]};
   margin-bottom: ${themeCssVariables.spacing[1]};
-  max-height: 200px;
+  max-height: 220px;
   overflow-y: auto;
   padding: ${themeCssVariables.spacing[2]};
   position: absolute;
@@ -388,36 +338,34 @@ const StyledMessage = styled.div`
   text-align: center;
 `;
 
-// Image attachment: its proxy URL needs the Bearer header, which <img src> can't
-// send — so fetch the bytes, then render via an object URL.
+// Image attachment: its proxy URL needs the Bearer header (which <img src> can't
+// send), so fetch the bytes and render via an object URL.
 const AttachmentImage = ({ src }: { src: string }) => {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    let revoked: string | null = null;
+    let created: string | null = null;
 
     fetch(src, { headers: authHeaders() })
       .then((response) => (response.ok ? response.blob() : null))
       .then((blob) => {
         if (isDefined(blob)) {
-          revoked = URL.createObjectURL(blob);
-          setObjectUrl(revoked);
+          created = URL.createObjectURL(blob);
+          setObjectUrl(created);
         }
       })
       .catch(() => {});
 
     return () => {
-      if (isDefined(revoked)) {
-        URL.revokeObjectURL(revoked);
+      if (isDefined(created)) {
+        URL.revokeObjectURL(created);
       }
     };
   }, [src]);
 
-  if (!isDefined(objectUrl)) {
-    return null;
-  }
-
-  return <StyledImage src={objectUrl} alt={t`Attachment`} />;
+  return isDefined(objectUrl) ? (
+    <StyledImage src={objectUrl} alt={t`Attachment`} />
+  ) : null;
 };
 
 const downloadAttachment = (src: string, fileName: string) => {
@@ -447,40 +395,17 @@ export const ChatwootConversationEmbed = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [canned, setCanned] = useState<Canned[]>([]);
 
   const [draft, setDraft] = useState('');
-  const [isNote, setIsNote] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
-  const [showReassign, setShowReassign] = useState(false);
-
-  const selected = conversations.find((c) => c.conversationId === selectedId);
 
   const attachmentUrl = (dataUrl: string): string =>
     `${apiBase}/attachment?opportunityId=${opportunityId}&conversationId=${selectedId}&url=${encodeURIComponent(dataUrl)}`;
 
-  const refreshConversations = () => {
-    if (!isDefined(opportunityId)) {
-      return;
-    }
-
-    fetch(`${apiBase}/conversations?opportunityId=${opportunityId}`, {
-      headers: authHeaders(),
-    })
-      .then((r) => (r.ok ? r.json() : { conversations: [] }))
-      .then((data: { conversations?: Conversation[] }) => {
-        const list = data.conversations ?? [];
-
-        setConversations(list);
-        setSelectedId((current) => current ?? list[0]?.conversationId ?? null);
-      })
-      .catch(() => {});
-  };
-
-  // Initial load: conversations + agents + canned responses.
+  // Initial load: conversations + canned responses.
   useEffect(() => {
     if (!isDefined(opportunityId)) {
       setLoading(false);
@@ -494,14 +419,11 @@ export const ChatwootConversationEmbed = () => {
       fetch(`${apiBase}/conversations?opportunityId=${opportunityId}`, {
         headers: authHeaders(),
       }).then((r) => (r.ok ? r.json() : { conversations: [] })),
-      fetch(`${apiBase}/agents`, { headers: authHeaders() }).then((r) =>
-        r.ok ? r.json() : { agents: [] },
-      ),
       fetch(`${apiBase}/canned-responses`, { headers: authHeaders() }).then(
         (r) => (r.ok ? r.json() : { cannedResponses: [] }),
       ),
     ])
-      .then(([conv, ag, cr]) => {
+      .then(([conv, cr]) => {
         if (cancelled) {
           return;
         }
@@ -510,7 +432,6 @@ export const ChatwootConversationEmbed = () => {
 
         setConversations(list);
         setSelectedId(list[0]?.conversationId ?? null);
-        setAgents(ag.agents ?? []);
         setCanned(cr.cannedResponses ?? []);
         setLoading(false);
       })
@@ -574,7 +495,6 @@ export const ChatwootConversationEmbed = () => {
     form.append('opportunityId', opportunityId);
     form.append('conversationId', selectedId);
     form.append('content', content);
-    form.append('isPrivate', isNote ? 'true' : 'false');
     files.forEach((file) => form.append('attachments', file));
 
     fetch(`${apiBase}/reply`, {
@@ -600,55 +520,16 @@ export const ChatwootConversationEmbed = () => {
       .finally(() => setSending(false));
   };
 
-  const changeStatus = (status: 'open' | 'resolved') => {
-    if (!isDefined(opportunityId) || !isDefined(selectedId)) {
-      return;
-    }
-
-    fetch(`${apiBase}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({
-        opportunityId,
-        conversationId: selectedId,
-        status,
-      }),
-    })
-      .then(() => refreshConversations())
-      .catch(() => {});
-  };
-
-  const reassign = (assigneeId: number) => {
-    if (!isDefined(opportunityId) || !isDefined(selectedId)) {
-      return;
-    }
-
-    setShowReassign(false);
-
-    fetch(`${apiBase}/reassign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({
-        opportunityId,
-        conversationId: selectedId,
-        assigneeId,
-      }),
-    })
-      .then(() => refreshConversations())
-      .catch(() => {});
-  };
-
-  // Canned responses: surface a small list when the draft starts with "/".
-  const cannedMatches =
-    draft.startsWith('/') && draft.length > 0
-      ? canned
-          .filter((c) =>
-            `${c.shortCode} ${c.content}`
-              .toLowerCase()
-              .includes(draft.slice(1).toLowerCase()),
-          )
-          .slice(0, 6)
-      : [];
+  // Canned responses surface when the draft starts with "/".
+  const cannedMatches = draft.startsWith('/')
+    ? canned
+        .filter((c) =>
+          `${c.shortCode} ${c.content}`
+            .toLowerCase()
+            .includes(draft.slice(1).toLowerCase()),
+        )
+        .slice(0, 6)
+    : [];
 
   if (loading) {
     return (
@@ -666,63 +547,25 @@ export const ChatwootConversationEmbed = () => {
     );
   }
 
-  const isResolved = selected?.status === 'resolved';
-
   return (
     <StyledContainer>
-      <StyledHeader>
-        <StyledHeaderTitle>
-          {selected?.contactName ?? selected?.label ?? t`Conversation`}
-          {isDefined(selected?.assigneeName)
-            ? ` · ${selected?.assigneeName}`
-            : ''}
-        </StyledHeaderTitle>
-        <StyledHeaderActions>
-          <StyledSmallButton onClick={() => setShowReassign((v) => !v)}>
-            {t`Assign`}
-          </StyledSmallButton>
-          <StyledSmallButton
-            onClick={() => changeStatus(isResolved ? 'open' : 'resolved')}
+      <StyledSwitcher>
+        {conversations.map((conversation) => (
+          <StyledTab
+            key={conversation.conversationId}
+            $active={conversation.conversationId === selectedId}
+            onClick={() => setSelectedId(conversation.conversationId)}
           >
-            {isResolved ? t`Reopen` : t`Resolve`}
-          </StyledSmallButton>
-          {showReassign && (
-            <StyledPopover>
-              {agents.map((agent) => (
-                <StyledCannedItem
-                  key={agent.id}
-                  onClick={() => reassign(agent.id)}
-                >
-                  {agent.name ?? agent.email ?? `#${agent.id}`}
-                </StyledCannedItem>
-              ))}
-            </StyledPopover>
-          )}
-        </StyledHeaderActions>
-      </StyledHeader>
-
-      {conversations.length > 0 && (
-        <StyledSwitcher>
-          {conversations.map((conversation) => (
-            <StyledTab
-              key={conversation.conversationId}
-              $active={conversation.conversationId === selectedId}
-              onClick={() => setSelectedId(conversation.conversationId)}
-            >
-              {conversation.label}
-            </StyledTab>
-          ))}
-        </StyledSwitcher>
-      )}
+            {conversation.label}
+          </StyledTab>
+        ))}
+      </StyledSwitcher>
 
       <StyledMessages>
         {[...messages].reverse().map((message) => (
           <StyledRow key={message.id} $incoming={message.incoming}>
             <div>
-              <StyledBubble
-                $incoming={message.incoming}
-                $note={message.isPrivate}
-              >
+              <StyledBubble $incoming={message.incoming}>
                 {message.content}
                 {message.attachments.map((attachment) =>
                   !isDefined(
@@ -748,10 +591,7 @@ export const ChatwootConversationEmbed = () => {
                 )}
               </StyledBubble>
               <StyledMeta>
-                {[
-                  message.isPrivate ? t`Note` : message.senderName,
-                  formatTime(message.createdAt),
-                ]
+                {[message.senderName, formatTime(message.createdAt)]
                   .filter(Boolean)
                   .join(' · ')}
               </StyledMeta>
@@ -761,15 +601,6 @@ export const ChatwootConversationEmbed = () => {
       </StyledMessages>
 
       <StyledComposer>
-        <StyledModeTabs>
-          <StyledModeTab $active={!isNote} onClick={() => setIsNote(false)}>
-            {t`Reply`}
-          </StyledModeTab>
-          <StyledModeTab $active={isNote} onClick={() => setIsNote(true)}>
-            {t`Note`}
-          </StyledModeTab>
-        </StyledModeTabs>
-
         {files.length > 0 && (
           <StyledChips>
             {files.map((file, index) => (
@@ -825,7 +656,7 @@ export const ChatwootConversationEmbed = () => {
           >
             🙂
           </StyledIconButton>
-          <StyledIconButton title={t`Attach file`} as="label">
+          <StyledIconButton as="label" title={t`Attach file`}>
             📎
             <input
               type="file"
@@ -840,9 +671,8 @@ export const ChatwootConversationEmbed = () => {
             />
           </StyledIconButton>
           <StyledTextarea
-            $note={isNote}
             value={draft}
-            placeholder={isNote ? t`Add an internal note…` : t`Type a reply…`}
+            placeholder={t`Type a reply…`}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -855,7 +685,7 @@ export const ChatwootConversationEmbed = () => {
             disabled={sending || (draft.trim() === '' && files.length === 0)}
             onClick={send}
           >
-            {sending ? t`Sending…` : isNote ? t`Add note` : t`Send`}
+            {sending ? t`Sending…` : t`Send`}
           </StyledSend>
         </StyledInputRow>
       </StyledComposer>
