@@ -69,6 +69,7 @@ const formatTime = (iso: string | null): string => {
 type Conversation = {
   conversationId: string;
   channel: string | null;
+  status: string | null;
   contactName: string | null;
   personName: string | null;
   opportunityName: string | null;
@@ -357,9 +358,24 @@ const StyledListRow = styled.button`
 `;
 
 const StyledRowTitle = styled.div`
+  align-items: center;
   color: ${themeCssVariables.font.color.primary};
+  display: flex;
   font-size: ${themeCssVariables.font.size.md};
   font-weight: ${themeCssVariables.font.weight.medium};
+  gap: ${themeCssVariables.spacing[2]};
+  justify-content: space-between;
+`;
+
+const StyledStatus = styled.span<{ $open: boolean }>`
+  color: ${({ $open }) =>
+    $open
+      ? themeCssVariables.color.green
+      : themeCssVariables.font.color.tertiary};
+  flex-shrink: 0;
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  text-transform: capitalize;
 `;
 
 const StyledRowSub = styled.div`
@@ -643,12 +659,23 @@ export const ChatwootConversationEmbed = () => {
               onClick={() => setSelectedId(conversation.conversationId)}
             >
               <StyledRowTitle>
-                {[
-                  conversation.channel,
-                  conversation.personName ?? conversation.contactName,
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || `#${conversation.conversationId}`}
+                <span>
+                  {[
+                    conversation.channel,
+                    conversation.personName ?? conversation.contactName,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || `#${conversation.conversationId}`}
+                </span>
+                {isDefined(conversation.status) && (
+                  <StyledStatus $open={conversation.status === 'open'}>
+                    {conversation.status === 'open'
+                      ? t`Open`
+                      : conversation.status === 'resolved'
+                        ? t`Resolved`
+                        : conversation.status}
+                  </StyledStatus>
+                )}
               </StyledRowTitle>
               {(isDefined(conversation.opportunityName) ||
                 isDefined(conversation.projectName)) && (
