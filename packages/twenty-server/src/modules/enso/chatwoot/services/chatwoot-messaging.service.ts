@@ -3,7 +3,10 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { isDefined } from 'twenty-shared/utils';
 
 import {
+  type ChatwootAgentSummary,
+  type ChatwootCannedResponse,
   type ChatwootMessage,
+  type ChatwootUploadFile,
   ChatwootClientService,
 } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
@@ -15,14 +18,13 @@ export type DealConversationSummary = {
   contactName: string | null;
   channelType: string | null;
   status: string | null;
+  assigneeName: string | null;
   lastActivityAt: number | null;
 };
 
-// Read/reply for the native in-CRM chat panel. Every method enforces that the
-// conversation actually belongs to the opportunity (a manager can only read/
-// reply to chats on a deal they opened), then proxies Chatwoot's API with the
-// account token (token never reaches the browser). Replies are attributed to the
-// calling manager via their own agent token when available.
+// Read/reply/manage for the native in-CRM chat panel. Every conversation-scoped
+// method enforces that the conversation belongs to the opportunity, then proxies
+// Chatwoot's API with the account token (token never reaches the browser).
 @Injectable()
 export class ChatwootMessagingService {
   constructor(
@@ -31,7 +33,6 @@ export class ChatwootMessagingService {
     private readonly provisioningService: ChatwootAgentProvisioningService,
   ) {}
 
-  // The deal's conversations, newest activity first, with header metadata.
   async listConversations(
     workspaceId: string,
     opportunityId: string,
@@ -61,16 +62,17 @@ export class ChatwootMessagingService {
             contactName: meta.contactName,
             channelType: meta.channelType ?? conversation.platform,
             status: meta.status,
+            assigneeName: meta.assigneeName,
             lastActivityAt: meta.lastActivityAt,
           };
         } catch {
-          // Chatwoot hiccup on one conversation shouldn't drop the whole list.
           return {
             conversationId: conversation.conversationId,
             label: conversation.platform ?? `#${conversation.conversationId}`,
             contactName: null,
             channelType: conversation.platform,
             status: null,
+            assigneeName: null,
             lastActivityAt: conversation.occurredAt
               ? Date.parse(conversation.occurredAt)
               : null,
@@ -102,7 +104,9 @@ export class ChatwootMessagingService {
     workspaceId: string;
     opportunityId: string;
     conversationId: string;
-    content: string;
+    content?: string;
+    isPrivate?: boolean;
+    attachments?: ChatwootUploadFile[];
     userEmail: string;
     userName: string;
   }): Promise<ChatwootMessage> {
@@ -112,27 +116,116 @@ export class ChatwootMessagingService {
       params.conversationId,
     );
 
-    // Attribute the reply to the calling manager when we can resolve their agent
-    // token; otherwise fall back to the account token.
-    let agentToken: string | undefined;
-    const agentId = await this.provisioningService.ensureAgentForMember({
-      email: params.userEmail,
-      name: params.userName || params.userEmail,
+    const asToken = await this.resolveAgentToken(
+      params.userEmail,
+      params.userName,
+    );
+
+    return this.chatwootClient.sendMessage(params.conversationId, {
+      content: params.content,
+      isPrivate: params.isPrivate,
+      attachments: params.attachments,
+      asToken,
     });
+  }
 
-    if (isDefined(agentId)) {
-      agentToken = await this.chatwootClient.getUserAccessToken(agentId);
-    }
-
-    return this.chatwootClient.sendMessage(
+  async setStatus(params: {
+    workspaceId: string;
+    opportunityId: string;
+    conversationId: string;
+    status: 'open' | 'resolved' | 'pending';
+    userEmail: string;
+    userName: string;
+  }): Promise<void> {
+    await this.assertConversationOnDeal(
+      params.workspaceId,
+      params.opportunityId,
       params.conversationId,
-      params.content,
-      agentToken,
+    );
+
+    const asToken = await this.resolveAgentToken(
+      params.userEmail,
+      params.userName,
+    );
+
+    await this.chatwootClient.toggleStatus(
+      params.conversationId,
+      params.status,
+      asToken,
     );
   }
 
-  // Guard: the conversation must be one of the deal's (prevents reading/replying
-  // to arbitrary conversations by id).
+  async reassign(params: {
+    workspaceId: string;
+    opportunityId: string;
+    conversationId: string;
+    assigneeId: number;
+  }): Promise<void> {
+    await this.assertConversationOnDeal(
+      params.workspaceId,
+      params.opportunityId,
+      params.conversationId,
+    );
+
+    await this.chatwootClient.assignConversation(
+      params.conversationId,
+      params.assigneeId,
+    );
+  }
+
+  async listAgents(): Promise<ChatwootAgentSummary[]> {
+    if (!this.chatwootClient.isConfigured()) {
+      return [];
+    }
+
+    return this.chatwootClient.listAgents();
+  }
+
+  async listCannedResponses(): Promise<ChatwootCannedResponse[]> {
+    if (!this.chatwootClient.isConfigured()) {
+      return [];
+    }
+
+    return this.chatwootClient.listCannedResponses();
+  }
+
+  // Stream an attachment after verifying its conversation belongs to the deal.
+  async fetchAttachment(params: {
+    workspaceId: string;
+    opportunityId: string;
+    conversationId: string;
+    url: string;
+  }): Promise<{ data: Buffer; contentType: string }> {
+    await this.assertConversationOnDeal(
+      params.workspaceId,
+      params.opportunityId,
+      params.conversationId,
+    );
+
+    // Only proxy URLs on our Chatwoot host (no SSRF to arbitrary hosts).
+    const base = this.chatwootClient.baseUrl ?? '';
+
+    if (base === '' || !params.url.startsWith(base)) {
+      throw new ForbiddenException('Attachment URL not allowed.');
+    }
+
+    return this.chatwootClient.fetchAttachment(params.url);
+  }
+
+  private async resolveAgentToken(
+    email: string,
+    name: string,
+  ): Promise<string | undefined> {
+    const agentId = await this.provisioningService.ensureAgentForMember({
+      email,
+      name: name || email,
+    });
+
+    return isDefined(agentId)
+      ? this.chatwootClient.getUserAccessToken(agentId)
+      : undefined;
+  }
+
   private async assertConversationOnDeal(
     workspaceId: string,
     opportunityId: string,

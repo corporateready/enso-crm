@@ -10,7 +10,16 @@ export type ChatwootConversationMeta = {
   contactName: string | null;
   channelType: string | null;
   status: string | null;
+  assigneeName: string | null;
+  assigneeId: number | null;
   lastActivityAt: number | null;
+};
+
+export type ChatwootAttachment = {
+  id: number;
+  fileType: string | null;
+  dataUrl: string | null;
+  fileName: string | null;
 };
 
 export type ChatwootMessage = {
@@ -18,18 +27,39 @@ export type ChatwootMessage = {
   content: string;
   // true = from the contact; false = from an agent (our side).
   incoming: boolean;
+  // Internal note (not delivered to the contact).
+  isPrivate: boolean;
   senderName: string | null;
   createdAt: string | null;
+  attachments: ChatwootAttachment[];
+};
+
+export type ChatwootAgentSummary = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  availabilityStatus: string | null;
+};
+
+export type ChatwootCannedResponse = {
+  shortCode: string;
+  content: string;
+};
+
+export type ChatwootUploadFile = {
+  buffer: Buffer;
+  fileName: string;
+  contentType: string;
 };
 
 // Thin client over the two Chatwoot HTTP APIs we use:
 //   • Application API (account-scoped `api_access_token`) — agents, conversation
-//     assignment + messages (read/reply), inbox membership. Auth: CHATWOOT_API_TOKEN.
+//     read/reply (incl. attachments + private notes), status, canned responses,
+//     inbox membership. Auth: CHATWOOT_API_TOKEN.
 //   • Platform API (Platform-App `api_access_token`) — user provisioning + per-agent
-//     access tokens (for attributed replies). Auth: CHATWOOT_PLATFORM_TOKEN (created
-//     in the super-admin portal; account tokens get 401 on /platform/**).
-// Methods THROW on HTTP failure — callers decide whether to swallow (the
-// best-effort on-claim push) or surface (the read/reply endpoints).
+//     access tokens (for attributed replies). Auth: CHATWOOT_PLATFORM_TOKEN.
+// Methods THROW on HTTP failure — callers decide whether to swallow (best-effort
+// on-claim push) or surface (the read/reply endpoints).
 @Injectable()
 export class ChatwootClientService {
   get baseUrl(): string | undefined {
@@ -40,16 +70,6 @@ export class ChatwootClientService {
     return process.env.CHATWOOT_ACCOUNT_ID || '1';
   }
 
-  // The host the embedded iframe/SSO session loads from. Same as the API base
-  // unless the dashboard is served from a different origin.
-  get frontendUrl(): string {
-    return (
-      process.env.CHATWOOT_FRONTEND_URL?.replace(/\/$/, '') ||
-      this.baseUrl ||
-      ''
-    );
-  }
-
   private get apiToken(): string | undefined {
     return process.env.CHATWOOT_API_TOKEN || undefined;
   }
@@ -58,20 +78,16 @@ export class ChatwootClientService {
     return process.env.CHATWOOT_PLATFORM_TOKEN || undefined;
   }
 
-  // Application API works once the account creds are present (already live).
   isConfigured(): boolean {
     return isDefined(this.baseUrl) && isDefined(this.apiToken);
   }
 
-  // Platform API additionally needs the Platform-App token (the Phase-5 gate
-  // for SSO + provisioning).
   isPlatformConfigured(): boolean {
     return isDefined(this.baseUrl) && isDefined(this.platformToken);
   }
 
   // Account-scoped Application API. Pass `asToken` to act as a specific agent
-  // (e.g. post a reply attributed to the claiming manager); defaults to the
-  // account token.
+  // (e.g. post a reply attributed to the claiming manager).
   private applicationApi(asToken?: string): AxiosInstance {
     if (!this.isConfigured()) {
       throw new Error('Chatwoot Application API is not configured.');
@@ -80,7 +96,7 @@ export class ChatwootClientService {
     return axios.create({
       baseURL: `${this.baseUrl}/api/v1/accounts/${this.accountId}`,
       headers: { api_access_token: asToken ?? (this.apiToken as string) },
-      timeout: 10_000,
+      timeout: 20_000,
     });
   }
 
@@ -94,23 +110,30 @@ export class ChatwootClientService {
     return axios.create({
       baseURL: `${this.baseUrl}/platform/api/v1`,
       headers: { api_access_token: this.platformToken as string },
-      timeout: 10_000,
+      timeout: 20_000,
     });
   }
 
   // --- Application API ---------------------------------------------------
 
-  // In Chatwoot an agent's `id` IS the underlying user id — the same id used by
-  // the Platform login endpoint and by conversation `assignee_id`.
+  // An agent's `id` IS the underlying user id (used for login + assignee_id).
   async findAgentIdByEmail(email: string): Promise<number | undefined> {
     const normalized = email.trim().toLowerCase();
+    const agents = await this.listAgents();
 
-    const { data } =
-      await this.applicationApi().get<Array<{ id: number; email?: string }>>(
-        '/agents',
-      );
+    return agents.find((agent) => agent.email?.toLowerCase() === normalized)
+      ?.id;
+  }
 
-    return data.find((agent) => agent.email?.toLowerCase() === normalized)?.id;
+  async listAgents(): Promise<ChatwootAgentSummary[]> {
+    const { data } = await this.applicationApi().get<any[]>('/agents');
+
+    return (data ?? []).map((agent) => ({
+      id: agent.id,
+      name: agent.name ?? agent.available_name ?? null,
+      email: agent.email ?? null,
+      availabilityStatus: agent.availability_status ?? null,
+    }));
   }
 
   async assignConversation(
@@ -120,6 +143,18 @@ export class ChatwootClientService {
     await this.applicationApi().post(
       `/conversations/${conversationId}/assignments`,
       { assignee_id: assigneeId },
+    );
+  }
+
+  // open | resolved | pending (snooze uses snoozed_until; keep to the 3 toggles).
+  async toggleStatus(
+    conversationId: number | string,
+    status: 'open' | 'resolved' | 'pending',
+    asToken?: string,
+  ): Promise<void> {
+    await this.applicationApi(asToken).post(
+      `/conversations/${conversationId}/toggle_status`,
+      { status },
     );
   }
 
@@ -138,7 +173,16 @@ export class ChatwootClientService {
     });
   }
 
-  // Conversation header info for the native panel.
+  async listCannedResponses(): Promise<ChatwootCannedResponse[]> {
+    const { data } =
+      await this.applicationApi().get<any[]>('/canned_responses');
+
+    return (data ?? []).map((row) => ({
+      shortCode: row.short_code ?? '',
+      content: row.content ?? '',
+    }));
+  }
+
   async getConversationMeta(
     conversationId: number | string,
   ): Promise<ChatwootConversationMeta> {
@@ -146,18 +190,23 @@ export class ChatwootClientService {
       `/conversations/${conversationId}`,
     );
 
+    const assignee = data?.meta?.assignee ?? null;
+
     return {
       conversationId: String(conversationId),
       contactName: data?.meta?.sender?.name ?? null,
       channelType: data?.meta?.channel ?? null,
       status: data?.status ?? null,
+      assigneeName: assignee?.name ?? null,
+      assigneeId: assignee?.id ?? null,
       lastActivityAt: isDefined(data?.last_activity_at)
         ? data.last_activity_at * 1000
         : null,
     };
   }
 
-  // Public messages oldest → newest (drops private notes + activity rows).
+  // Messages oldest → newest. Keeps agent + contact messages and private notes
+  // (flagged), drops activity rows (message_type 2).
   async listMessages(
     conversationId: number | string,
   ): Promise<ChatwootMessage[]> {
@@ -166,50 +215,105 @@ export class ChatwootClientService {
     );
 
     return (data.payload ?? [])
-      .filter(
-        (m) =>
-          m.private !== true && (m.message_type === 0 || m.message_type === 1),
-      )
+      .filter((m) => m.message_type === 0 || m.message_type === 1)
       .map((m) => ({
         id: m.id,
         content: m.content ?? '',
-        // 0 = incoming (from the contact), 1 = outgoing (from an agent).
+        // 0 = incoming (contact), 1 = outgoing (agent).
         incoming: m.message_type === 0,
+        isPrivate: m.private === true,
         senderName: m.sender?.name ?? null,
         createdAt: isDefined(m.created_at)
           ? new Date(m.created_at * 1000).toISOString()
           : null,
+        attachments: (m.attachments ?? []).map((a: any) => ({
+          id: a.id,
+          fileType: a.file_type ?? null,
+          dataUrl: a.data_url ?? a.thumb_url ?? null,
+          fileName: a.file_name ?? null,
+        })),
       }))
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
   }
 
-  // Post an outgoing reply. `asToken` (an agent's own access token) attributes it
-  // to that manager; without it the message posts under the account token's user.
+  // Send a message: outgoing reply or private note, with optional file/image
+  // attachments. Multipart when files are present (Chatwoot expects `attachments[]`).
   async sendMessage(
     conversationId: number | string,
-    content: string,
-    asToken?: string,
+    params: {
+      content?: string;
+      asToken?: string;
+      isPrivate?: boolean;
+      attachments?: ChatwootUploadFile[];
+    },
   ): Promise<ChatwootMessage> {
-    const { data } = await this.applicationApi(asToken).post<any>(
-      `/conversations/${conversationId}/messages`,
-      { content, message_type: 'outgoing' },
-    );
+    const path = `/conversations/${conversationId}/messages`;
+    let response: { data: any };
+
+    if (isDefined(params.attachments) && params.attachments.length > 0) {
+      const form = new FormData();
+
+      form.append('content', params.content ?? '');
+      form.append('message_type', 'outgoing');
+      form.append('private', params.isPrivate ? 'true' : 'false');
+
+      for (const file of params.attachments) {
+        form.append(
+          'attachments[]',
+          new Blob([new Uint8Array(file.buffer)], { type: file.contentType }),
+          file.fileName,
+        );
+      }
+
+      response = await this.applicationApi(params.asToken).post(path, form);
+    } else {
+      response = await this.applicationApi(params.asToken).post(path, {
+        content: params.content ?? '',
+        message_type: 'outgoing',
+        private: params.isPrivate === true,
+      });
+    }
+
+    const data = response.data;
 
     return {
       id: data.id,
-      content: data.content ?? content,
+      content: data.content ?? params.content ?? '',
       incoming: false,
+      isPrivate: data.private === true,
       senderName: data.sender?.name ?? null,
       createdAt: isDefined(data.created_at)
         ? new Date(data.created_at * 1000).toISOString()
         : new Date().toISOString(),
+      attachments: (data.attachments ?? []).map((a: any) => ({
+        id: a.id,
+        fileType: a.file_type ?? null,
+        dataUrl: a.data_url ?? null,
+        fileName: a.file_name ?? null,
+      })),
+    };
+  }
+
+  // Fetch an attachment's bytes server-side (its URL sits behind Chatwoot auth),
+  // so the panel can render it without exposing the token.
+  async fetchAttachment(
+    url: string,
+  ): Promise<{ data: Buffer; contentType: string }> {
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      headers: { api_access_token: this.apiToken as string },
+      timeout: 20_000,
+    });
+
+    return {
+      data: Buffer.from(response.data),
+      contentType:
+        response.headers['content-type'] ?? 'application/octet-stream',
     };
   }
 
   // --- Platform API ------------------------------------------------------
 
-  // Idempotent at the caller level (we look the agent up by email first). The
-  // generated password is never used — agents only ever enter via SSO.
   async createUser(params: {
     name: string;
     email: string;
@@ -233,18 +337,7 @@ export class ChatwootClientService {
     });
   }
 
-  // 5-min, single-use SSO login URL for this user. Mint at the moment of iframe
-  // render; never cache.
-  async mintSsoUrl(userId: number): Promise<string> {
-    const { data } = await this.platformApi().get<{ url: string }>(
-      `/users/${userId}/login`,
-    );
-
-    return data.url;
-  }
-
   // The agent's own access token — used to post replies attributed to them.
-  // Requires the Platform token; returns undefined if unavailable.
   async getUserAccessToken(userId: number): Promise<string | undefined> {
     if (!this.isPlatformConfigured()) {
       return undefined;
@@ -255,11 +348,5 @@ export class ChatwootClientService {
     );
 
     return data.access_token ?? undefined;
-  }
-
-  // Deep link to a specific conversation inside the dashboard. Loaded by the
-  // iframe AFTER the SSO URL has established the session (same-site cookie).
-  conversationUrl(conversationId: number | string): string {
-    return `${this.frontendUrl}/app/accounts/${this.accountId}/conversations/${conversationId}`;
   }
 }

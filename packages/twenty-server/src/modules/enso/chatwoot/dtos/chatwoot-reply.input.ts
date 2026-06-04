@@ -1,5 +1,14 @@
-import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsBooleanString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
+// Sent as multipart/form-data (so attachments can ride along); text fields
+// arrive as strings. Content is optional when there are attachments.
 export class ChatwootReplyInput {
   @IsUUID()
   opportunityId: string;
@@ -8,8 +17,12 @@ export class ChatwootReplyInput {
   @IsNotEmpty()
   conversationId: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(20_000)
-  content: string;
+  content?: string;
+
+  @IsOptional()
+  @IsBooleanString()
+  isPrivate?: string;
 }
