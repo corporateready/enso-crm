@@ -18,11 +18,12 @@ The differentiator vs. form-intake: managers **read and reply to the conversatio
 inside the CRM** (an embedded Chatwoot view), so they never switch apps. This
 replaces Respond.io entirely.
 
-> Status: **Phases 0–3 + stage-2 LIVE** (infra, fork patches, 5 brands/10 inboxes,
-> n8n intake → pipeline → Opportunity, Person-merge — all verified). **Phase 5
-> (embedded conversation) is CODE COMPLETE** on branch `claude/adoring-darwin-c13f55`
-> (not pushed), gated on two portal steps — see the Phase-5 as-built below and the
-> go-live runbook `docs/PHASE5_GATES.md`. App Review (public DMs) deferred.
+> Status: **Phases 0–3 + stage-2 + Phase 5 LIVE** (2026-06-04). Infra, fork patches,
+> 5 brands/10 inboxes, n8n intake → pipeline → Opportunity, Person-merge, and the
+> **in-CRM native chat panel** (read/reply on Opportunity + Person, on-claim
+> assignment) — all verified. PRs #3–#12 on `main`. Only App Review (public DMs)
+> deferred. See the Phase-5 as-built below + `docs/PHASE5_GATES.md` (boot/deploy
+> lessons).
 >
 > **As-built (live):**
 > - Self-hosted Chatwoot on Railway project **`enso-chatwoot`**
@@ -390,54 +391,71 @@ name-collision merges); stage-2 reconciles across channels once a phone/email
 appears — e.g. a manager adds a number to a name-only social Person → merges with
 the form/call Person sharing it.
 
-## As-built — Phase 5 (embedded conversation) — CODE COMPLETE (2026-06-03)
+## As-built — Phase 5 (in-CRM chat) — LIVE + VERIFIED (2026-06-04)
 
-Phase-5 **code is built, typechecked + lint-clean** on branch
-`claude/adoring-darwin-c13f55` (not yet pushed; push needs approval). Runtime is
-gated on two portal steps — see **`docs/PHASE5_GATES.md`** for the full go-live
-runbook (Platform-App token, `crm.enso.ro` domain, env, tab-creation script,
-verification).
+Managers read & reply to the Chatwoot conversation **inside the CRM** (PRs #3–#12
+on `main`, deployed on `crm.enso.ro`). The first cut used an **iframe + SSO** embed
+of the Chatwoot dashboard; that worked but showed Chatwoot's whole UI and couldn't
+be stripped (no chrome-free URL, cross-origin CSS blocked), so it was **replaced
+with a NATIVE chat panel** — our server proxies Chatwoot's REST API (token stays
+server-side) and the CRM renders the messages itself. **No iframe, no SSO, no
+same-site-cookie dependency** (so `crm.enso.ro` is nice-to-have, not required for
+chat; the on-claim push never needed it either).
 
-**Server — `packages/twenty-server/src/modules/enso/chatwoot/`** (`ChatwootModule`,
-imported by `ModulesModule`):
-- `ChatwootClientService` — axios wrapper. **Application API** (account token
-  `CHATWOOT_API_TOKEN`): `/agents`, conversation `/assignments`, `/inbox_members`,
-  `/inboxes`. **Platform API** (`CHATWOOT_PLATFORM_TOKEN`, created in super-admin —
-  account token gets **401** on `/platform/**`): `POST /users`, `account_users`,
-  `GET /users/{id}/login` (mint 5-min single-use SSO). In Chatwoot an agent's
-  `id` IS the user id (used for both login and `assignee_id`).
-- `ChatwootAssignmentService` — **on-claim push**, wired into the existing
-  `opportunity.updateOne` post-hook next to `syncStickyAssignment`. On claim
-  (stage ≠ ROUTING + owner), reads the deal's latest `inboundActivity.chatwootConversationId`,
-  resolves `workspaceMember.userEmail` → agent, `POST /conversations/{id}/assignments`.
-  **Best-effort (never throws), account-token only → no portal gate.**
-- `ChatwootAgentProvisioningService` — managers → agents **by email** (D10), no
-  mapping table. Idempotent: look up by email (account token); create only if
-  absent (Platform API) + account membership (mandatory or SSO hangs) + all-inbox
-  membership. JIT (SSO endpoint) + bulk (`provisionRoutingMembers`).
-- `ChatwootSsoService` + `ChatwootController` (`rest/enso/chatwoot`):
-  `POST /sso {opportunityId}` → `{available, ssoUrl, conversationUrl}`
-  (`NoPermissionGuard` = any logged-in member); `POST /provision-agents`
-  (`SettingsPermissionGuard(WORKSPACE_MEMBERS)`).
+**Server — `packages/twenty-server/src/modules/enso/chatwoot/`** (`ChatwootModule`
+services; `ChatwootApiModule` hosts the controller, imported by `ModulesModule`):
+- `ChatwootClientService` — axios over the **Application API** (account token
+  `CHATWOOT_API_TOKEN`): agents, conversation meta, messages (read), reply
+  (multipart attachments), `assignments`, `canned_responses`, attachment bytes.
+  **Platform API** (`CHATWOOT_PLATFORM_TOKEN`): provision users + `GET /users/{id}`
+  → the agent's own `access_token` (so replies post **attributed to the manager**).
+- `ChatwootConversationResolverService` — DISTINCT conversations on a record (dedup
+  by `chatwootConversationId`), **record-agnostic**: an opportunity → that deal's
+  chats; a person → all their chats across deals. Enriches each with
+  opportunity / project / person names + created date.
+- `ChatwootMessagingService` — list/read/reply, per-record authz (the conversation
+  must belong to the record), clean channel label, status + dates.
+- `ChatwootAssignmentService` — **on-claim push** (wired into the
+  `opportunity.updateOne` claim hook): assigns **every** conversation on the deal
+  to the owner. Best-effort, account-token only.
+- `ChatwootAgentProvisioningService` — managers → agents **by email** (D10), JIT +
+  bulk. `ChatwootController` (`rest/enso/chatwoot`, all `NoPermissionGuard` except
+  `provision-agents` = `WORKSPACE_MEMBERS`): `GET conversations|messages|canned-
+  responses|attachment`, `POST reply` (multipart), `POST provision-agents`. All take
+  `recordType` (opportunity|person) + `recordId`.
 
-**Frontend** — `ChatwootConversationEmbed` (next to `IframeWidget`). `IframeWidget`
-delegates to it when a widget's `configuration.url` contains the marker
-`__enso_chatwoot_conversation` (a real https URL so it passes the config's
-`@IsUrl`; the host is never loaded). The embed POSTs `/rest/enso/chatwoot/sso`
-with the record id (Bearer from `getTokenPair()`), loads `ssoUrl` to establish the
-same-site session, then on first `onLoad` deep-links to `conversationUrl` (two-step,
-D6). Empty/`available:false` → graceful no-data state. The "Conversation" tab is
-added to the **live** Opportunity layout (`5d5457be-…`) via the page-layout REST
-API (the seed config type can't carry an iframe URL) — script in the gate runbook.
+**Frontend** — `ChatwootConversationEmbed` (the stock `IframeWidget` delegates to
+it when a widget's `configuration.url` carries the marker
+`__enso_chatwoot_conversation` — a valid https URL so it passes the widget config's
+`@IsUrl`; the host is never loaded). **Master-detail**: a LIST of the record's
+conversations (channel · person, opportunity·project deduped, Open/Resolved status,
+created + last-message dates) → click a row → the **thread** (oldest→newest,
+`column-reverse` pins newest; `min-height:0` keeps the composer in view) + composer
+(reply, emoji, canned responses via `/`, file/image attachments incl.
+**drag-and-drop**; images fetched through an authed attachment proxy → object URL).
+Polls every 3s ("live"; true websocket is a ready follow-up — `pubsub_token` is
+exposed). Mobile-friendly.
 
-**Gates (portal/infra, see runbook):** (1) Platform-App token; (2) `crm.enso.ro`
-custom domain + DNS + `ENSO_FRAME_ANCESTORS` (cookie/CSP, D8); (3) env
-`CHATWOOT_PLATFORM_TOKEN` (+ confirm `CHATWOOT_BASE_URL`/`ACCOUNT_ID`/`API_TOKEN`
-on twenty-server). The on-claim push works without (1)/(2). **Verify** that
-`chatwootConversationId` stores the Chatwoot **display_id** (URL + assignment both
-use it).
+**Live workspace wiring (via page-layout REST API, not seed config):** Conversation
+tab on **Opportunity** (layout `5d5457be…`, tab `bb3a88b5…`, widget `7b7e11e6…`)
+and **Person** (layout `9f553d90…`, tab `5ea0a406…`, widget `5534ccff…`); icon
+`IconMessageCircle`; IFRAME widget `rowSpan 10` (~620px) with the marker URL.
 
-**Remaining:** the three Phase-5 gates above (then verify on-claim + embed);
-connect the 2 brands; App Review for *public* DMs (deferred — test-app/tester DMs
-work today); a DB-level dedup guard; consent upsert; phone/email dedup in stage-1
-(for WhatsApp).
+**Env on twenty-server:** `CHATWOOT_BASE_URL`, `CHATWOOT_ACCOUNT_ID`,
+`CHATWOOT_API_TOKEN`, `CHATWOOT_PLATFORM_TOKEN` (all set).
+
+**Verified live:** on-claim auto-assign; list→chat on both Opportunity & Person;
+text/emoji/attachment replies deliver to the IG/FB thread; inline image render;
+status + dates; multi-conversation per deal. Test records cleaned up.
+
+**Lessons (see `docs/PHASE5_GATES.md`):** REST controller guards need their deps in
+the controller's own module (boot-crash #3→#4); a fingerprinted/code-split bundle
+means "watch the bundle hash flip" to confirm a front deploy; the conversation `id`
+from the account API IS the display id used everywhere.
+
+**Deliberately omitted:** Chatwoot assign/resolve/private-notes in the panel
+(assignment is CRM-driven; deal stage tracks lifecycle).
+
+**Remaining:** App Review for *public* DMs (deferred — tester DMs work today);
+optional websocket push / attachment thumbnails; hide-tab-when-no-chat; a DB-level
+dedup guard; consent upsert; phone/email dedup in stage-1 (WhatsApp).

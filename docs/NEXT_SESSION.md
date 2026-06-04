@@ -23,41 +23,53 @@ patches, Meta setup, inbox map, n8n workflow, stage-2). Then `docs/SESSION_HANDO
 - **Stage-2 Person-merge** (phone/email dedup) — **deployed + verified live**
   (oldest kept, dup soft-deleted, FKs reassigned).
 
-## ⚠️ Immediate next action
+## Status
 
-Phases 0–3 + stage-2 + **Phase 5 are LIVE + verified end-to-end** (2026-06-04).
-The social channel is complete: DM → pipeline → Opportunity → routing → claim →
-**conversation assigned in Chatwoot + a NATIVE chat panel in the deal (read +
-reply in-CRM, no Chatwoot UI)**. The view is `ChatwootConversationEmbed` (front) +
-`ChatwootMessagingService` / `rest/enso/chatwoot/{conversations,messages,reply}`
-(server proxies Chatwoot's API, token server-side; 3s poll; replies attributed to
-the manager). The iframe/SSO approach was tried then replaced — see
-`docs/PHASE5_GATES.md`. Only deliberately-open item: **App Review** for public DMs.
+Phases 0–3 + stage-2 + **Phase 5 are LIVE + verified** (2026-06-04). The social
+channel is complete: DM → pipeline → Opportunity → routing → claim →
+**conversation assigned in Chatwoot + a NATIVE in-CRM chat panel** (read + reply
+on the Opportunity AND the Person, no Chatwoot UI). Full as-built:
+`content/docs/integrations/social-intake.md`; build/deploy lessons:
+`docs/PHASE5_GATES.md`.
+
+## ⚠️ START HERE next session — set up LOCAL dev
+
+We iterated all of Phase 5's UI by **pushing to `main` → ~10-min prod deploy →
+check in browser**. That was slow and risky (two prod incidents, constant
+JWT-expiry friction). It's also no longer necessary: the chat panel is now a
+**native** component (no iframe / no SSO / no same-site-cookie dependency), so it
+runs fine locally against the live Chatwoot.
+
+**Before any further UI work, stand up local dev:**
+```bash
+bash packages/twenty-utils/setup-dev-env.sh     # Postgres + Redis + .env
+set -a && source .env && set +a                 # incl. CHATWOOT_* (point at chat.enso.ro)
+yarn start                                       # front + server + worker, HMR
+```
+Then iterate the chat panel (`ChatwootConversationEmbed`) with hot reload
+(seconds, no deploy, no prod risk). Reserve a deploy for "looks right, ship it" +
+the final end-to-end check on `crm.enso.ro`. (Server changes still need the local
+stack or a deploy.) Live-workspace tweaks like the page-layout tabs use the
+metadata REST API with a **user JWT** — it expires in ~30 min, so grab a fresh one
+right before you need it.
 
 ## Remaining work
 
 - **App Review (go-live for PUBLIC DMs — deferred):** `pages_messaging` +
-  `instagram_business_manage_messages` need **Advanced Access**. Test-app/tester
-  DMs deliver today; public DMs don't until reviewed. Submit (screencast
+  `instagram_business_manage_messages` need **Advanced Access**. Tester DMs deliver
+  today; public DMs don't until reviewed. Submit (screencast
   connect→receive→reply); BM verified, no business-verification wait.
-- **Phase 5 polish (optional):** hide the Conversation tab when a deal has no chat
-  (needs a `hasChatwootConversation` field the pipeline sets + a conditional tab —
-  today it shows a calm "No conversation linked yet" empty state); true websocket
-  push instead of the 3s poll (the agent `pubsub_token` is already available from
-  `GET /platform/api/v1/users/{id}` — wire Chatwoot's ActionCable); attachments /
-  images in the panel (text-only today); typing/read receipts.
-- **Minor (pre-existing):** DB-level dedup guard; consent upsert in n8n; phone/email
-  dedup in stage-1 (WhatsApp); CRM triage view for project-less SOCIAL_MESSAGE.
-- **Later channels:** WhatsApp (same Meta app → Cloud API/360dialog), Telegram
-  (bot token). Pipeline + embed are channel-agnostic.
-
-**Phase 5 as-built + the boot/deep-link lessons: `docs/PHASE5_GATES.md`.**
-- **Minor:** DB-level dedup guard (idempotency is currently webhook-side =
-  `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup
-  in stage-1 (for WhatsApp); a CRM view for project-less (Vanzari-organic)
-  `SOCIAL_MESSAGE` activities (triage).
+- **Phase 5 polish (optional):** true websocket push instead of the 3s poll (the
+  agent `pubsub_token` is exposed by `GET /platform/api/v1/users/{id}` — wire
+  Chatwoot's ActionCable); hide the Conversation tab when a deal has no chat (needs
+  a `hasChatwootConversation` field the pipeline sets + a conditional tab — today it
+  shows a calm empty state); attachment thumbnails; typing/read receipts.
+- **Minor (pre-existing):** DB-level dedup guard (idempotency is webhook-side =
+  `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup in
+  stage-1 (for WhatsApp); a CRM triage view for project-less (Vanzari-organic)
+  `SOCIAL_MESSAGE` activities.
 - **Later channels:** WhatsApp (same Meta app → Cloud API, or 360dialog), Telegram
-  (bot token). Pipeline is channel-agnostic.
+  (bot token). Pipeline + chat panel are channel-agnostic.
 
 ## Inbox → project map (n8n Resolve `INBOX_PROJECT`, by inbox_id)
 

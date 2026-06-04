@@ -50,17 +50,21 @@ under `packages/twenty-server/src/modules/enso/`.
 - **LIVE end-to-end:** FB + IG DMs (5 brands, 10 inboxes) → Chatwoot →
   n8n `Social Intake → CRM` (`4cJGl1W55UFDBGTw`) → `inboundActivity` (SOCIAL_MESSAGE)
   → pipeline → Opportunity (SOCIAL_DM) → routing. Replaces Respond.io.
-- Stage-2 Person merge-on-phone/email deployed (fix `fdd626aee5` pending push).
-- **Phase 5 (embedded conversation) — CODE COMPLETE, not pushed** (branch
-  `claude/adoring-darwin-c13f55`, typecheck+lint clean):
-  `packages/twenty-server/src/modules/enso/chatwoot/` (`ChatwootModule` →
-  `ModulesModule`) — client wrapper, **on-claim conversation-assignment push**
-  (wired into the `opportunity.updateOne` claim hook, account-token, no gate),
-  agent provisioning by email, SSO-mint controller (`rest/enso/chatwoot/sso` +
-  `/provision-agents`); front `ChatwootConversationEmbed` (IframeWidget delegates
-  on the `__enso_chatwoot_conversation` marker URL). Go-live gated on a
-  Platform-App token + `crm.enso.ro` domain + `CHATWOOT_PLATFORM_TOKEN` env →
-  **runbook `docs/PHASE5_GATES.md`**.
+- Stage-2 Person merge-on-phone/email — deployed + verified.
+- **Phase 5 (in-CRM chat) — LIVE + VERIFIED** (2026-06-04, PRs #3–#12 on `main`).
+  Managers read/reply to Chatwoot conversations inside the CRM via a **native chat
+  panel** (NOT an iframe — that was tried then replaced). Server
+  `packages/twenty-server/src/modules/enso/chatwoot/` proxies Chatwoot's REST API
+  (account token server-side; per-agent token for attributed replies); endpoints
+  `rest/enso/chatwoot/{conversations,messages,reply,canned-responses,attachment,
+  provision-agents}` take `recordType` (opportunity|person)+`recordId`. **On-claim
+  push** assigns the deal's conversations to the owner (claim hook). Front
+  `ChatwootConversationEmbed` = master-detail list→chat (emoji, canned `/`, file/
+  image attachments + drag-drop, 3s poll). Conversation tab on **Opportunity +
+  Person** record pages (page-layout API, marker `__enso_chatwoot_conversation`).
+  Env on twenty-server: `CHATWOOT_*` incl. `CHATWOOT_PLATFORM_TOKEN`. Full
+  as-built + lessons: `content/docs/integrations/social-intake.md` +
+  `docs/PHASE5_GATES.md`.
 - Full as-built + creds + Meta setup + remaining work:
   `content/docs/integrations/social-intake.md`. **Resume brief: `docs/NEXT_SESSION.md`.**
 
