@@ -68,10 +68,13 @@ const formatTime = (iso: string | null): string => {
 
 type Conversation = {
   conversationId: string;
-  label: string;
+  channel: string | null;
   contactName: string | null;
-  channelType: string | null;
+  personName: string | null;
   opportunityName: string | null;
+  projectName: string | null;
+  createdAt: string | null;
+  lastActivityAt: number | null;
 };
 
 type Attachment = {
@@ -106,32 +109,6 @@ const StyledContainer = styled.div`
   overflow: hidden;
   position: relative;
   width: 100%;
-`;
-
-const StyledSwitcher = styled.div`
-  border-bottom: 1px solid ${themeCssVariables.border.color.light};
-  display: flex;
-  flex-shrink: 0;
-  gap: ${themeCssVariables.spacing[1]};
-  overflow-x: auto;
-  padding: ${themeCssVariables.spacing[2]};
-`;
-
-const StyledTab = styled.button<{ $active: boolean }>`
-  background: ${({ $active }) =>
-    $active
-      ? themeCssVariables.background.tertiary
-      : themeCssVariables.background.transparent.light};
-  border: none;
-  border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${({ $active }) =>
-    $active
-      ? themeCssVariables.font.color.primary
-      : themeCssVariables.font.color.secondary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.sm};
-  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
-  white-space: nowrap;
 `;
 
 const StyledMessages = styled.div`
@@ -354,6 +331,89 @@ const StyledDropOverlay = styled.div`
   z-index: 20;
 `;
 
+const StyledList = styled.div`
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+`;
+
+const StyledListRow = styled.button`
+  background: none;
+  border: none;
+  border-bottom: 1px solid ${themeCssVariables.border.color.light};
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
+  text-align: left;
+  width: 100%;
+
+  &:hover {
+    background: ${themeCssVariables.background.transparent.light};
+  }
+`;
+
+const StyledRowTitle = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
+const StyledRowSub = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledRowDates = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.xs};
+`;
+
+const StyledDetailHeader = styled.div`
+  align-items: center;
+  border-bottom: 1px solid ${themeCssVariables.border.color.light};
+  display: flex;
+  flex-shrink: 0;
+  gap: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
+`;
+
+const StyledBack = styled.button`
+  background: ${themeCssVariables.background.transparent.light};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  font-size: ${themeCssVariables.font.size.sm};
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+`;
+
+const StyledDetailTitle = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const formatDate = (value: string | number | null): string => {
+  if (!isDefined(value)) {
+    return '';
+  }
+
+  const date = new Date(value);
+
+  return date.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 // Image attachment: its proxy URL needs the Bearer header (which <img src> can't
 // send), so fetch the bytes and render via an object URL.
 const AttachmentImage = ({ src }: { src: string }) => {
@@ -412,7 +472,6 @@ export const ChatwootConversationEmbed = () => {
     targetRecordIdentifier?.targetObjectNameSingular === 'person'
       ? 'person'
       : 'opportunity';
-  const isPersonView = recordType === 'person';
 
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -457,7 +516,7 @@ export const ChatwootConversationEmbed = () => {
         const list: Conversation[] = conv.conversations ?? [];
 
         setConversations(list);
-        setSelectedId(list[0]?.conversationId ?? null);
+        // Start on the list; the user clicks a row to open a chat.
         setCanned(cr.cannedResponses ?? []);
         setLoading(false);
       })
@@ -565,7 +624,7 @@ export const ChatwootConversationEmbed = () => {
     );
   }
 
-  if (!isDefined(selectedId) || conversations.length === 0) {
+  if (conversations.length === 0) {
     return (
       <StyledContainer>
         <StyledMessage>{t`No conversation linked to this deal yet.`}</StyledMessage>
@@ -573,6 +632,54 @@ export const ChatwootConversationEmbed = () => {
     );
   }
 
+  // LIST view — one row per conversation; click to open the chat.
+  if (!isDefined(selectedId)) {
+    return (
+      <StyledContainer>
+        <StyledList>
+          {conversations.map((conversation) => (
+            <StyledListRow
+              key={conversation.conversationId}
+              onClick={() => setSelectedId(conversation.conversationId)}
+            >
+              <StyledRowTitle>
+                {[
+                  conversation.channel,
+                  conversation.personName ?? conversation.contactName,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || `#${conversation.conversationId}`}
+              </StyledRowTitle>
+              {(isDefined(conversation.opportunityName) ||
+                isDefined(conversation.projectName)) && (
+                <StyledRowSub>
+                  {[conversation.opportunityName, conversation.projectName]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </StyledRowSub>
+              )}
+              <StyledRowDates>
+                {[
+                  isDefined(conversation.createdAt)
+                    ? `${t`Created`} ${formatDate(conversation.createdAt)}`
+                    : null,
+                  isDefined(conversation.lastActivityAt)
+                    ? `${t`Last message`} ${formatDate(conversation.lastActivityAt)}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </StyledRowDates>
+            </StyledListRow>
+          ))}
+        </StyledList>
+      </StyledContainer>
+    );
+  }
+
+  const selected = conversations.find((c) => c.conversationId === selectedId);
+
+  // DETAIL view — the selected conversation's thread + composer.
   return (
     <StyledContainer
       onDragOver={(event) => {
@@ -596,19 +703,27 @@ export const ChatwootConversationEmbed = () => {
       {isDragging && (
         <StyledDropOverlay>{t`Drop files to attach`}</StyledDropOverlay>
       )}
-      <StyledSwitcher>
-        {conversations.map((conversation) => (
-          <StyledTab
-            key={conversation.conversationId}
-            $active={conversation.conversationId === selectedId}
-            onClick={() => setSelectedId(conversation.conversationId)}
-          >
-            {isPersonView && isDefined(conversation.opportunityName)
-              ? `${conversation.label} · ${conversation.opportunityName}`
-              : conversation.label}
-          </StyledTab>
-        ))}
-      </StyledSwitcher>
+      <StyledDetailHeader>
+        <StyledBack
+          onClick={() => {
+            setSelectedId(null);
+            setMessages([]);
+            setDraft('');
+            setFiles([]);
+          }}
+        >
+          {t`← All chats`}
+        </StyledBack>
+        <StyledDetailTitle>
+          {[
+            selected?.channel,
+            selected?.personName ?? selected?.contactName,
+            selected?.opportunityName,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </StyledDetailTitle>
+      </StyledDetailHeader>
 
       <StyledMessages>
         {[...messages].reverse().map((message) => (
