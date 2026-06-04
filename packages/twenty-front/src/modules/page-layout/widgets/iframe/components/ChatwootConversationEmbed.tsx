@@ -4,7 +4,7 @@ import { WidgetSkeletonLoader } from '@/page-layout/widgets/components/WidgetSke
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -19,7 +19,17 @@ export const ENSO_CHATWOOT_CONVERSATION_MARKER = '__enso_chatwoot_conversation';
 // (type "/") / file & image attachments. Polls every 3s. Mobile-friendly.
 // (Chatwoot's assign/resolve/notes are intentionally omitted — assignment is
 // CRM-driven, and the deal stage tracks lifecycle.)
+//
+// Realtime: when Chatwoot exposes the agent's pubsub token we subscribe to its
+// ActionCable RoomChannel and refetch on push — near-instant. Polling stays as a
+// fallback: the fast 3s poll runs while the socket is down, and a slow safety
+// poll runs even while it's up (in case an event is missed). If the socket can't
+// connect (e.g. cross-origin handshake rejected), it gives up after a few tries
+// and the fast poll carries on — so this is a pure enhancement, never a regression.
 const POLL_MS = 3000;
+const SAFETY_POLL_MS = 20000;
+const RECONNECT_MS = 5000;
+const MAX_RECONNECTS = 5;
 
 const QUICK_EMOJIS = [
   '👍',
@@ -96,6 +106,26 @@ type Message = {
 };
 
 type Canned = { shortCode: string; content: string };
+
+type Realtime = {
+  websocketUrl: string;
+  pubsubToken: string;
+  accountId: number;
+  userId: number;
+};
+
+// An ActionCable frame: either a protocol message (welcome/ping/confirm) or a
+// data push carrying a Chatwoot event under `message`.
+type RealtimeFrame = {
+  type?: string;
+  message?: {
+    event?: string;
+    data?: {
+      conversation_id?: number | string;
+      conversation?: { id?: number | string };
+    };
+  };
+};
 
 const StyledContainer = styled.div`
   background: ${themeCssVariables.background.primary};
@@ -524,12 +554,45 @@ export const ChatwootConversationEmbed = () => {
   const [showEmoji, setShowEmoji] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  const [realtime, setRealtime] = useState<Realtime | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+
   const recordQuery = `recordType=${recordType}&recordId=${recordId}`;
 
   const attachmentUrl = (dataUrl: string): string =>
     `${apiBase}/attachment?${recordQuery}&conversationId=${selectedId}&url=${encodeURIComponent(dataUrl)}`;
 
-  // Initial load: conversations + canned responses.
+  // Refetch the record's conversation list (also called on realtime conv events).
+  const loadConversations = useCallback(() => {
+    if (!isDefined(recordId)) {
+      return Promise.resolve();
+    }
+
+    return fetch(`${apiBase}/conversations?${recordQuery}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => (r.ok ? r.json() : { conversations: [] }))
+      .then((conv: { conversations?: Conversation[] }) =>
+        setConversations(conv.conversations ?? []),
+      )
+      .catch(() => {});
+  }, [recordId, recordQuery]);
+
+  // Refetch the selected conversation's messages (poll tick + realtime push).
+  const loadMessages = useCallback(() => {
+    if (!isDefined(recordId) || !isDefined(selectedId)) {
+      return;
+    }
+
+    fetch(`${apiBase}/messages?${recordQuery}&conversationId=${selectedId}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => (r.ok ? r.json() : { messages: [] }))
+      .then((data: { messages?: Message[] }) => setMessages(data.messages ?? []))
+      .catch(() => {});
+  }, [recordId, recordQuery, selectedId]);
+
+  // Initial load: conversations + canned responses + realtime credentials.
   useEffect(() => {
     if (!isDefined(recordId)) {
       setLoading(false);
@@ -540,23 +603,22 @@ export const ChatwootConversationEmbed = () => {
     let cancelled = false;
 
     Promise.all([
-      fetch(`${apiBase}/conversations?${recordQuery}`, {
-        headers: authHeaders(),
-      }).then((r) => (r.ok ? r.json() : { conversations: [] })),
+      loadConversations(),
       fetch(`${apiBase}/canned-responses`, { headers: authHeaders() }).then(
         (r) => (r.ok ? r.json() : { cannedResponses: [] }),
       ),
+      fetch(`${apiBase}/realtime`, { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : { realtime: null }))
+        .catch(() => ({ realtime: null })),
     ])
-      .then(([conv, cr]) => {
+      .then(([, cr, rt]) => {
         if (cancelled) {
           return;
         }
 
-        const list: Conversation[] = conv.conversations ?? [];
-
-        setConversations(list);
         // Start on the list; the user clicks a row to open a chat.
         setCanned(cr.cannedResponses ?? []);
+        setRealtime(rt.realtime ?? null);
         setLoading(false);
       })
       .catch(() => {
@@ -568,37 +630,147 @@ export const ChatwootConversationEmbed = () => {
     return () => {
       cancelled = true;
     };
-  }, [recordId, recordType, recordQuery]);
+  }, [recordId, loadConversations]);
 
-  // Poll the selected conversation's messages.
+  // Poll the selected conversation's messages — fast while the socket is down,
+  // slow (safety net) while it's up. Realtime push triggers extra refetches.
   useEffect(() => {
     if (!isDefined(recordId) || !isDefined(selectedId)) {
       return;
     }
 
-    let cancelled = false;
+    loadMessages();
+    const interval = setInterval(
+      loadMessages,
+      wsConnected ? SAFETY_POLL_MS : POLL_MS,
+    );
 
-    const load = () => {
-      fetch(`${apiBase}/messages?${recordQuery}&conversationId=${selectedId}`, {
-        headers: authHeaders(),
-      })
-        .then((r) => (r.ok ? r.json() : { messages: [] }))
-        .then((data: { messages?: Message[] }) => {
-          if (!cancelled) {
-            setMessages(data.messages ?? []);
+    return () => clearInterval(interval);
+  }, [recordId, selectedId, loadMessages, wsConnected]);
+
+  // Keep the latest selection + loaders in refs so the socket handler can use
+  // them without tearing down and reopening the socket on every change.
+  const selectedIdRef = useRef<string | null>(null);
+  const loadMessagesRef = useRef(loadMessages);
+  const loadConversationsRef = useRef(loadConversations);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    loadMessagesRef.current = loadMessages;
+  }, [loadMessages]);
+
+  useEffect(() => {
+    loadConversationsRef.current = loadConversations;
+  }, [loadConversations]);
+
+  // Realtime push via Chatwoot's ActionCable RoomChannel. Subscribes with the
+  // agent's pubsub token; on a message/conversation event, refetches. Falls back
+  // to polling on any failure (see wsConnected gating above).
+  useEffect(() => {
+    if (!isDefined(realtime)) {
+      return;
+    }
+
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    let disposed = false;
+
+    const connect = () => {
+      try {
+        socket = new WebSocket(realtime.websocketUrl);
+      } catch {
+        return;
+      }
+
+      socket.onopen = () => {
+        socket?.send(
+          JSON.stringify({
+            command: 'subscribe',
+            identifier: JSON.stringify({
+              channel: 'RoomChannel',
+              pubsub_token: realtime.pubsubToken,
+              account_id: realtime.accountId,
+              user_id: realtime.userId,
+            }),
+          }),
+        );
+      };
+
+      socket.onmessage = (event) => {
+        let frame: RealtimeFrame;
+
+        try {
+          frame = JSON.parse(event.data as string) as RealtimeFrame;
+        } catch {
+          return;
+        }
+
+        if (frame.type === 'confirm_subscription') {
+          attempts = 0;
+          setWsConnected(true);
+
+          return;
+        }
+
+        if (isDefined(frame.type)) {
+          // welcome / ping / reject_subscription — nothing to do.
+          return;
+        }
+
+        const eventName = frame.message?.event;
+
+        if (!isDefined(eventName)) {
+          return;
+        }
+
+        if (
+          eventName === 'message.created' ||
+          eventName === 'message.updated'
+        ) {
+          const conversationId =
+            frame.message?.data?.conversation_id ??
+            frame.message?.data?.conversation?.id;
+
+          if (
+            !isDefined(conversationId) ||
+            String(conversationId) === selectedIdRef.current
+          ) {
+            loadMessagesRef.current();
           }
-        })
-        .catch(() => {});
+
+          loadConversationsRef.current();
+        } else if (eventName.startsWith('conversation.')) {
+          loadConversationsRef.current();
+        }
+      };
+
+      socket.onerror = () => socket?.close();
+
+      socket.onclose = () => {
+        setWsConnected(false);
+
+        if (!disposed && attempts < MAX_RECONNECTS) {
+          attempts += 1;
+          reconnectTimer = setTimeout(connect, RECONNECT_MS);
+        }
+      };
     };
 
-    load();
-    const interval = setInterval(load, POLL_MS);
+    connect();
 
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      disposed = true;
+      if (isDefined(reconnectTimer)) {
+        clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+      setWsConnected(false);
     };
-  }, [recordId, recordType, recordQuery, selectedId]);
+  }, [realtime]);
 
   const send = () => {
     const content = draft.trim();

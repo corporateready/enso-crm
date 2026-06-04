@@ -18,6 +18,8 @@ import { getTabsByDisplayMode } from '@/page-layout/utils/getTabsByDisplayMode';
 import { getTabsWithVisibleWidgets } from '@/page-layout/utils/getTabsWithVisibleWidgets';
 import { shouldEnableTabEditingFeatures } from '@/page-layout/utils/shouldEnableTabEditingFeatures';
 import { sortTabsByPosition } from '@/page-layout/utils/sortTabsByPosition';
+import { ENSO_CHATWOOT_CONVERSATION_MARKER } from '@/page-layout/widgets/iframe/components/ChatwootConversationEmbed';
+import { useHasChatwootConversation } from '@/page-layout/widgets/iframe/hooks/useHasChatwootConversation';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { activeTabIdComponentState } from '@/ui/layout/tab-list/states/activeTabIdComponentState';
 import { ScrollWrapper } from '@/ui/utilities/scroll/components/ScrollWrapper';
@@ -163,6 +165,55 @@ export const PageLayoutTabsRenderer = () => {
     [sortedTabs, inactiveRelationFieldNames],
   );
 
+  // ENSO — the Conversation tab (a Chatwoot embed marker widget) should only
+  // appear when the record actually has a chat; otherwise it's noise. Detect it
+  // here and drop it from the rendered tabs unless a conversation exists.
+  const chatwootTab = useMemo(
+    () =>
+      sortedActiveTabs.find((tab) =>
+        tab.widgets.some((widget) => {
+          const configuration = widget.configuration;
+
+          return (
+            isDefined(configuration) &&
+            'url' in configuration &&
+            typeof configuration.url === 'string' &&
+            configuration.url.includes(ENSO_CHATWOOT_CONVERSATION_MARKER)
+          );
+        }),
+      ),
+    [sortedActiveTabs],
+  );
+
+  const chatwootRecordType =
+    targetRecordIdentifier?.targetObjectNameSingular === 'person'
+      ? 'person'
+      : 'opportunity';
+
+  const chatwootPresence = useHasChatwootConversation({
+    recordType: chatwootRecordType,
+    recordId: targetRecordIdentifier?.id,
+    enabled:
+      isDefined(chatwootTab) &&
+      isDefined(targetRecordIdentifier) &&
+      !isPageLayoutInEditMode,
+  });
+
+  const visibleTabs = useMemo(() => {
+    if (!isDefined(chatwootTab) || isPageLayoutInEditMode) {
+      return sortedActiveTabs;
+    }
+
+    // Show only once we positively know a chat exists; 'error' shows it too
+    // (graceful — falls back to the embed's empty state).
+    const hideChatwootTab =
+      chatwootPresence === 'loading' || chatwootPresence === 'absent';
+
+    return hideChatwootTab
+      ? sortedActiveTabs.filter((tab) => tab.id !== chatwootTab.id)
+      : sortedActiveTabs;
+  }, [sortedActiveTabs, chatwootTab, chatwootPresence, isPageLayoutInEditMode]);
+
   const activeTabExistsInCurrentPageLayout = currentPageLayout.tabs.some(
     (tab) => tab.id === activeTabId,
   );
@@ -175,16 +226,16 @@ export const PageLayoutTabsRenderer = () => {
 
       <StyledTabsAndDashboardContainer>
         <PageLayoutTabListEffect
-          tabs={sortedActiveTabs}
+          tabs={visibleTabs}
           componentInstanceId={tabListInstanceId}
           defaultTabToFocusOnMobileAndSidePanelId={
             currentPageLayout.defaultTabToFocusOnMobileAndSidePanelId ??
             undefined
           }
         />
-        {(sortedActiveTabs.length > 1 || isPageLayoutInEditMode) && (
+        {(visibleTabs.length > 1 || isPageLayoutInEditMode) && (
           <PageLayoutTabList
-            tabs={sortedActiveTabs}
+            tabs={visibleTabs}
             behaveAsLinks={!isInSidePanel && !isPageLayoutInEditMode}
             isInSidePanel={isInSidePanel}
             componentInstanceId={tabListInstanceId}

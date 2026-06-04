@@ -59,11 +59,16 @@ right before you need it.
   `instagram_business_manage_messages` need **Advanced Access**. Tester DMs deliver
   today; public DMs don't until reviewed. Submit (screencast
   connect→receive→reply); BM verified, no business-verification wait.
-- **Phase 5 polish (optional):** true websocket push instead of the 3s poll (the
-  agent `pubsub_token` is exposed by `GET /platform/api/v1/users/{id}` — wire
-  Chatwoot's ActionCable); hide the Conversation tab when a deal has no chat (needs
-  a `hasChatwootConversation` field the pipeline sets + a conditional tab — today it
-  shows a calm empty state); attachment thumbnails; typing/read receipts.
+- **Phase 5 polish — websocket push + hide-tab DONE (pending live verify):**
+  - *Websocket push* — the panel subscribes to Chatwoot ActionCable `RoomChannel`
+    via the agent `pubsub_token` (server `GET rest/enso/chatwoot/realtime`), with
+    polling kept as the fallback. ⚠️ Verify the cross-origin cable handshake on
+    deploy; if Chatwoot rejects the `crm.enso.ro` origin (`allowed_request_origins`),
+    the socket fails and the 3s poll carries on — may need a Chatwoot-fork tweak.
+  - *Hide-tab-when-no-chat* — done **client-side** (no `hasChatwootConversation`
+    field): a cheap DB-only `GET has-conversation` check filters the Conversation
+    tab in `PageLayoutTabsRenderer`; shown in edit mode + on check error.
+  - Still optional: attachment thumbnails; typing/read receipts.
 - **Minor (pre-existing):** DB-level dedup guard (idempotency is webhook-side =
   `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup in
   stage-1 (for WhatsApp); a CRM triage view for project-less (Vanzari-organic)

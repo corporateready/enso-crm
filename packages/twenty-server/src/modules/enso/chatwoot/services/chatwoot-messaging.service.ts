@@ -62,6 +62,64 @@ export class ChatwootMessagingService {
     private readonly provisioningService: ChatwootAgentProvisioningService,
   ) {}
 
+  // Cheap, DB-only presence check (no Chatwoot round-trips) used to decide
+  // whether the Conversation tab should show at all.
+  async hasConversation(
+    workspaceId: string,
+    recordType: ChatwootRecordType,
+    recordId: string,
+  ): Promise<boolean> {
+    const conversations = await this.conversationResolver.listForRecord(
+      workspaceId,
+      recordType,
+      recordId,
+    );
+
+    return conversations.length > 0;
+  }
+
+  // Realtime credentials for the CURRENT manager (their own Chatwoot agent):
+  // the ActionCable URL + their pubsub token, so the panel can subscribe to
+  // push events instead of polling. Record-agnostic (scoped to the user, not a
+  // record); returns null when Chatwoot/Platform isn't configured so the panel
+  // falls back to polling.
+  async getRealtimeCredentials(params: {
+    email: string;
+    name: string;
+  }): Promise<{
+    websocketUrl: string;
+    pubsubToken: string;
+    accountId: number;
+    userId: number;
+  } | null> {
+    if (!this.chatwootClient.isConfigured()) {
+      return null;
+    }
+
+    const agentId = await this.provisioningService.ensureAgentForMember({
+      email: params.email,
+      name: params.name || params.email,
+    });
+
+    if (!isDefined(agentId)) {
+      return null;
+    }
+
+    const pubsubToken = await this.chatwootClient.getUserPubsubToken(agentId);
+    const websocketUrl = this.chatwootClient.websocketUrl;
+
+    if (!isDefined(pubsubToken) || !isDefined(websocketUrl)) {
+      return null;
+    }
+
+    return {
+      websocketUrl,
+      pubsubToken,
+      accountId: Number(this.chatwootClient.accountId),
+      userId: agentId,
+    };
+  }
+
   async listConversations(
     workspaceId: string,
     recordType: ChatwootRecordType,
