@@ -4,9 +4,13 @@ import {
   Get,
   Post,
   Query,
+  StreamableFile,
+  UploadedFiles,
   UseFilters,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 
 import { PermissionFlagType } from 'twenty-shared/constants';
 
@@ -19,14 +23,21 @@ import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { SettingsPermissionGuard } from 'src/engine/guards/settings-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
+import { ChatwootReassignInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-reassign.input';
 import { ChatwootReplyInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-reply.input';
+import { ChatwootStatusInput } from 'src/modules/enso/chatwoot/dtos/chatwoot-status.input';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
 import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
 
+type UploadedMulterFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
+
 // Server side of the native in-CRM chat panel (Phase 5). All endpoints require a
-// real logged-in user (JWT + workspace) and only ever touch conversations that
-// belong to the given opportunity. Chatwoot's API is proxied with the account
-// token server-side — the token never reaches the browser.
+// logged-in user and only touch conversations belonging to the given opportunity.
+// Chatwoot's API is proxied with the account token server-side.
 @Controller('rest/enso/chatwoot')
 @UseGuards(JwtAuthGuard, WorkspaceAuthGuard)
 @UseFilters(RestApiExceptionFilter)
@@ -36,7 +47,6 @@ export class ChatwootController {
     private readonly provisioningService: ChatwootAgentProvisioningService,
   ) {}
 
-  // The deal's conversations (newest activity first) for the panel's list.
   @Get('conversations')
   @UseGuards(NoPermissionGuard)
   async conversations(
@@ -51,8 +61,6 @@ export class ChatwootController {
     return { conversations };
   }
 
-  // Messages for one conversation on the deal (oldest → newest). Polled by the
-  // panel for near-real-time updates.
   @Get('messages')
   @UseGuards(NoPermissionGuard)
   async messages(
@@ -69,24 +77,104 @@ export class ChatwootController {
     return { messages };
   }
 
-  // Send a reply (attributed to the calling manager when possible).
+  @Get('agents')
+  @UseGuards(NoPermissionGuard)
+  async agents() {
+    const agents = await this.messagingService.listAgents();
+
+    return { agents };
+  }
+
+  @Get('canned-responses')
+  @UseGuards(NoPermissionGuard)
+  async cannedResponses() {
+    const cannedResponses = await this.messagingService.listCannedResponses();
+
+    return { cannedResponses };
+  }
+
+  // Stream an attachment (its Chatwoot URL needs the account token).
+  @Get('attachment')
+  @UseGuards(NoPermissionGuard)
+  async attachment(
+    @Query('opportunityId') opportunityId: string,
+    @Query('conversationId') conversationId: string,
+    @Query('url') url: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ) {
+    const { data, contentType } = await this.messagingService.fetchAttachment({
+      workspaceId: workspace.id,
+      opportunityId,
+      conversationId,
+      url,
+    });
+
+    return new StreamableFile(data, { type: contentType });
+  }
+
+  // Send a reply or private note (with optional file/image attachments).
   @Post('reply')
   @UseGuards(NoPermissionGuard)
+  @UseInterceptors(FilesInterceptor('attachments', 5))
   async reply(
     @Body() body: ChatwootReplyInput,
+    @UploadedFiles() files: UploadedMulterFile[] | undefined,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUser() user: UserEntity,
   ) {
+    const attachments = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      fileName: file.originalname,
+      contentType: file.mimetype,
+    }));
+
     const message = await this.messagingService.sendReply({
       workspaceId: workspace.id,
       opportunityId: body.opportunityId,
       conversationId: body.conversationId,
       content: body.content,
+      isPrivate: body.isPrivate === 'true',
+      attachments: attachments.length > 0 ? attachments : undefined,
       userEmail: user.email,
       userName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
     });
 
     return { message };
+  }
+
+  @Post('status')
+  @UseGuards(NoPermissionGuard)
+  async status(
+    @Body() body: ChatwootStatusInput,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthUser() user: UserEntity,
+  ) {
+    await this.messagingService.setStatus({
+      workspaceId: workspace.id,
+      opportunityId: body.opportunityId,
+      conversationId: body.conversationId,
+      status: body.status,
+      userEmail: user.email,
+      userName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
+    });
+
+    return { ok: true };
+  }
+
+  @Post('reassign')
+  @UseGuards(NoPermissionGuard)
+  async reassign(
+    @Body() body: ChatwootReassignInput,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ) {
+    await this.messagingService.reassign({
+      workspaceId: workspace.id,
+      opportunityId: body.opportunityId,
+      conversationId: body.conversationId,
+      assigneeId: body.assigneeId,
+    });
+
+    return { ok: true };
   }
 
   // Admin: bulk-provision Chatwoot agents for all routing-eligible members.
