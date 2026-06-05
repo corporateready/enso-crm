@@ -94,7 +94,30 @@ type Attachment = {
   fileType: string | null;
   dataUrl: string | null;
   fileName: string | null;
+  // Non-Chatwoot-hosted (e.g. an Instagram reel/story share) — link directly
+  // instead of routing through the authed attachment proxy.
+  external: boolean;
 };
+
+// Friendly label per Chatwoot attachment file_type (esp. Instagram shares, which
+// arrive with no text content — so the bubble would otherwise look empty).
+const ATTACHMENT_LABELS: Record<string, string> = {
+  ig_reel: '🎬 Instagram reel',
+  ig_story: '📷 Instagram story',
+  story_mention: '📷 Story mention',
+  share: '🔗 Shared post',
+  link: '🔗 Link',
+  audio: '🔊 Audio',
+  video: '🎬 Video',
+  file: '📎 File',
+  location: '📍 Location',
+  contact: '👤 Contact',
+};
+
+const attachmentLabel = (attachment: Attachment): string =>
+  attachment.fileName ??
+  ATTACHMENT_LABELS[attachment.fileType ?? ''] ??
+  '🔗 Open attachment';
 
 type Message = {
   id: number;
@@ -191,15 +214,28 @@ const StyledImage = styled.img`
   max-width: 100%;
 `;
 
+// color: inherit so the link is readable on BOTH bubbles — primary on the light
+// incoming bubble, inverted on the blue outgoing one. (Previously hard-coded to
+// inverted → invisible white-on-light for incoming attachments, e.g. IG reels.)
 const StyledFileLink = styled.button`
   background: none;
   border: none;
-  color: ${themeCssVariables.font.color.inverted};
+  color: inherit;
   cursor: pointer;
   display: block;
   font-size: ${themeCssVariables.font.size.sm};
   margin-top: ${themeCssVariables.spacing[1]};
   padding: 0;
+  text-align: left;
+  text-decoration: underline;
+`;
+
+// Anchor variant for external shares (color: inherit → readable on both bubbles).
+const StyledExternalLink = styled.a`
+  color: inherit;
+  display: block;
+  font-size: ${themeCssVariables.font.size.sm};
+  margin-top: ${themeCssVariables.spacing[1]};
   text-decoration: underline;
 `;
 
@@ -985,9 +1021,18 @@ export const ChatwootConversationEmbed = () => {
               <StyledBubble $incoming={message.incoming}>
                 {message.content}
                 {message.attachments.map((attachment) =>
-                  !isDefined(
-                    attachment.dataUrl,
-                  ) ? null : attachment.fileType === 'image' ? (
+                  !isDefined(attachment.dataUrl) ? null : attachment.external ? (
+                    // External share (e.g. an Instagram reel/story) — the proxy
+                    // can't serve it, so open the original URL in a new tab.
+                    <StyledExternalLink
+                      key={attachment.id}
+                      href={attachment.dataUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {attachmentLabel(attachment)}
+                    </StyledExternalLink>
+                  ) : attachment.fileType === 'image' ? (
                     <AttachmentImage
                       key={attachment.id}
                       src={attachmentUrl(attachment.dataUrl)}
