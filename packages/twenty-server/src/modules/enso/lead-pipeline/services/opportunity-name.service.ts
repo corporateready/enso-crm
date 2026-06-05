@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { isNonEmptyString } from 'twenty-shared/utils';
+import { isNonEmptyString } from '@sniptt/guards';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';

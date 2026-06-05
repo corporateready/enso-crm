@@ -2,7 +2,7 @@ import { type EventRowDynamicComponentProps } from '@/activities/timeline-activi
 import { EventRowItem } from '@/activities/timeline-activities/rows/components/EventRowItem';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { isNonEmptyString } from 'twenty-shared/utils';
+import { isNonEmptyString } from '@sniptt/guards';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
 // ENSO — renders timeline events for a LINKED record (an inbound activity or an
