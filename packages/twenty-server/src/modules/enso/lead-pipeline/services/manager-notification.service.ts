@@ -112,6 +112,41 @@ export class ManagerNotificationService {
     await this.post(webhookUrl, lines.join('\n'));
   }
 
+  // Ping the current owner when a claimed deal's contact re-engages (a new
+  // inbound activity attached to the open deal). Best-effort, routing webhook.
+  async notifyReengagement(
+    authContext: WorkspaceAuthContext,
+    params: { opportunityId: string; managerId: string },
+  ): Promise<void> {
+    const webhookUrl = this.routingWebhookUrl;
+    const workspaceId = authContext.workspace?.id;
+
+    if (!isDefined(webhookUrl) || !isDefined(workspaceId)) {
+      this.logger.warn(
+        'No routing webhook configured — skipping re-engagement notification.',
+      );
+
+      return;
+    }
+
+    const details = await this.loadDealDetails(
+      workspaceId,
+      params.opportunityId,
+      params.managerId,
+    );
+
+    const lines = [
+      `🔁 *Lead re-engaged* — your client messaged again`,
+      details.managerName ? `Manager: ${details.managerName}` : undefined,
+      details.projectName ? `Project: ${details.projectName}` : undefined,
+      details.who ? `Contact: ${details.who}` : undefined,
+      details.source ? `Source: ${details.source}` : undefined,
+      this.recordUrl(workspaceId, params.opportunityId),
+    ].filter(Boolean);
+
+    await this.post(webhookUrl, lines.join('\n'));
+  }
+
   private async loadDealDetails(
     workspaceId: string,
     opportunityId: string,
