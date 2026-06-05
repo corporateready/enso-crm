@@ -10,6 +10,10 @@ export type ChatwootConversationMeta = {
   contactName: string | null;
   channelType: string | null;
   status: string | null;
+  // Chatwoot's own messaging-window verdict: false when the channel's reply
+  // window is closed (FB/IG 24h, extended to 7d when human-agent is enabled), so
+  // we never reimplement Meta's policy. null when Chatwoot doesn't report it.
+  canReply: boolean | null;
   assigneeName: string | null;
   assigneeId: number | null;
   createdAt: number | null;
@@ -206,6 +210,7 @@ export class ChatwootClientService {
       contactName: data?.meta?.sender?.name ?? null,
       channelType: data?.meta?.channel ?? null,
       status: data?.status ?? null,
+      canReply: typeof data?.can_reply === 'boolean' ? data.can_reply : null,
       assigneeName: assignee?.name ?? null,
       assigneeId: assignee?.id ?? null,
       createdAt: isDefined(data?.created_at)
