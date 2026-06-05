@@ -313,6 +313,14 @@ The Opportunity + routing between phases 3 and 4 is **already shipped**.
   today) — future channels; the pipeline is already channel-agnostic.
 - **Outbound cadence / templates** via Chatwoot — later.
 - **Opt-out half** of consent (unsubscribe/STOP) — built with the senders.
+- **Message-level analytics / warehousing** (Chatwoot Postgres → BigQuery via
+  Fivetran + dbt) — **owned by the separate analytics project**, NOT this CRM. The
+  Chatwoot Postgres (ours) is a normal source the analytics stack can tap when it
+  wants message-level attribution; nothing to build here. (Decided 2026-06-05.)
+- **Human-agent 7-day window** — deferred; it rides with **App Review** (the
+  `human_agent` permission). Until then the reply window is 24h (Chatwoot
+  `can_reply` enforces it). When App Review lands, enable human-agent **and** bump
+  Chatwoot `auto_resolve_after` 1440 → `10080` (7 days).
 
 ## Open items / verify-in-practice
 

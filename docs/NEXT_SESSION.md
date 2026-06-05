@@ -55,24 +55,30 @@ right before you need it.
 
 ## Remaining work
 
-- **App Review (go-live for PUBLIC DMs — deferred):** `pages_messaging` +
-  `instagram_business_manage_messages` need **Advanced Access**. Tester DMs deliver
-  today; public DMs don't until reviewed. Submit (screencast
-  connect→receive→reply); BM verified, no business-verification wait.
-- **Phase 5 polish — websocket push + hide-tab DONE (pending live verify):**
-  - *Websocket push* — the panel subscribes to Chatwoot ActionCable `RoomChannel`
-    via the agent `pubsub_token` (server `GET rest/enso/chatwoot/realtime`), with
-    polling kept as the fallback. ⚠️ Verify the cross-origin cable handshake on
-    deploy; if Chatwoot rejects the `crm.enso.ro` origin (`allowed_request_origins`),
-    the socket fails and the 3s poll carries on — may need a Chatwoot-fork tweak.
-  - *Hide-tab-when-no-chat* — done **client-side** (no `hasChatwootConversation`
-    field): a cheap DB-only `GET has-conversation` check filters the Conversation
-    tab in `PageLayoutTabsRenderer`; shown in edit mode + on check error.
-  - Still optional: attachment thumbnails; typing/read receipts.
+**Phase-5 polish + the full attribution/re-engagement model are DONE + verified
+live (2026-06-05, PRs #14–#18 on `main`):** realtime websocket push (poll
+fallback), hide-tab-when-no-chat, `can_reply` reply-window gating, resolve-on-close,
+n8n paid/organic `trafficType` (→ frozen `firstTrafficType`), Chatwoot auto-resolve
+24h, and **last-touch attribution + re-engagement notify** (Decision B — verified:
+re-engagement attaches to the open deal, first-touch frozen, `last*` updated,
+`reengagementCount` bumps). See `content/docs/integrations/social-intake.md` +
+`content/docs/systems/lead-pipeline.md`.
+
+- **App Review = the one remaining gate (deferred):** `pages_messaging` +
+  `instagram_business_manage_messages` (Advanced Access) for PUBLIC DMs, **and the
+  `human_agent` permission** for the 7-day window. Tester DMs work today; public
+  don't until reviewed. Submit (screencast connect→receive→reply); BM verified, no
+  business-verification wait. **When it lands:** enable human-agent **and** bump
+  Chatwoot `auto_resolve_after` 1440 → `10080` (7 days).
+- **Out of scope (this project):** message-level analytics / Chatwoot→BigQuery
+  warehousing — owned by the **separate analytics project** (Fivetran/dbt/Lightdash).
+- ⚠️ **Verify-in-practice:** the websocket cross-origin cable handshake
+  (`crm.`→`chat.` `/cable`) — if `allowed_request_origins` rejects it the socket
+  fails and the 3s poll carries on (no regression); may need a Chatwoot-fork tweak.
 - **Minor (pre-existing):** DB-level dedup guard (idempotency is webhook-side =
   `conversation_created`-only); consent upsert in the n8n flow; phone/email dedup in
   stage-1 (for WhatsApp); a CRM triage view for project-less (Vanzari-organic)
-  `SOCIAL_MESSAGE` activities.
+  `SOCIAL_MESSAGE` activities; optional attachment thumbnails / typing receipts.
 - **Later channels:** WhatsApp (same Meta app → Cloud API, or 360dialog), Telegram
   (bot token). Pipeline + chat panel are channel-agnostic.
 
