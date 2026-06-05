@@ -41,9 +41,15 @@ const StyledRow = styled.div`
 export const EventRowEnsoLinkedRecord = ({
   authorFullName,
   event,
+  linkedObjectMetadataItem,
   createdAt,
 }: EventRowDynamicComponentProps) => {
   const [, eventAction] = event.name.split('.');
+
+  // The linked object's human label ("Opportunity", "Inbound Activity") so the
+  // row reads as context, e.g. "Opportunity Deal | … was created by System".
+  const linkedObjectLabel =
+    linkedObjectMetadataItem?.labelSingular ?? t`Record`;
 
   const cachedName = isNonEmptyString(event.linkedRecordCachedName)
     ? event.linkedRecordCachedName
@@ -51,7 +57,7 @@ export const EventRowEnsoLinkedRecord = ({
 
   const actionLabel =
     eventAction === 'created'
-      ? t`was added by`
+      ? t`was created by`
       : eventAction === 'updated'
         ? t`was updated by`
         : `${eventAction} ${t`by`}`;
@@ -60,7 +66,9 @@ export const EventRowEnsoLinkedRecord = ({
     <StyledMainContainer>
       <StyledRowContainer>
         <StyledRow>
-          <EventRowItem>{cachedName}</EventRowItem>
+          <EventRowItem>
+            {linkedObjectLabel} {cachedName}
+          </EventRowItem>
           <EventRowItem variant="action">{actionLabel}</EventRowItem>
           <EventRowItem>{authorFullName}</EventRowItem>
         </StyledRow>
