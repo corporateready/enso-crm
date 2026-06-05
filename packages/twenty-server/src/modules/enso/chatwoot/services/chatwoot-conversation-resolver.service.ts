@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { isDefined } from 'twenty-shared/utils';
+import { isDefined, isNonEmptyString } from 'twenty-shared/utils';
 import { In } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
@@ -81,7 +81,14 @@ export class ChatwootConversationResolverService {
         for (const activity of activities) {
           const conversationId = activity.chatwootConversationId;
 
-          if (!isDefined(conversationId) || seen.has(String(conversationId))) {
+          // Twenty TEXT fields default to '' (not null), so non-social activities
+          // (form/call) carry an EMPTY chatwootConversationId — isDefined('') is
+          // true, which used to surface a bogus "conversation" and show the tab on
+          // every form/call deal. Require a non-empty id.
+          if (
+            !isNonEmptyString(conversationId) ||
+            seen.has(String(conversationId))
+          ) {
             continue;
           }
 
