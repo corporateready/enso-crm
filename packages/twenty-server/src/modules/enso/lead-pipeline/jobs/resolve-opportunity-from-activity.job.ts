@@ -12,6 +12,7 @@ import {
 } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
 import { RouteOpportunityJob } from 'src/modules/enso/lead-pipeline/jobs/route-opportunity.job';
 import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/services/opportunity-resolution.service';
+import { PersonFirstTouchService } from 'src/modules/enso/lead-pipeline/services/person-first-touch.service';
 
 // Stage 1 of the pipeline: an inbound activity was created. Resolve it to an
 // opportunity (dedup → attach or create). If a NEW deal was created it needs
@@ -23,6 +24,7 @@ export class ResolveOpportunityFromActivityJob {
 
   constructor(
     private readonly opportunityResolutionService: OpportunityResolutionService,
+    private readonly personFirstTouchService: PersonFirstTouchService,
     @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
     private readonly messageQueueService: MessageQueueService,
   ) {}
@@ -32,6 +34,10 @@ export class ResolveOpportunityFromActivityJob {
     const { workspaceId, activityId } = data;
 
     const authContext = buildSystemAuthContext(workspaceId);
+
+    // Freeze the person's first-touch attribution from the earliest activity
+    // (runs for every activity, incl. organic/no-project; best-effort).
+    await this.personFirstTouchService.applyFromActivity(authContext, activityId);
 
     const result = await this.opportunityResolutionService.resolveFromActivity(
       authContext,
