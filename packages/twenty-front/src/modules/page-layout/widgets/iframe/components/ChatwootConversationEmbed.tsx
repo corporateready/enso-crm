@@ -500,8 +500,8 @@ const StyledDetailTitle = styled.div`
   white-space: nowrap;
 `;
 
-// Opportunity names are auto-composed as "Social | {project}", so showing the
-// project again is redundant — only append it when it isn't already in the name.
+// Opportunity names are auto-composed as "Deal | {person} | {project}", so showing
+// the project again is redundant — only append it when it isn't already in the name.
 const dealContext = (
   opportunityName: string | null,
   projectName: string | null,
