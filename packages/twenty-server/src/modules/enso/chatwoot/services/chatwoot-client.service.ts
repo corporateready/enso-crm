@@ -25,6 +25,10 @@ export type ChatwootAttachment = {
   fileType: string | null;
   dataUrl: string | null;
   fileName: string | null;
+  // true when the URL is NOT Chatwoot-hosted (e.g. an Instagram reel/story share
+  // on instagram.com / a Meta CDN). The attachment proxy only serves Chatwoot
+  // URLs, so the panel must link to these directly rather than proxy them.
+  external: boolean;
 };
 
 export type ChatwootMessage = {
@@ -224,6 +228,23 @@ export class ChatwootClientService {
     };
   }
 
+  // Normalize a Chatwoot attachment, flagging external (non-Chatwoot-hosted)
+  // URLs — Instagram reel/story shares carry an instagram.com / Meta-CDN URL,
+  // which the attachment proxy can't serve, so the panel links to them directly.
+  private mapAttachment(a: any): ChatwootAttachment {
+    const dataUrl = a.data_url ?? a.thumb_url ?? null;
+    const base = this.baseUrl;
+
+    return {
+      id: a.id,
+      fileType: a.file_type ?? null,
+      dataUrl,
+      fileName: a.file_name ?? null,
+      external:
+        isDefined(dataUrl) && (!isDefined(base) || !dataUrl.startsWith(base)),
+    };
+  }
+
   // Messages oldest → newest. Keeps agent + contact messages and private notes
   // (flagged), drops activity rows (message_type 2).
   async listMessages(
@@ -245,12 +266,9 @@ export class ChatwootClientService {
         createdAt: isDefined(m.created_at)
           ? new Date(m.created_at * 1000).toISOString()
           : null,
-        attachments: (m.attachments ?? []).map((a: any) => ({
-          id: a.id,
-          fileType: a.file_type ?? null,
-          dataUrl: a.data_url ?? a.thumb_url ?? null,
-          fileName: a.file_name ?? null,
-        })),
+        attachments: (m.attachments ?? []).map((a: any) =>
+          this.mapAttachment(a),
+        ),
       }))
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
   }
@@ -304,12 +322,9 @@ export class ChatwootClientService {
       createdAt: isDefined(data.created_at)
         ? new Date(data.created_at * 1000).toISOString()
         : new Date().toISOString(),
-      attachments: (data.attachments ?? []).map((a: any) => ({
-        id: a.id,
-        fileType: a.file_type ?? null,
-        dataUrl: a.data_url ?? null,
-        fileName: a.file_name ?? null,
-      })),
+      attachments: (data.attachments ?? []).map((a: any) =>
+        this.mapAttachment(a),
+      ),
     };
   }
 
