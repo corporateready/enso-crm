@@ -12,10 +12,12 @@ import { ChatwootAssignmentService } from 'src/modules/enso/chatwoot/services/ch
 // When a manager claims a deal — any update that leaves it out of ROUTING with
 // an owner — record the sticky person × project assignment AND push the
 // conversation assignment into Chatwoot (so a social deal lands in the
-// manager's Chatwoot queue). Idempotent and re-fetches the row (the hook
-// payload's fields depend on the GraphQL selection set, so we only trust the
-// id). The pending claim-check job is idempotent and self-cancels (it no-ops
-// once stage != ROUTING), so no explicit timer cancellation is needed here.
+// manager's Chatwoot queue). On a CLOSED_WON/CLOSED_LOST update, resolve the
+// deal's Chatwoot conversation(s) so re-engagement starts a fresh session.
+// Idempotent and re-fetches the row (the hook payload's fields depend on the
+// GraphQL selection set, so we only trust the id). The pending claim-check job
+// is idempotent and self-cancels (it no-ops once stage != ROUTING), so no
+// explicit timer cancellation is needed here.
 @Injectable()
 @WorkspaceQueryHook({
   key: `opportunity.updateOne`,
@@ -36,6 +38,11 @@ export class OpportunityUpdateOnePostQueryHook implements WorkspacePostQueryHook
       await this.claimService.syncStickyAssignment(authContext, ref.id);
       // Best-effort — never throws, so it can't block the sticky write above.
       await this.chatwootAssignmentService.pushAssignmentOnClaim(
+        authContext,
+        ref.id,
+      );
+      // On close, resolve the deal's Chatwoot conversation(s) (best-effort).
+      await this.chatwootAssignmentService.resolveConversationsOnClose(
         authContext,
         ref.id,
       );

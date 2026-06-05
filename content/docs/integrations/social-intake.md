@@ -417,7 +417,12 @@ services; `ChatwootApiModule` hosts the controller, imported by `ModulesModule`)
   must belong to the record), clean channel label, status + dates.
 - `ChatwootAssignmentService` — **on-claim push** (wired into the
   `opportunity.updateOne` claim hook): assigns **every** conversation on the deal
-  to the owner. Best-effort, account-token only.
+  to the owner. **Also resolve-on-close** (`resolveConversationsOnClose`, same
+  hook): on `CLOSED_WON`/`CLOSED_LOST` it resolves the deal's Chatwoot
+  conversation(s) so re-engagement starts a fresh session — works with all 10
+  inboxes set to `lock_to_single_conversation = false` (verified) so the next
+  inbound opens a NEW conversation → new activity → new opportunity. Best-effort,
+  account-token only.
 - `ChatwootAgentProvisioningService` — managers → agents **by email** (D10), JIT +
   bulk. `ChatwootController` (`rest/enso/chatwoot`, all `NoPermissionGuard` except
   `provision-agents` = `WORKSPACE_MEMBERS`): `GET conversations|messages|canned-
