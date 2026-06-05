@@ -372,6 +372,18 @@ optional-chaining). **Verified end-to-end: FB + IG → inboundActivity; idempote
 full pipeline → Opportunity `source=SOCIAL_DM` (routing parked — ARTIMA has no
 routing pool yet).**
 
+**Paid vs organic (2026-06-05).** Resolve derives
+`trafficType = (referral && (referral.source==='ADS' || referral.ad_id)) ? 'PAID'
+: 'SOCIAL'` and Create writes it; the opportunity's existing
+`coerceTrafficType(activity.trafficType)` then **freezes `firstTrafficType =
+PAID|SOCIAL`** at origin (no CRM change). Verified live (synthetic paid → `PAID` +
+parsed UTMs; organic → `SOCIAL`; test records cleaned up). ⚠️ **`trafficType` is the
+only writable attribution field added** — `ad_id` / `ref` / `isPaid` are **NOT
+fields on `InboundActivityCreateInput`** (a create with them → `BAD_USER_INPUT`,
+which briefly broke intake during the build until reverted). The ad_id / raw ref
+are retained in `submittedPayload` (the raw Chatwoot payload) for the DWH; `utm*`
+are parsed from `ref` as before. Workflow backup at `/tmp/social-workflow-backup.json`.
+
 **Stage-2 — Person merge-on-phone/email** (the legacy "Merging Contacts" analog;
 the identity-merge the CRM lacked). **Deployed + VERIFIED live** (2026-06-03;
 commits `dcc7930c58` + `774924fa8f` + `fdd626aee5` on main). A live-test bug — the
