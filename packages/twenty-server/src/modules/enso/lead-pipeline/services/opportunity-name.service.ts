@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { isNonEmptyString } from 'twenty-shared/utils';
+
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
@@ -53,9 +55,14 @@ export class OpportunityNameService {
             where: { id: input.personId },
           });
 
-          who =
-            person?.phones?.primaryPhoneNumber ??
-            `${person?.name?.firstName ?? ''} ${person?.name?.lastName ?? ''}`.trim();
+          // Phone OR name. primaryPhoneNumber defaults to '' (not null) for
+          // phone-less people (e.g. social contacts), so `??` would keep the empty
+          // string and drop the person — use isNonEmptyString to fall back to name.
+          const phone = person?.phones?.primaryPhoneNumber;
+
+          who = isNonEmptyString(phone)
+            ? phone
+            : `${person?.name?.firstName ?? ''} ${person?.name?.lastName ?? ''}`.trim();
         }
 
         let projectName = '';
