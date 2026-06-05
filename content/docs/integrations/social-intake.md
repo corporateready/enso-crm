@@ -384,6 +384,19 @@ which briefly broke intake during the build until reverted). The ad_id / raw ref
 are retained in `submittedPayload` (the raw Chatwoot payload) for the DWH; `utm*`
 are parsed from `ref` as before. Workflow backup at `/tmp/social-workflow-backup.json`.
 
+**Auto-resolve on window close (2026-06-05, live config).** Chatwoot account
+`settings.auto_resolve_after = 1440` (minutes = 24h; set via
+`PATCH /api/v1/accounts/1`, no `auto_resolve_message` so nothing is sent to the
+contact). With every inbox `lock_to_single_conversation = false`, a conversation
+auto-resolves after 24h of inactivity, so the contact's **re-engagement opens a
+NEW conversation** → `conversation_created` → a fresh `inboundActivity` carrying
+the new ad's attribution → pipeline (attach to the open same-project deal, or new
+deal if closed). This is the mechanism that captures mid-funnel re-engagement
+**without** a separate `messaging_referrals` branch. ⚠️ 24h matches today's real
+reply window; **bump to `10080` (7 days) once App Review enables the human-agent
+extension** (`auto_resolve_after` is stored under `settings`, not the deprecated
+top-level mirror).
+
 **Stage-2 — Person merge-on-phone/email** (the legacy "Merging Contacts" analog;
 the identity-merge the CRM lacked). **Deployed + VERIFIED live** (2026-06-03;
 commits `dcc7930c58` + `774924fa8f` + `fdd626aee5` on main). A live-test bug — the
