@@ -52,6 +52,16 @@ independently; opportunity-creation strategy can vary per activity `kind`.
   `firstLandingPage`, `roistatVisitId`, `source`, `project`, `pointOfContact`,
   and `m2Min`/`m2Max` from the activity's `m2Requested` (single requested size →
   both ends). Immutable on the deal thereafter.
+- **Last-touch snapshot on re-engagement** (2026-06-05): when a later activity
+  *attaches* to an open deal (re-engagement), the resolver refreshes the LAST-touch
+  fields — `lastTrafficType`, `lastUtm{Source,Medium,Campaign,Content,Term}`,
+  `lastTouchAt` — and bumps `reengagementCount` (first-touch stays frozen).
+  Best-effort: a failure there never undoes the attach. If the deal is already
+  claimed (out of ROUTING with an owner) the owner gets a "🔁 Lead re-engaged"
+  Google-Chat ping (`ManagerNotificationService.notifyReengagement`, best-effort).
+  Combined with Chatwoot auto-resolve (24h) + `lock_to_single_conversation=false`,
+  a returning contact opens a NEW conversation → new activity → this attach path,
+  so each re-engagement's paid/organic + campaign is captured as last-touch.
 - **`source` derives from the activity `kind`**, NOT `inboundActivity.source`
   (which is the *transport* enum: WEBSITE/ROISTAT/META/…). Map: FORM_SUBMISSION→
   FORM_WEBSITE, INCOMING_CALL/CALLBACK_REQUEST→CALL_INBOUND, SOCIAL_MESSAGE→

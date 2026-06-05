@@ -14,6 +14,7 @@ import {
   mapOpportunitySource,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 
 // Result of resolving an inbound activity to an opportunity.
@@ -58,6 +59,7 @@ export class OpportunityResolutionService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly opportunityNameService: OpportunityNameService,
+    private readonly managerNotificationService: ManagerNotificationService,
   ) {}
 
   async resolveFromActivity(
@@ -72,7 +74,11 @@ export class OpportunityResolutionService {
 
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
-    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+    // Set inside the attach branch when a re-engagement lands on an already-claimed
+    // deal; the owner is pinged AFTER the workspace-context block (best-effort).
+    let reengagementNotify: { managerId: string } | null = null;
+
+    const result = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const activityRepository =
           await this.globalWorkspaceOrmManager.getRepository<any>(
@@ -137,8 +143,38 @@ export class OpportunityResolutionService {
             { opportunityId: existing.id },
           );
 
+          // Re-engagement: refresh the LAST-touch attribution snapshot (first-touch
+          // stays frozen) + bump the counter. Best-effort — a failure here must not
+          // undo the attach above.
+          try {
+            await opportunityRepository.update(
+              { id: existing.id },
+              {
+                lastTrafficType: coerceTrafficType(activity.trafficType),
+                lastUtmSource: activity.utmSource ?? null,
+                lastUtmMedium: activity.utmMedium ?? null,
+                lastUtmCampaign: activity.utmCampaign ?? null,
+                lastUtmContent: activity.utmContent ?? null,
+                lastUtmTerm: activity.utmTerm ?? null,
+                lastTouchAt: new Date().toISOString(),
+                reengagementCount: (existing.reengagementCount ?? 0) + 1,
+                updatedBy: SYSTEM_ACTOR,
+              },
+            );
+          } catch (error) {
+            this.logger.warn(
+              `Last-touch update failed for deal ${existing.id}: ${(error as Error).message}`,
+            );
+          }
+
+          // Ping the owner only when the deal is already claimed (out of ROUTING
+          // with an owner) — during ROUTING the routing flow already notifies.
+          if (isDefined(existing.ownerId) && existing.stage !== 'ROUTING') {
+            reengagementNotify = { managerId: existing.ownerId };
+          }
+
           this.logger.log(
-            `Activity ${activityId} attached to existing opportunity ${existing.id}.`,
+            `Activity ${activityId} attached to existing opportunity ${existing.id} (re-engagement).`,
           );
 
           return { opportunityId: existing.id, created: false };
@@ -204,5 +240,20 @@ export class OpportunityResolutionService {
       },
       systemAuthContext,
     );
+
+    if (isDefined(reengagementNotify) && isDefined(result)) {
+      try {
+        await this.managerNotificationService.notifyReengagement(authContext, {
+          opportunityId: result.opportunityId,
+          managerId: reengagementNotify.managerId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Re-engagement notify failed for deal ${result.opportunityId}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return result;
   }
 }
