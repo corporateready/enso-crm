@@ -26,6 +26,8 @@ export type DealConversationSummary = {
   projectName: string | null;
   createdAt: string | null;
   lastActivityAt: number | null;
+  // Whether the channel's reply window is currently open (see ChatwootConversationMeta).
+  canReply: boolean | null;
 };
 
 // "INSTAGRAM" / "Channel::FacebookPage" → "Instagram" / "Facebook".
@@ -140,6 +142,7 @@ export class ChatwootMessagingService {
         let contactName: string | null = null;
         let metaChannel: string | null = null;
         let status: string | null = null;
+        let canReply: boolean | null = null;
         let createdAt: string | null = conversation.createdAt;
         let lastActivityAt: number | null = conversation.createdAt
           ? Date.parse(conversation.createdAt)
@@ -153,6 +156,7 @@ export class ChatwootMessagingService {
           contactName = meta.contactName;
           metaChannel = meta.channelType;
           status = meta.status;
+          canReply = meta.canReply;
           if (isDefined(meta.createdAt)) {
             createdAt = new Date(meta.createdAt).toISOString();
           }
@@ -172,6 +176,7 @@ export class ChatwootMessagingService {
           projectName: conversation.projectName,
           createdAt,
           lastActivityAt,
+          canReply,
         };
       }),
     );
@@ -181,12 +186,19 @@ export class ChatwootMessagingService {
     );
   }
 
-  async listMessages(
+  // The selected conversation's messages plus its live reply-window state
+  // (canReply / status) so the panel can gate the composer. One authz check,
+  // then messages + meta in parallel.
+  async getThread(
     workspaceId: string,
     recordType: ChatwootRecordType,
     recordId: string,
     conversationId: string,
-  ): Promise<ChatwootMessage[]> {
+  ): Promise<{
+    messages: ChatwootMessage[];
+    canReply: boolean | null;
+    status: string | null;
+  }> {
     await this.assertConversationOnRecord(
       workspaceId,
       recordType,
@@ -194,7 +206,12 @@ export class ChatwootMessagingService {
       conversationId,
     );
 
-    return this.chatwootClient.listMessages(conversationId);
+    const [messages, meta] = await Promise.all([
+      this.chatwootClient.listMessages(conversationId),
+      this.chatwootClient.getConversationMeta(conversationId),
+    ]);
+
+    return { messages, canReply: meta.canReply, status: meta.status };
   }
 
   async sendReply(params: {

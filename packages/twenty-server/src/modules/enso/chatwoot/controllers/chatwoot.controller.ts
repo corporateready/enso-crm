@@ -75,14 +75,14 @@ export class ChatwootController {
     @Query('conversationId') conversationId: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ) {
-    const messages = await this.messagingService.listMessages(
+    const thread = await this.messagingService.getThread(
       workspace.id,
       toRecordType(recordType),
       recordId,
       conversationId,
     );
 
-    return { messages };
+    return thread;
   }
 
   // Does this record have any Chatwoot conversation? Drives tab visibility.

@@ -461,7 +461,29 @@ from the account API IS the display id used everywhere.
 **Deliberately omitted:** Chatwoot assign/resolve/private-notes in the panel
 (assignment is CRM-driven; deal stage tracks lifecycle).
 
-**Phase-5 polish — added (pending live verify):** (1) **websocket push** — the
+**Messaging windows + re-engagement (model):** Meta enforces a **24-hour reply
+window** (extended to **7 days** via the human-agent tag) after the contact's last
+message on FB/IG; you can **never message first**, and re-opening outside the
+window needs message tags or **paid** (sponsored messages) — a later outbound
+build. The panel consumes Chatwoot's **`can_reply`** flag (it already encodes the
+window incl. human-agent) to gate the composer — we don't reimplement Meta's
+policy. **Chatwoot resolve/close is internal only** (NOT synced to Meta; there is
+no "close" on a Meta thread) — a new inbound reopens it, or, with the inbox set to
+**"lock to single conversation = OFF"**, opens a NEW conversation. Re-engagement
+attribution model (decided): **first-touch frozen** on the opportunity forever;
+**every re-engagement = its own `inboundActivity`** with its own UTMs; **attach vs
+new** = the person×project OPEN-deal dedup (open same-project → attach + update
+last-touch + re-notify owner; none open / different project → new opportunity);
+**resolve the chat on deal close (won/lost)** so re-engagement starts a fresh
+session/deal (linked via `relatedOpportunity`). ⚠️ Capture gap: intake fires on
+`conversation_created` only, so mid-OPEN-deal re-engagement in the *same*
+conversation isn't captured as a new activity — needs referral-event capture
+(Meta sends a fresh `referral` per ad re-click) as a Phase-2 build.
+
+**Phase-5 polish — added (pending live verify):** (0) **reply-window UI** — the
+panel gates the composer on Chatwoot `can_reply` (server `getThread` returns
+`canReply`+`status`; front disables input + shows a "window closed" notice).
+(1) **websocket push** — the
 panel now subscribes to Chatwoot ActionCable (`pubsub_token`) with a poll
 fallback (server: `ChatwootClientService.websocketUrl`/`getUserPubsubToken`,
 `ChatwootMessagingService.getRealtimeCredentials`, `GET rest/enso/chatwoot/realtime`;

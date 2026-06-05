@@ -86,6 +86,7 @@ type Conversation = {
   projectName: string | null;
   createdAt: string | null;
   lastActivityAt: number | null;
+  canReply: boolean | null;
 };
 
 type Attachment = {
@@ -218,6 +219,18 @@ const StyledInputRow = styled.div`
   gap: ${themeCssVariables.spacing[2]};
 `;
 
+const StyledWindowNotice = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.secondary};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.secondary};
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  gap: ${themeCssVariables.spacing[2]};
+  line-height: 1.4;
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
+`;
+
 const StyledTextarea = styled.textarea`
   background: ${themeCssVariables.background.secondary};
   border: 1px solid ${themeCssVariables.border.color.medium};
@@ -246,6 +259,11 @@ const StyledIconButton = styled.button`
   height: 36px;
   justify-content: center;
   width: 36px;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
 `;
 
 const StyledSend = styled.button`
@@ -556,6 +574,10 @@ export const ChatwootConversationEmbed = () => {
 
   const [realtime, setRealtime] = useState<Realtime | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  // Whether the channel's reply window is open. Default true; only the server
+  // explicitly reporting `false` (Chatwoot's can_reply) closes the composer —
+  // never block on an unknown/null.
+  const [canReply, setCanReply] = useState(true);
 
   const recordQuery = `recordType=${recordType}&recordId=${recordId}`;
 
@@ -588,7 +610,10 @@ export const ChatwootConversationEmbed = () => {
       headers: authHeaders(),
     })
       .then((r) => (r.ok ? r.json() : { messages: [] }))
-      .then((data: { messages?: Message[] }) => setMessages(data.messages ?? []))
+      .then((data: { messages?: Message[]; canReply?: boolean | null }) => {
+        setMessages(data.messages ?? []);
+        setCanReply(data.canReply !== false);
+      })
       .catch(() => {});
   }, [recordId, recordQuery, selectedId]);
 
@@ -903,6 +928,8 @@ export const ChatwootConversationEmbed = () => {
   }
 
   const selected = conversations.find((c) => c.conversationId === selectedId);
+  const contactLabel =
+    selected?.personName ?? selected?.contactName ?? t`the contact`;
 
   // DETAIL view — the selected conversation's thread + composer.
   return (
@@ -935,6 +962,7 @@ export const ChatwootConversationEmbed = () => {
             setMessages([]);
             setDraft('');
             setFiles([]);
+            setCanReply(true);
           }}
         >
           {t`← All chats`}
@@ -1038,9 +1066,17 @@ export const ChatwootConversationEmbed = () => {
           </StyledPopover>
         )}
 
+        {!canReply && (
+          <StyledWindowNotice>
+            ⏳{' '}
+            {t`The reply window is closed — ${contactLabel} needs to send a new message before you can reply.`}
+          </StyledWindowNotice>
+        )}
+
         <StyledInputRow>
           <StyledIconButton
             title={t`Emoji`}
+            disabled={!canReply}
             onClick={() => setShowEmoji((v) => !v)}
           >
             🙂
@@ -1051,6 +1087,7 @@ export const ChatwootConversationEmbed = () => {
               type="file"
               multiple
               hidden
+              disabled={!canReply}
               onChange={(event) => {
                 const picked = Array.from(event.target.files ?? []);
 
@@ -1061,7 +1098,8 @@ export const ChatwootConversationEmbed = () => {
           </StyledIconButton>
           <StyledTextarea
             value={draft}
-            placeholder={t`Type a reply…`}
+            disabled={!canReply}
+            placeholder={canReply ? t`Type a reply…` : t`Replies are paused`}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -1071,7 +1109,11 @@ export const ChatwootConversationEmbed = () => {
             }}
           />
           <StyledSend
-            disabled={sending || (draft.trim() === '' && files.length === 0)}
+            disabled={
+              sending ||
+              !canReply ||
+              (draft.trim() === '' && files.length === 0)
+            }
             onClick={send}
           >
             {sending ? t`Sending…` : t`Send`}
