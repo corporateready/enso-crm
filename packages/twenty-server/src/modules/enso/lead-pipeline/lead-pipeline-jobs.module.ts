@@ -8,6 +8,8 @@ import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/servi
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/services/opportunity-resolution.service';
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
+import { PersonFirstTouchService } from 'src/modules/enso/lead-pipeline/services/person-first-touch.service';
+import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
 
 // WORKER side of the lead pipeline: the four BullMQ jobs (resolve → route →
 // notify + the delayed claim-check) and the services they depend on. Imported
@@ -19,6 +21,8 @@ import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/servic
     OpportunityNameService,
     OpportunityResolutionService,
     OpportunityRoutingService,
+    PersonFirstTouchService,
+    PersonTimelineService,
     ManagerNotificationService,
     ResolveOpportunityFromActivityJob,
     RouteOpportunityJob,
