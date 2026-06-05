@@ -1,5 +1,6 @@
 import { EventRowActivity } from '@/activities/timeline-activities/rows/activity/components/EventRowActivity';
 import { EventRowCalendarEvent } from '@/activities/timeline-activities/rows/calendar/components/EventRowCalendarEvent';
+import { EventRowEnsoLinkedRecord } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord';
 import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent.types';
 import { EventRowMainObject } from '@/activities/timeline-activities/rows/main-object/components/EventRowMainObject';
 import { EventRowMessage } from '@/activities/timeline-activities/rows/message/components/EventRowMessage';
@@ -55,6 +56,19 @@ export const EventRowDynamicComponent = ({
           linkedObjectMetadataItem={linkedObjectMetadataItem}
           authorFullName={authorFullName}
           objectNameSingular={CoreObjectNameSingular.Note}
+          createdAt={createdAt}
+        />
+      );
+    // ENSO — inbound activities + opportunities surfaced on the person's timeline.
+    case 'inboundActivity':
+    case 'opportunity':
+      return (
+        <EventRowEnsoLinkedRecord
+          labelIdentifierValue={labelIdentifierValue}
+          event={event}
+          mainObjectMetadataItem={mainObjectMetadataItem}
+          linkedObjectMetadataItem={linkedObjectMetadataItem}
+          authorFullName={authorFullName}
           createdAt={createdAt}
         />
       );
