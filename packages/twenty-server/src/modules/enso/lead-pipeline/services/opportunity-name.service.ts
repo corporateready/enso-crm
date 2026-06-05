@@ -3,15 +3,17 @@ import { Injectable } from '@nestjs/common';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
-import { OPPORTUNITY_SOURCE_LABEL } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 
-// Opportunity.name is a plain scalar TEXT field, but for inbound-created deals
-// we want a meaningful label rather than "Untitled". Mirrors the legacy Attio
-// convention: "<source> | <phone or name> | <project>"
-// e.g. "Form | +37379628432 | ARTIMA Business & Lifestyle".
+// Opportunity.name is a plain scalar TEXT field, but for inbound-created deals we
+// want a meaningful label rather than "Untitled": "Deal | <phone or name> | <project>"
+// e.g. "Deal | +37379628432 | ARTIMA Business & Lifestyle". (The channel/source
+// lives in the Opportunity's Source field, so it isn't repeated in the name.)
+const OPPORTUNITY_NAME_PREFIX = 'Deal';
+
 type OpportunityNameInput = {
   personId?: string | null;
   projectId?: string | null;
+  // Accepted for backwards compatibility with callers; no longer part of the name.
   source?: string | null;
 };
 
@@ -37,9 +39,6 @@ export class OpportunityNameService {
 
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
-        const sourceLabel =
-          OPPORTUNITY_SOURCE_LABEL[input.source ?? 'OTHER'] ?? 'Lead';
-
         let who = '';
 
         if (input.personId) {
@@ -76,7 +75,9 @@ export class OpportunityNameService {
           projectName = project?.name ?? '';
         }
 
-        const parts = [sourceLabel, who, projectName].filter(Boolean);
+        const parts = [OPPORTUNITY_NAME_PREFIX, who, projectName].filter(
+          Boolean,
+        );
 
         return parts.length > 0 ? parts.join(' | ') : undefined;
       },
