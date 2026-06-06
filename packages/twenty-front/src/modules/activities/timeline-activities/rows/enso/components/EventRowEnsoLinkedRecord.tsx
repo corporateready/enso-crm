@@ -1,5 +1,6 @@
 import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent.types';
 import { EventRowItem } from '@/activities/timeline-activities/rows/components/EventRowItem';
+import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { isNonEmptyString } from '@sniptt/guards';
@@ -38,6 +39,17 @@ const StyledRow = styled.div`
   overflow: hidden;
 `;
 
+// Clickable record label — opens the linked inbound activity / opportunity in
+// the side panel, matching how the note/task timeline rows behave.
+const StyledLinkedRecord = styled.span`
+  color: ${themeCssVariables.font.color.primary};
+  cursor: pointer;
+  overflow: hidden;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
 export const EventRowEnsoLinkedRecord = ({
   authorFullName,
   event,
@@ -62,13 +74,33 @@ export const EventRowEnsoLinkedRecord = ({
         ? t`was updated by`
         : `${eventAction} ${t`by`}`;
 
+  const { openRecordInSidePanel } = useOpenRecordInSidePanel();
+
+  // Only clickable when we can resolve both the linked object type and record.
+  const linkedRecordId = event.linkedRecordId;
+  const objectNameSingular = linkedObjectMetadataItem?.nameSingular;
+
+  const recordLabel = `${linkedObjectLabel} ${cachedName}`;
+
   return (
     <StyledMainContainer>
       <StyledRowContainer>
         <StyledRow>
-          <EventRowItem>
-            {linkedObjectLabel} {cachedName}
-          </EventRowItem>
+          {isNonEmptyString(linkedRecordId) &&
+          isNonEmptyString(objectNameSingular) ? (
+            <StyledLinkedRecord
+              onClick={() =>
+                openRecordInSidePanel({
+                  recordId: linkedRecordId,
+                  objectNameSingular,
+                })
+              }
+            >
+              {recordLabel}
+            </StyledLinkedRecord>
+          ) : (
+            <EventRowItem>{recordLabel}</EventRowItem>
+          )}
           <EventRowItem variant="action">{actionLabel}</EventRowItem>
           <EventRowItem>{authorFullName}</EventRowItem>
         </StyledRow>
