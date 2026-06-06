@@ -4,6 +4,10 @@ import {
   ChatwootConversationEmbed,
   ENSO_CHATWOOT_CONVERSATION_MARKER,
 } from '@/page-layout/widgets/iframe/components/ChatwootConversationEmbed';
+import {
+  ENSO_PERSON_CONSENT_MARKER,
+  PersonConsentCard,
+} from '@/page-layout/widgets/iframe/components/PersonConsentCard';
 import { PageLayoutWidgetNoDataDisplay } from '@/page-layout/widgets/components/PageLayoutWidgetNoDataDisplay';
 import { WidgetSkeletonLoader } from '@/page-layout/widgets/components/WidgetSkeletonLoader';
 import { styled } from '@linaria/react';
@@ -81,6 +85,11 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
   // hooks above to keep hook order stable (rules-of-hooks).
   if (isDefined(url) && url.includes(ENSO_CHATWOOT_CONVERSATION_MARKER)) {
     return <ChatwootConversationEmbed />;
+  }
+
+  // ENSO sentinel — manager consent card on the Person record.
+  if (isDefined(url) && url.includes(ENSO_PERSON_CONSENT_MARKER)) {
+    return <PersonConsentCard />;
   }
 
   const handleIframeLoad = () => {
