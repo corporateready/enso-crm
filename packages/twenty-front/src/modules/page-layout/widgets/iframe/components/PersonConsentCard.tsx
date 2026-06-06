@@ -37,11 +37,18 @@ const CONSENT_GQL_FIELDS = {
 };
 
 const StyledContainer = styled.div`
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: ${themeCssVariables.spacing[3]};
+  max-width: 100%;
+  overflow-x: hidden;
   padding: ${themeCssVariables.spacing[2]};
   width: 100%;
+
+  & * {
+    box-sizing: border-box;
+  }
 `;
 
 const StyledHint = styled.div`
@@ -97,7 +104,9 @@ const StyledChip = styled.button<{ $active: boolean }>`
 const StyledAddRow = styled.div`
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: ${themeCssVariables.spacing[2]};
+  width: 100%;
 `;
 
 const StyledSelect = styled.select`
@@ -105,7 +114,10 @@ const StyledSelect = styled.select`
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
   color: ${themeCssVariables.font.color.primary};
-  flex: 1;
+  // flex item must be allowed to shrink below its content width, otherwise it
+  // pushes the Add button off the right edge of the panel.
+  flex: 1 1 auto;
+  min-width: 0;
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
 `;
 
@@ -115,6 +127,7 @@ const StyledAddButton = styled.button`
   border-radius: ${themeCssVariables.border.radius.sm};
   color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
+  flex: 0 0 auto;
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
 `;
 
