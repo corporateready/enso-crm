@@ -72,18 +72,33 @@ export class PersonProjectConsentAuditService {
 
     for (const channel of touchedChannels) {
       const newValue = data[`${channel}MarketingConsent`];
-      const wasGranted = existing?.[`${channel}MarketingConsent`] === true;
+      const currentlyGranted =
+        existing?.[`${channel}MarketingConsent`] === true;
+      // Whether this channel was EVER granted (a real consentedAt exists), even
+      // if currently revoked. This is what protects expensive form provenance.
+      const hadPriorConsent = isDefined(
+        existing?.[`${channel}MarketingConsentedAt`],
+      );
 
-      if (newValue === true && !wasGranted) {
-        // Manual grant. Default the source to VERBAL only when the caller did
-        // not specify one (so an explicit source — DOUBLE_OPT_IN, etc. — wins).
-        if (!isDefined(data[`${channel}MarketingConsentSource`])) {
-          stamps[`${channel}MarketingConsentSource`] = 'VERBAL';
+      if (newValue === true && !currentlyGranted) {
+        if (hadPriorConsent) {
+          // Re-grant of a channel that was consented before (e.g. a form
+          // consent that got revoked, or an accidental toggle): just clear the
+          // revoke. NEVER overwrite the original source/date — that's the
+          // provenance we must preserve (e.g. FORM_WEBSITE + the form date).
+          stamps[`${channel}MarketingConsentRevokedAt`] = null;
+        } else {
+          // First-ever grant for this channel. Default source to VERBAL unless
+          // the caller specified one (FORM_WEBSITE from the pipeline, etc.).
+          if (!isDefined(data[`${channel}MarketingConsentSource`])) {
+            stamps[`${channel}MarketingConsentSource`] = 'VERBAL';
+          }
+          stamps[`${channel}MarketingConsentedAt`] = nowIso;
+          stamps[`${channel}MarketingConsentRevokedAt`] = null;
         }
-        stamps[`${channel}MarketingConsentedAt`] = nowIso;
-        stamps[`${channel}MarketingConsentRevokedAt`] = null;
-      } else if (newValue === false && wasGranted) {
-        // Manual revoke.
+      } else if (newValue === false && currentlyGranted) {
+        // Revoke. Stamp revokedAt but KEEP the original source/consentedAt as
+        // the historical record of how/when consent was first obtained.
         stamps[`${channel}MarketingConsentRevokedAt`] = nowIso;
       }
     }
