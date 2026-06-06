@@ -2,19 +2,18 @@ import { useLingui } from '@lingui/react/macro';
 import { styled } from '@linaria/react';
 import { useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
-import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 
-// ENSO — manager-facing marketing-consent card on the Person record. A manager
-// who gets a phone number in conversation records consent here in one place:
-// toggle a channel and the personProjectConsent write-audit hook stamps
-// source=VERBAL + consentedAt (grant) or revokedAt (revoke), with updatedBy =
-// the manager. Per person × project (consent is purpose-scoped). Surfaced via
-// the IframeWidget marker, like the Chatwoot embed.
+// ENSO — manager-facing marketing-consent card on the Person record. READ-ONLY
+// by default (a stray click must not change consent): each channel shows its
+// status + source + date. An explicit Edit mode enables changes; granting is
+// provenance-safe (the audit hook never overwrites an existing grant's
+// source/date) and revoking asks for confirmation. Per person × project.
 export const ENSO_PERSON_CONSENT_MARKER = '__enso_person_consent';
 
 const CHANNELS = [
@@ -24,16 +23,50 @@ const CHANNELS = [
   { key: 'email', label: 'Email' },
 ] as const;
 
+const SOURCE_LABELS: Record<string, string> = {
+  FORM_WEBSITE: 'Form',
+  LEAD_AD: 'Lead Ad',
+  VERBAL: 'Verbal',
+  DOUBLE_OPT_IN: 'Double opt-in',
+  MIGRATION: 'Imported',
+  OTHER: 'Other',
+};
+
 const CONSENT_GQL_FIELDS = {
   id: true,
   name: true,
   projectId: true,
   emailMarketingConsent: true,
-  smsMarketingConsent: true,
-  whatsappMarketingConsent: true,
-  callMarketingConsent: true,
   emailMarketingConsentSource: true,
+  emailMarketingConsentedAt: true,
+  emailMarketingConsentRevokedAt: true,
+  smsMarketingConsent: true,
+  smsMarketingConsentSource: true,
+  smsMarketingConsentedAt: true,
+  smsMarketingConsentRevokedAt: true,
+  whatsappMarketingConsent: true,
+  whatsappMarketingConsentSource: true,
+  whatsappMarketingConsentedAt: true,
+  whatsappMarketingConsentRevokedAt: true,
+  callMarketingConsent: true,
   callMarketingConsentSource: true,
+  callMarketingConsentedAt: true,
+  callMarketingConsentRevokedAt: true,
+};
+
+const formatDate = (value: unknown): string => {
+  if (typeof value !== 'string' || value === '') {
+    return '';
+  }
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
 };
 
 const StyledContainer = styled.div`
@@ -51,24 +84,35 @@ const StyledContainer = styled.div`
   }
 `;
 
+const StyledHeader = styled.div`
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+`;
+
 const StyledHint = styled.div`
   color: ${themeCssVariables.font.color.tertiary};
   font-size: ${themeCssVariables.font.size.xs};
 `;
 
+const StyledEditButton = styled.button`
+  background: transparent;
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: ${themeCssVariables.font.size.sm};
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+`;
+
 const StyledRow = styled.div`
-  align-items: center;
   border: 1px solid ${themeCssVariables.border.color.light};
   border-radius: ${themeCssVariables.border.radius.md};
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: ${themeCssVariables.spacing[2]};
-  justify-content: space-between;
   padding: ${themeCssVariables.spacing[2]};
-  @media (max-width: ${MOBILE_VIEWPORT}px) {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 `;
 
 const StyledProjectName = styled.div`
@@ -79,26 +123,34 @@ const StyledProjectName = styled.div`
   white-space: nowrap;
 `;
 
-const StyledChips = styled.div`
+const StyledChannelLine = styled.div`
+  align-items: center;
   display: flex;
-  gap: ${themeCssVariables.spacing[1]};
-  flex-wrap: wrap;
+  gap: ${themeCssVariables.spacing[2]};
+  justify-content: space-between;
 `;
 
-const StyledChip = styled.button<{ $active: boolean }>`
-  background: ${({ $active }) =>
-    $active
-      ? themeCssVariables.color.green
-      : themeCssVariables.background.tertiary};
-  border: none;
-  border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${({ $active }) =>
-    $active
-      ? themeCssVariables.font.color.inverted
-      : themeCssVariables.font.color.secondary};
-  cursor: pointer;
+const StyledChannelLabel = styled.span`
+  color: ${themeCssVariables.font.color.primary};
   font-size: ${themeCssVariables.font.size.sm};
-  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+`;
+
+// $state: 'on' (green) | 'off' (revoked, danger) | 'none' (not set, muted).
+const StyledStatus = styled.button<{ $state: string; $editable: boolean }>`
+  background: transparent;
+  border: none;
+  color: ${({ $state }) =>
+    $state === 'on'
+      ? themeCssVariables.color.green
+      : $state === 'off'
+        ? themeCssVariables.font.color.danger
+        : themeCssVariables.font.color.tertiary};
+  cursor: ${({ $editable }) => ($editable ? 'pointer' : 'default')};
+  font-size: ${themeCssVariables.font.size.sm};
+  padding: 0;
+  text-align: right;
+  text-decoration: ${({ $editable }) => ($editable ? 'underline' : 'none')};
+  text-underline-offset: 2px;
 `;
 
 const StyledAddRow = styled.div`
@@ -114,8 +166,6 @@ const StyledSelect = styled.select`
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
   color: ${themeCssVariables.font.color.primary};
-  // flex item must be allowed to shrink below its content width, otherwise it
-  // pushes the Add button off the right edge of the panel.
   flex: 1 1 auto;
   min-width: 0;
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
@@ -139,6 +189,7 @@ export const PersonConsentCard = () => {
     targetRecordIdentifier?.targetObjectNameSingular === 'person';
 
   const [addProjectId, setAddProjectId] = useState('');
+  const [editMode, setEditMode] = useState(false);
 
   const { records: consents = [], loading } = useFindManyRecords({
     objectNameSingular: 'personProjectConsent',
@@ -170,23 +221,56 @@ export const PersonConsentCard = () => {
     (project) => !consentedProjectIds.has(project.id),
   );
 
+  const channelState = (consent: Record<string, unknown>, key: string) => {
+    const granted = consent[`${key}MarketingConsent`] === true;
+    const revokedAt = consent[`${key}MarketingConsentRevokedAt`];
+    const consentedAt = consent[`${key}MarketingConsentedAt`];
+    const source = consent[`${key}MarketingConsentSource`] as string;
+
+    if (granted) {
+      const sourceLabel = SOURCE_LABELS[source] ?? source ?? t`Consent`;
+      const date = formatDate(consentedAt);
+
+      return { state: 'on', text: date ? `${sourceLabel} · ${date}` : sourceLabel };
+    }
+
+    if (isDefined(revokedAt)) {
+      const date = formatDate(revokedAt);
+
+      return { state: 'off', text: date ? t`Opted out · ${date}` : t`Opted out` };
+    }
+
+    return { state: 'none', text: t`Not set` };
+  };
+
   const toggleChannel = async (
     consent: Record<string, unknown>,
-    channelKey: string,
+    key: string,
+    label: string,
+    projectLabel: string,
   ) => {
-    const field = `${channelKey}MarketingConsent`;
-    const nextValue = consent[field] !== true;
+    const isOn = consent[`${key}MarketingConsent`] === true;
+    const nextValue = !isOn;
+
+    // Revoking opts the person out — make it deliberate.
+    if (
+      !nextValue &&
+      // eslint-disable-next-line no-alert
+      !window.confirm(
+        t`Opt ${projectLabel} out of ${label}? This records an opt-out.`,
+      )
+    ) {
+      return;
+    }
 
     await updateOneRecord({
       objectNameSingular: 'personProjectConsent',
       idToUpdate: consent.id as string,
-      updateOneRecordInput: { [field]: nextValue },
-      optimisticRecord: { [field]: nextValue },
+      updateOneRecordInput: { [`${key}MarketingConsent`]: nextValue },
+      optimisticRecord: { [`${key}MarketingConsent`]: nextValue },
     });
   };
 
-  // New consent for a project defaults to "call" on — the "they gave a number
-  // to be called" case. The manager can toggle the other channels after.
   const addConsent = async () => {
     if (addProjectId === '' || consentedProjectIds.has(addProjectId)) {
       return;
@@ -203,32 +287,63 @@ export const PersonConsentCard = () => {
 
   return (
     <StyledContainer>
-      <StyledHint>
-        {t`Record consent per project. Turning a channel on logs verbal consent (source VERBAL) with the date and who recorded it; turning it off records the opt-out.`}
-      </StyledHint>
+      <StyledHeader>
+        <StyledHint>
+          {editMode
+            ? t`Click a channel to grant; granting keeps any existing form consent. Revoking asks to confirm.`
+            : t`Read-only. Click Edit to record verbal consent or an opt-out.`}
+        </StyledHint>
+        {consents.length > 0 && (
+          <StyledEditButton onClick={() => setEditMode((value) => !value)}>
+            {editMode ? t`Done` : t`Edit`}
+          </StyledEditButton>
+        )}
+      </StyledHeader>
 
-      {loading ? (
-        <StyledHint>{t`Loading…`}</StyledHint>
-      ) : (
-        consents.map((consent) => (
-          <StyledRow key={consent.id as string}>
-            <StyledProjectName>
-              {(consent.name as string) ?? t`Consent`}
-            </StyledProjectName>
-            <StyledChips>
-              {CHANNELS.map((channel) => (
-                <StyledChip
-                  key={channel.key}
-                  $active={consent[`${channel.key}MarketingConsent`] === true}
-                  onClick={() => toggleChannel(consent, channel.key)}
-                >
-                  {channel.label}
-                </StyledChip>
-              ))}
-            </StyledChips>
-          </StyledRow>
-        ))
-      )}
+      {loading
+        ? <StyledHint>{t`Loading…`}</StyledHint>
+        : consents.map((consent) => {
+            const projectLabel =
+              ((consent.name as string) ?? '').split(' · ')[1] ??
+              (consent.name as string) ??
+              t`project`;
+
+            return (
+              <StyledRow key={consent.id as string}>
+                <StyledProjectName>
+                  {(consent.name as string) ?? t`Consent`}
+                </StyledProjectName>
+                {CHANNELS.map((channel) => {
+                  const { state, text } = channelState(consent, channel.key);
+
+                  return (
+                    <StyledChannelLine key={channel.key}>
+                      <StyledChannelLabel>{channel.label}</StyledChannelLabel>
+                      <StyledStatus
+                        $state={state}
+                        $editable={editMode}
+                        onClick={() =>
+                          editMode &&
+                          toggleChannel(
+                            consent,
+                            channel.key,
+                            channel.label,
+                            projectLabel,
+                          )
+                        }
+                      >
+                        {editMode
+                          ? state === 'on'
+                            ? t`${text} — opt out`
+                            : t`Grant`
+                          : text}
+                      </StyledStatus>
+                    </StyledChannelLine>
+                  );
+                })}
+              </StyledRow>
+            );
+          })}
 
       {addableProjects.length > 0 && (
         <StyledAddRow>
