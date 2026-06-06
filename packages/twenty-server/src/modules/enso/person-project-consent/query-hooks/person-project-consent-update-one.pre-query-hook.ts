@@ -7,6 +7,7 @@ import { type UpdateOneResolverArgs } from 'src/engine/api/graphql/workspace-res
 
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { PersonProjectConsentAuditService } from 'src/modules/enso/person-project-consent/services/person-project-consent-audit.service';
 import { PersonProjectConsentNameService } from 'src/modules/enso/person-project-consent/services/person-project-consent-name.service';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class PersonProjectConsentUpdateOnePreQueryHook
 {
   constructor(
     private readonly personProjectConsentNameService: PersonProjectConsentNameService,
+    private readonly personProjectConsentAuditService: PersonProjectConsentAuditService,
   ) {}
 
   async execute(
@@ -27,23 +29,31 @@ export class PersonProjectConsentUpdateOnePreQueryHook
       return payload;
     }
 
-    // Only recompute when a relation that feeds the name actually changed.
-    const touchesNameInputs =
-      'personId' in payload.data || 'projectId' in payload.data;
+    let data = payload.data;
 
-    if (!touchesNameInputs) {
-      return payload;
+    // Recompute the composite name only when a relation that feeds it changed.
+    if ('personId' in data || 'projectId' in data) {
+      const name = await this.personProjectConsentNameService.computeName(
+        authContext,
+        { ...data, id: payload.id },
+      );
+
+      if (isDefined(name)) {
+        data = { ...data, name };
+      }
     }
 
-    const name = await this.personProjectConsentNameService.computeName(
-      authContext,
-      { ...payload.data, id: payload.id },
-    );
+    // Stamp consent audit fields when a manager toggles a channel (grant →
+    // VERBAL + consentedAt; revoke → revokedAt). No-op if no channel changed.
+    const auditStamps =
+      await this.personProjectConsentAuditService.computeAuditStamps(
+        authContext,
+        data,
+        payload.id,
+      );
 
-    if (!isDefined(name)) {
-      return payload;
-    }
+    data = { ...data, ...auditStamps };
 
-    return { ...payload, data: { ...payload.data, name } };
+    return { ...payload, data };
   }
 }
