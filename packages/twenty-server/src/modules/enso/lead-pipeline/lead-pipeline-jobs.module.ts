@@ -4,12 +4,14 @@ import { ClaimCheckJob } from 'src/modules/enso/lead-pipeline/jobs/claim-check.j
 import { NotifyManagerAssignmentJob } from 'src/modules/enso/lead-pipeline/jobs/notify-manager-assignment.job';
 import { ResolveOpportunityFromActivityJob } from 'src/modules/enso/lead-pipeline/jobs/resolve-opportunity-from-activity.job';
 import { RouteOpportunityJob } from 'src/modules/enso/lead-pipeline/jobs/route-opportunity.job';
+import { ConsentFromActivityService } from 'src/modules/enso/lead-pipeline/services/consent-from-activity.service';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/services/opportunity-resolution.service';
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
 import { PersonFirstTouchService } from 'src/modules/enso/lead-pipeline/services/person-first-touch.service';
 import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
+import { PersonProjectConsentNameService } from 'src/modules/enso/person-project-consent/services/person-project-consent-name.service';
 
 // WORKER side of the lead pipeline: the four BullMQ jobs (resolve → route →
 // notify + the delayed claim-check) and the services they depend on. Imported
@@ -23,6 +25,8 @@ import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/p
     OpportunityRoutingService,
     PersonFirstTouchService,
     PersonTimelineService,
+    ConsentFromActivityService,
+    PersonProjectConsentNameService,
     ManagerNotificationService,
     ResolveOpportunityFromActivityJob,
     RouteOpportunityJob,
