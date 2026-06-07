@@ -1,6 +1,8 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { useLingui } from '@lingui/react/macro';
 import { styled } from '@linaria/react';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { isDefined } from 'twenty-shared/utils';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -16,12 +18,17 @@ import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingC
 // source/date) and revoking asks for confirmation. Per person × project.
 export const ENSO_PERSON_CONSENT_MARKER = '__enso_person_consent';
 
+// `contact` says which person field backs the channel: a channel is only
+// "Not provided" (we have the means to reach them but no consent) when that
+// contact actually exists on the person.
 const CHANNELS = [
-  { key: 'call', label: 'Call' },
-  { key: 'sms', label: 'SMS' },
-  { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'email', label: 'Email' },
+  { key: 'call', label: 'Call', contact: 'phone' },
+  { key: 'sms', label: 'SMS', contact: 'phone' },
+  { key: 'whatsapp', label: 'WhatsApp', contact: 'phone' },
+  { key: 'email', label: 'Email', contact: 'email' },
 ] as const;
+
+const DISMISS_PREFIX = 'enso_consent_check_dismissed:';
 
 const SOURCE_LABELS: Record<string, string> = {
   FORM_WEBSITE: 'Website Form',
@@ -214,7 +221,8 @@ const StyledChannelLabel = styled.span`
   font-size: ${themeCssVariables.font.size.sm};
 `;
 
-// $state: 'on' (green) | 'off' (revoked, danger) | 'none' (not set, muted).
+// $state: 'on' (granted, green) | 'off' (revoked, danger) | 'notProvided'
+// (have contact but no consent, warning orange) | 'none' (no contact, muted).
 const StyledStatus = styled.button<{ $state: string; $editable: boolean }>`
   background: transparent;
   border: none;
@@ -223,7 +231,9 @@ const StyledStatus = styled.button<{ $state: string; $editable: boolean }>`
       ? themeCssVariables.color.green
       : $state === 'off'
         ? themeCssVariables.font.color.danger
-        : themeCssVariables.font.color.tertiary};
+        : $state === 'notProvided'
+          ? themeCssVariables.color.orange
+          : themeCssVariables.font.color.tertiary};
   cursor: ${({ $editable }) => ($editable ? 'pointer' : 'default')};
   font-size: ${themeCssVariables.font.size.sm};
   padding: 0;
@@ -299,6 +309,62 @@ const StyledCancelButton = styled.button`
   cursor: pointer;
   flex: 0 0 auto;
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+`;
+
+// Centered, full-page modal (rendered via portal to <body>) so the consent-check
+// nudge is unmissable no matter where the card sits or how the page is scrolled.
+const StyledModalOverlay = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.overlayPrimary};
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: ${themeCssVariables.spacing[4]};
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 12000;
+`;
+
+const StyledModalDialog = styled.div`
+  background: ${themeCssVariables.background.primary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  box-shadow: ${themeCssVariables.boxShadow.strong};
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[3]};
+  max-width: 420px;
+  padding: ${themeCssVariables.spacing[4]};
+  width: 100%;
+`;
+
+const StyledModalTitle = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+`;
+
+const StyledModalText = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledCheckList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledCheckLabel = styled.label`
+  align-items: center;
+  color: ${themeCssVariables.font.color.primary};
+  cursor: pointer;
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  gap: ${themeCssVariables.spacing[2]};
 `;
 
 const StyledHistory = styled.div`
@@ -378,6 +444,26 @@ export const PersonConsentCard = () => {
   const [pendingChoice, setPendingChoice] = useState('');
   const [pendingNote, setPendingNote] = useState('');
   const [saving, setSaving] = useState(false);
+  // Per-session "don't ask again" for the consent-check modal (keyed by
+  // person:project). Lives in sessionStorage so it survives reloads this session
+  // but re-surfaces next login — it is NOT a consent state.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    const result = new Set<string>();
+    if (typeof window !== 'undefined') {
+      for (let index = 0; index < window.sessionStorage.length; index++) {
+        const key = window.sessionStorage.key(index);
+        if (isDefined(key) && key.startsWith(DISMISS_PREFIX)) {
+          result.add(key.slice(DISMISS_PREFIX.length));
+        }
+      }
+    }
+    return result;
+  });
+  const [modalSource, setModalSource] = useState('VERBAL');
+  const [modalNote, setModalNote] = useState('');
+  // Channels the manager UN-ticked in the consent-check modal (default: all the
+  // reachable channels are ticked). Lets them grant e.g. phone but not email.
+  const [deselected, setDeselected] = useState<Set<string>>(new Set());
 
   const { records: consents = [], loading } = useFindManyRecords({
     objectNameSingular: 'personProjectConsent',
@@ -401,6 +487,16 @@ export const PersonConsentCard = () => {
     limit: 50,
   });
 
+  // The person's own contact methods decide what "Not provided" means: a channel
+  // is only flagged when we actually have a way to reach them on it.
+  const { records: persons = [], loading: personLoading } = useFindManyRecords({
+    objectNameSingular: 'person',
+    filter: { id: { eq: personId } },
+    recordGqlFields: { id: true, name: true, emails: true, phones: true },
+    skip: !isDefined(personId) || !isPerson,
+    limit: 1,
+  });
+
   const { createOneRecord } = useCreateOneRecord({
     objectNameSingular: 'personProjectConsent',
   });
@@ -417,7 +513,22 @@ export const PersonConsentCard = () => {
     (project) => !consentedProjectIds.has(project.id),
   );
 
-  const channelState = (consent: Record<string, unknown>, key: string) => {
+  const person = persons[0] as Record<string, unknown> | undefined;
+  const hasEmail = isNonEmptyString(
+    (person?.emails as { primaryEmail?: string } | undefined)?.primaryEmail,
+  );
+  const hasPhone = isNonEmptyString(
+    (person?.phones as { primaryPhoneNumber?: string } | undefined)
+      ?.primaryPhoneNumber,
+  );
+  const hasContactFor = (contact: 'email' | 'phone') =>
+    contact === 'email' ? hasEmail : hasPhone;
+
+  const channelState = (
+    consent: Record<string, unknown>,
+    key: string,
+    contact: 'email' | 'phone',
+  ) => {
     const granted = consent[`${key}MarketingConsent`] === true;
     const revokedAt = consent[`${key}MarketingConsentRevokedAt`];
     const consentedAt = consent[`${key}MarketingConsentedAt`];
@@ -436,8 +547,22 @@ export const PersonConsentCard = () => {
       return { state: 'off', text: date ? t`Opted out · ${date}` : t`Opted out` };
     }
 
+    // We have a way to reach them on this channel but no consent on record —
+    // the compliance flag the manager needs to see.
+    if (hasContactFor(contact)) {
+      return { state: 'notProvided', text: t`Not provided` };
+    }
+
     return { state: 'none', text: t`Not set` };
   };
+
+  // Channels for a project that are "Not provided" right now (drive the modal).
+  const notProvidedChannels = (consent: Record<string, unknown>) =>
+    CHANNELS.filter(
+      (channel) =>
+        channelState(consent, channel.key, channel.contact).state ===
+        'notProvided',
+    );
 
   // Open the panel for a channel. Writes nothing yet — the manager must confirm.
   const startAction = (
@@ -524,6 +649,80 @@ export const PersonConsentCard = () => {
     setAddProjectId('');
   };
 
+  // The first project still needing a consent decision (has a reachable contact,
+  // nothing recorded) and not dismissed this session — drives the modal nudge.
+  const consentCheckRow =
+    personLoading || loading || isDefined(pending)
+      ? undefined
+      : consents.find(
+          (consent) =>
+            !dismissed.has(`${personId}:${consent.projectId as string}`) &&
+            notProvidedChannels(consent).length > 0,
+        );
+
+  const dismissConsentCheck = (consent: Record<string, unknown>) => {
+    const key = `${personId}:${consent.projectId as string}`;
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(`${DISMISS_PREFIX}${key}`, '1');
+    }
+    setDismissed((previous) => new Set(previous).add(key));
+    setDeselected(new Set());
+  };
+
+  const toggleCheckChannel = (channelKey: string) => {
+    setDeselected((previous) => {
+      const next = new Set(previous);
+      if (next.has(channelKey)) {
+        next.delete(channelKey);
+      } else {
+        next.add(channelKey);
+      }
+      return next;
+    });
+  };
+
+  const recordConsentCheck = async (
+    consent: Record<string, unknown>,
+    channels: readonly { key: string; label: string }[],
+  ) => {
+    if (saving) {
+      return;
+    }
+    const note = modalNote.trim();
+    const updateInput: Record<string, unknown> = {};
+    for (const channel of channels) {
+      updateInput[`${channel.key}MarketingConsent`] = true;
+      updateInput[`${channel.key}MarketingConsentSource`] = modalSource;
+    }
+    if (note !== '') {
+      updateInput.lastChangeReason = note;
+    }
+
+    setSaving(true);
+    try {
+      await updateOneRecord({
+        objectNameSingular: 'personProjectConsent',
+        idToUpdate: consent.id as string,
+        updateOneRecordInput: updateInput,
+      });
+    } finally {
+      setSaving(false);
+      setModalNote('');
+      setDeselected(new Set());
+    }
+  };
+
+  const checkChannels = isDefined(consentCheckRow)
+    ? notProvidedChannels(consentCheckRow)
+    : [];
+  const checkProjectLabel = isDefined(consentCheckRow)
+    ? (((consentCheckRow.name as string) ?? '').split(' · ')[1] ??
+      t`this project`)
+    : '';
+  const checkSelected = checkChannels.filter(
+    (channel) => !deselected.has(channel.key),
+  );
+
   return (
     <StyledContainer>
       <StyledHeader>
@@ -606,7 +805,11 @@ export const PersonConsentCard = () => {
                   {(consent.name as string) ?? t`Consent`}
                 </StyledProjectName>
                 {CHANNELS.map((channel) => {
-                  const { state, text } = channelState(consent, channel.key);
+                  const { state, text } = channelState(
+                    consent,
+                    channel.key,
+                    channel.contact,
+                  );
 
                   return (
                     <StyledChannelLine key={channel.key}>
@@ -714,6 +917,62 @@ export const PersonConsentCard = () => {
             })}
         </StyledHistory>
       )}
+
+      {isDefined(consentCheckRow) &&
+        checkChannels.length > 0 &&
+        createPortal(
+          <StyledModalOverlay>
+            <StyledModalDialog>
+              <StyledModalTitle>{t`Consent check`}</StyledModalTitle>
+              <StyledModalText>
+                {t`No marketing consent is on record for ${checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now.`}
+              </StyledModalText>
+              <StyledCheckList>
+                {checkChannels.map((channel) => (
+                  <StyledCheckLabel key={channel.key}>
+                    <input
+                      type="checkbox"
+                      checked={!deselected.has(channel.key)}
+                      onChange={() => toggleCheckChannel(channel.key)}
+                    />
+                    {channel.label}
+                  </StyledCheckLabel>
+                ))}
+              </StyledCheckList>
+              <StyledSelect
+                value={modalSource}
+                onChange={(event) => setModalSource(event.target.value)}
+              >
+                {GRANT_SOURCES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </StyledSelect>
+              <StyledNoteInput
+                value={modalNote}
+                placeholder={t`Note / proof (optional)`}
+                onChange={(event) => setModalNote(event.target.value)}
+              />
+              <StyledPanelActions>
+                <StyledCancelButton
+                  onClick={() => dismissConsentCheck(consentCheckRow)}
+                >
+                  {t`Not now`}
+                </StyledCancelButton>
+                <StyledAddButton
+                  onClick={() =>
+                    recordConsentCheck(consentCheckRow, checkSelected)
+                  }
+                  disabled={saving || checkSelected.length === 0}
+                >
+                  {t`Record consent`}
+                </StyledAddButton>
+              </StyledPanelActions>
+            </StyledModalDialog>
+          </StyledModalOverlay>,
+          document.body,
+        )}
     </StyledContainer>
   );
 };
