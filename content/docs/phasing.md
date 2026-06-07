@@ -59,7 +59,7 @@ NestJS modules added to our fork:
 
 - `identity-resolution` — phone + email dedup, async merge with database transactions
 - `deal-state-machine` — stage transitions, per-transition validation, rollback, automatic timestamp writing
-- `routing` — availability × project filter, true round-robin via `last_assigned_at`, 3-min claim-or-reroute via BullMQ
+- `routing` — availability × project-pool filter, per-opportunity uniform random pick (sticky owners auto-claim), 3-min claim-or-reroute via BullMQ. (As built, round-robin / `last_assigned_at` was dropped — see [systems/routing](./systems/routing).)
 - `attribution` — first-touch UTM frozen at deal creation; Roistat `visit_id` linkage
 
 Custom UI screens:
