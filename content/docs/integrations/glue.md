@@ -14,7 +14,7 @@ After the rebuild, n8n owns only **integration glue at the edges**. State machin
 | **Roistat → CRM** | Receive Roistat call webhook; normalize payload; POST to Twenty intake endpoint | Webhook orchestration is n8n's natural shape |
 | **Zadarma direct → CRM** | Same for non-Roistat-tracked Zadarma calls (internal/direct lines) | Same |
 | **Web form → CRM** | Receive form POST from PostHog (or directly from form code); normalize; POST to Twenty | Same |
-| **Meta Lead Ads → CRM** | Use n8n's native Meta Lead Ads trigger (OAuth handled by n8n); POST to Twenty | Saves us from reimplementing Meta auth |
+| **Meta Lead Ads → CRM** | Multi-page `leadgen` webhook (generic Webhook node handles Meta's GET verify + POST events) → Graph API fetch lead → normalize → POST to Twenty. **Shipped.** | The native facebookLeadAds trigger binds to one page per app; we run all 5 pages through one app, so a webhook + Graph fetch is required |
 | **Chatwoot → CRM** | Receive Chatwoot conversation webhooks; POST Activity events to Twenty | Same |
 | **Facebook Ads audience sync** | Cron: query Twenty for "active prospects in segment X", push to Facebook Marketing API | Has FB node native; sales-ops may tune criteria |
 | **Error logging** | n8n errorTrigger → Knock → Ops Google Chat | Existing pattern |
@@ -48,13 +48,13 @@ All flows below are **either deleted (retired with Attio) or rebuilt as Twenty N
 
 Zapier's residual presence:
 - Currently in the call path for some Zadarma events (`zapier_first` / `zapier_second` keys in Calls workflow)
-- Possibly FB Lead Ads bridge (user wasn't sure)
+- ~~Possibly FB Lead Ads bridge~~ — retired; FB Lead Ads now flow through the dedicated n8n `leadgen` webhook (own Meta app "ENSO Lead Ads"), not Zapier
 - Possibly Respond.io downstream
 
 Retirement timing:
 - Phase 2: Zadarma direct → CRM bypasses Zapier in the call path
 - Phase 5: Respond.io retires → its Zaps die with it
-- Phase 6: FB Lead Ads moves to n8n's native trigger if not already
+- Phase 6: FB Lead Ads moved off Zapier onto the n8n `leadgen` webhook (own Meta app) — **done**
 - Phase 7: cancel Zapier subscription
 
 ## Endpoints n8n hits in the new world
