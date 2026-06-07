@@ -17976,3 +17976,7 @@ msgstr "No phone or email on file yet."
 #. js-lingui-id: UG8Ira
 msgid "No consent changes recorded yet."
 msgstr "No consent changes recorded yet."
+
+#. js-lingui-id: dYv040
+msgid "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
+msgstr "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
