@@ -5,6 +5,8 @@ description: Real-estate-shaped object model. Projects are first-class in CRM; u
 
 # Projects and Units
 
+**Status: Partial.** Projects are live (seeded rows; used for routing/assignment/consent). **Units** depend on the CPQ read API and are out of scope for now — see [open-questions](../open-questions).
+
 ## Projects — finally a real table
 
 Today's mess: project lists disagree across five Attio surfaces (Users, People per-project columns, Deals proposed/confirmed name+ID). Replaced by **one table**, FK'd everywhere.

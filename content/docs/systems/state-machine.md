@@ -5,6 +5,8 @@ description: Deal stage transitions, validation gates, automatic rollback. Repla
 
 # State machine
 
+**Status: Shipped.** The Opportunity (Deal) stage machine is live; see [deals](../domains/deals) and [routing](./routing).
+
 The Deal stage is a finite state machine. Each transition has:
 1. **A trigger** (event or manual action)
 2. **A set of required fields**

@@ -5,6 +5,8 @@ description: Architectural overview. Specifics live in integrations/external-not
 
 # Notifications
 
+**Status: Partial.** Manager notifications are live via **Google Chat webhooks** (`manager-notification` service). The richer in-app / **Knock** (manager) and **Novu** (prospect) transports described here are planned — see [roadmap](../roadmap).
+
 Two audiences, two tools. This page is the architectural overview; tool-specific details live in:
 
 - [integrations/external-notifications](../integrations/external-notifications) — Novu (prospect-facing)
