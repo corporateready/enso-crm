@@ -96,8 +96,20 @@ export class ApolloEnrichmentProvider implements CompanyEnrichmentProvider {
     if (this.isNonEmpty(org.name)) {
       result.name = org.name;
     }
-    if (this.isNonEmpty(org.industry)) {
-      result.industry = org.industry;
+
+    // Apollo returns the primary industry as `industry` (string) for some orgs
+    // but only populates `industries` / `secondary_industries` (arrays) for
+    // others — fall back through them so we don't miss it.
+    const industry = this.firstNonEmptyString([
+      org.industry,
+      Array.isArray(org.industries) ? org.industries[0] : undefined,
+      Array.isArray(org.secondary_industries)
+        ? org.secondary_industries[0]
+        : undefined,
+    ]);
+
+    if (this.isNonEmpty(industry)) {
+      result.industry = industry;
     }
 
     const description = org.short_description ?? org.seo_description;
@@ -150,6 +162,10 @@ export class ApolloEnrichmentProvider implements CompanyEnrichmentProvider {
 
   private isNonEmpty(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
+  }
+
+  private firstNonEmptyString(values: unknown[]): string | undefined {
+    return values.find((value) => this.isNonEmpty(value)) as string | undefined;
   }
 
   private isPositiveNumber(value: unknown): value is number {
