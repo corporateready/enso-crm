@@ -38,6 +38,8 @@ import { WorkspaceCleanerModule } from 'src/engine/workspace-manager/workspace-c
 import { CalendarEventParticipantManagerModule } from 'src/modules/calendar/calendar-event-participant-manager/calendar-event-participant-manager.module';
 import { CalendarModule } from 'src/modules/calendar/calendar.module';
 import { AutoCompaniesAndContactsCreationJobModule } from 'src/modules/contact-creation-manager/jobs/auto-companies-and-contacts-creation-job.module';
+import { CompanyEnrichmentJobsModule } from 'src/modules/enso/company-enrichment/company-enrichment-jobs.module';
+import { CompanyMergeJobsModule } from 'src/modules/enso/company-merge/company-merge-jobs.module';
 import { LeadPipelineJobsModule } from 'src/modules/enso/lead-pipeline/lead-pipeline-jobs.module';
 import { PersonMergeJobsModule } from 'src/modules/enso/person-merge/person-merge-jobs.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
@@ -83,6 +85,8 @@ import { WorkflowModule } from 'src/modules/workflow/workflow.module';
     EnterpriseModule,
     LeadPipelineJobsModule,
     PersonMergeJobsModule,
+    CompanyEnrichmentJobsModule,
+    CompanyMergeJobsModule,
   ],
   providers: [
     CleanSuspendedWorkspacesJob,

@@ -22,4 +22,6 @@ export enum MessageQueue {
   aiStreamQueue = 'ai-stream-queue',
   ensoLeadPipelineQueue = 'enso-lead-pipeline-queue',
   ensoPersonMergeQueue = 'enso-person-merge-queue',
+  ensoCompanyEnrichmentQueue = 'enso-company-enrichment-queue',
+  ensoCompanyMergeQueue = 'enso-company-merge-queue',
 }

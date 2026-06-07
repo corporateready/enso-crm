@@ -8,6 +8,8 @@ import { WorkspaceQueryHookService } from 'src/engine/api/graphql/workspace-quer
 import { BlocklistQueryHookModule } from 'src/modules/blocklist/query-hooks/blocklist-query-hook.module';
 import { CalendarQueryHookModule } from 'src/modules/calendar/common/query-hooks/calendar-query-hook.module';
 import { DashboardQueryHookModule } from 'src/modules/dashboard/query-hooks/dashboard-query-hook.module';
+import { CompanyEnrichmentModule } from 'src/modules/enso/company-enrichment/company-enrichment.module';
+import { CompanyMergeModule } from 'src/modules/enso/company-merge/company-merge.module';
 import { InboundActivityQueryHookModule } from 'src/modules/enso/inbound-activity/inbound-activity-query-hook.module';
 import { LeadPipelineModule } from 'src/modules/enso/lead-pipeline/lead-pipeline.module';
 import { PersonMergeModule } from 'src/modules/enso/person-merge/person-merge.module';
@@ -30,6 +32,8 @@ import { WorkspaceMemberQueryHookModule } from 'src/modules/workspace-member/que
     NoteQueryHookModule,
     TaskQueryHookModule,
     InboundActivityQueryHookModule,
+    CompanyEnrichmentModule,
+    CompanyMergeModule,
     LeadPipelineModule,
     PersonMergeModule,
     PersonProjectAssignmentQueryHookModule,

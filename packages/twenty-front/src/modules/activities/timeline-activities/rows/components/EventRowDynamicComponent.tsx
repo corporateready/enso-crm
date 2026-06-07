@@ -2,7 +2,13 @@ import { EventRowActivity } from '@/activities/timeline-activities/rows/activity
 import { EventRowCalendarEvent } from '@/activities/timeline-activities/rows/calendar/components/EventRowCalendarEvent';
 import { EventRowEnsoConsent } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent';
 import { EventRowEnsoLinkedRecord } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord';
+import { EventRowEnsoMerge } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge';
 import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent.types';
+
+// ENSO — person-merge / company-merge "duplicates merged" event. Kept in sync
+// with ENSO_RECORD_MERGED_ACTIVITY_NAME on the server. Routed by name (no linked
+// record — the duplicate is soft-deleted), before the linked-object switch.
+const ENSO_RECORD_MERGED_ACTIVITY_NAME = 'enso-record.merged';
 import { EventRowMainObject } from '@/activities/timeline-activities/rows/main-object/components/EventRowMainObject';
 import { EventRowMessage } from '@/activities/timeline-activities/rows/message/components/EventRowMessage';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
@@ -15,6 +21,20 @@ export const EventRowDynamicComponent = ({
   authorFullName,
   createdAt,
 }: EventRowDynamicComponentProps) => {
+  // ENSO — duplicates merged. Routed by name since there's no linked record.
+  if (event.name === ENSO_RECORD_MERGED_ACTIVITY_NAME) {
+    return (
+      <EventRowEnsoMerge
+        labelIdentifierValue={labelIdentifierValue}
+        event={event}
+        mainObjectMetadataItem={mainObjectMetadataItem}
+        linkedObjectMetadataItem={linkedObjectMetadataItem}
+        authorFullName={authorFullName}
+        createdAt={createdAt}
+      />
+    );
+  }
+
   switch (linkedObjectMetadataItem?.nameSingular) {
     case 'calendarEvent':
       return (
