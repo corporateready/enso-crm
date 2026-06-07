@@ -9,6 +9,7 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { ConsentEventService } from 'src/modules/enso/person-project-consent/services/consent-event.service';
 import { PersonProjectConsentNameService } from 'src/modules/enso/person-project-consent/services/person-project-consent-name.service';
 
 // Establishes per-project marketing consent from an inbound activity — the
@@ -37,6 +38,7 @@ export class ConsentFromActivityService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly personProjectConsentNameService: PersonProjectConsentNameService,
+    private readonly consentEventService: ConsentEventService,
   ) {}
 
   async applyFromActivity(
@@ -50,6 +52,16 @@ export class ConsentFromActivityService {
     }
 
     const systemAuthContext = buildSystemAuthContext(workspaceId);
+
+    // Captured inside the workspace-context block; the append-only events are
+    // emitted AFTER it (each event opens its own context — avoid nesting).
+    let granted: {
+      personId: string;
+      projectId: string;
+      channels: string[];
+      source: string;
+      consentedAt: string;
+    } | null = null;
 
     try {
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -115,6 +127,14 @@ export class ConsentFromActivityService {
           const consentedAt =
             activity.occurredAt ?? activity.createdAt ?? new Date().toISOString();
 
+          granted = {
+            personId: activity.personId,
+            projectId: activity.projectId,
+            channels: [...channels],
+            source,
+            consentedAt,
+          };
+
           // Set the granted channels true; clear any prior revoke (a fresh form
           // submission with T&C is a fresh opt-in — the re-grant policy).
           const channelFields: Record<string, unknown> = {};
@@ -179,6 +199,23 @@ export class ConsentFromActivityService {
       this.logger.warn(
         `Consent from activity failed for activity ${activityId}: ${(error as Error).message}`,
       );
+    }
+
+    // Append-only audit log: one GRANTED event per channel, linked to the
+    // activity as evidence. Best-effort, emitted outside the write context.
+    if (isDefined(granted)) {
+      for (const channel of granted.channels) {
+        await this.consentEventService.record(workspaceId, {
+          personId: granted.personId,
+          projectId: granted.projectId,
+          channel,
+          action: 'GRANTED',
+          source: granted.source,
+          occurredAt: granted.consentedAt,
+          inboundActivityId: activityId,
+          actor: { source: 'SYSTEM', name: 'System', context: {} },
+        });
+      }
     }
   }
 }

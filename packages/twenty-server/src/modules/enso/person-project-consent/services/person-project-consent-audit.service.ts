@@ -5,6 +5,10 @@ import { isDefined } from 'twenty-shared/utils';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import {
+  type ConsentEventActor,
+  ConsentEventService,
+} from 'src/modules/enso/person-project-consent/services/consent-event.service';
 
 // Maintains the per-channel consent audit fields when a HUMAN edits a consent
 // row via the API/UI (the resolver path). On a manual GRANT (channel flips to
@@ -22,6 +26,7 @@ const CONSENT_CHANNELS = ['email', 'sms', 'whatsapp', 'call'] as const;
 export class PersonProjectConsentAuditService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+    private readonly consentEventService: ConsentEventService,
   ) {}
 
   // Returns the audit-field stamps to merge into the write payload. `recordId`
@@ -69,6 +74,11 @@ export class PersonProjectConsentAuditService {
     }
 
     const stamps: Record<string, unknown> = {};
+    const transitions: {
+      channel: string;
+      action: 'GRANTED' | 'REVOKED';
+      source?: string | null;
+    }[] = [];
 
     for (const channel of touchedChannels) {
       const newValue = data[`${channel}MarketingConsent`];
@@ -79,6 +89,12 @@ export class PersonProjectConsentAuditService {
       const hadPriorConsent = isDefined(
         existing?.[`${channel}MarketingConsentedAt`],
       );
+      const dataSource = data[`${channel}MarketingConsentSource`] as
+        | string
+        | undefined;
+      const existingSource = existing?.[`${channel}MarketingConsentSource`] as
+        | string
+        | undefined;
 
       if (newValue === true && !currentlyGranted) {
         if (hadPriorConsent) {
@@ -87,19 +103,80 @@ export class PersonProjectConsentAuditService {
           // revoke. NEVER overwrite the original source/date — that's the
           // provenance we must preserve (e.g. FORM_WEBSITE + the form date).
           stamps[`${channel}MarketingConsentRevokedAt`] = null;
+          transitions.push({
+            channel,
+            action: 'GRANTED',
+            source: existingSource ?? dataSource ?? 'VERBAL',
+          });
         } else {
           // First-ever grant for this channel. Default source to VERBAL unless
           // the caller specified one (FORM_WEBSITE from the pipeline, etc.).
-          if (!isDefined(data[`${channel}MarketingConsentSource`])) {
+          if (!isDefined(dataSource)) {
             stamps[`${channel}MarketingConsentSource`] = 'VERBAL';
           }
           stamps[`${channel}MarketingConsentedAt`] = nowIso;
           stamps[`${channel}MarketingConsentRevokedAt`] = null;
+          transitions.push({
+            channel,
+            action: 'GRANTED',
+            source: dataSource ?? 'VERBAL',
+          });
         }
       } else if (newValue === false && currentlyGranted) {
         // Revoke. Stamp revokedAt but KEEP the original source/consentedAt as
         // the historical record of how/when consent was first obtained.
         stamps[`${channel}MarketingConsentRevokedAt`] = nowIso;
+        transitions.push({
+          channel,
+          action: 'REVOKED',
+          source: existingSource,
+        });
+      }
+    }
+
+    // Append-only audit log (best-effort). Emitted after computing stamps; the
+    // pipeline writes its own events directly (it bypasses this hook).
+    if (transitions.length > 0) {
+      const personId = (data.personId ?? existing?.personId) as
+        | string
+        | undefined;
+      const projectId = (data.projectId ?? existing?.projectId) as
+        | string
+        | undefined;
+
+      if (isDefined(personId) && isDefined(projectId)) {
+        let actor: ConsentEventActor = {
+          source: 'MANUAL',
+          name: 'Manual',
+          context: {},
+        };
+
+        if (authContext.type === 'user') {
+          const memberName = (
+            authContext.workspaceMember as unknown as {
+              name?: { firstName?: string; lastName?: string };
+            }
+          )?.name;
+          actor = {
+            source: 'MANUAL',
+            workspaceMemberId: authContext.workspaceMemberId,
+            name:
+              `${memberName?.firstName ?? ''} ${memberName?.lastName ?? ''}`.trim() ||
+              'Manager',
+            context: {},
+          };
+        }
+
+        for (const transition of transitions) {
+          await this.consentEventService.record(workspaceId, {
+            personId,
+            projectId,
+            channel: transition.channel,
+            action: transition.action,
+            source: transition.source,
+            actor,
+          });
+        }
       }
     }
 
