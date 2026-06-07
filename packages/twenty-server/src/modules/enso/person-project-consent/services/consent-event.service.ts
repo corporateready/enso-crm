@@ -23,10 +23,11 @@ export type ConsentEventInput = {
   projectId: string;
   channel: string; // email | sms | whatsapp | call (stored upper-cased)
   action: 'GRANTED' | 'REVOKED';
-  source?: string | null;
+  source?: string | null; // how a GRANT was obtained
+  method?: string | null; // how a REVOKE happened (UNSUBSCRIBE, MANUAL, …)
   occurredAt?: string | null;
   inboundActivityId?: string | null;
-  note?: string | null;
+  note?: string | null; // free-text reason / proof
   actor: ConsentEventActor;
 };
 
@@ -105,6 +106,7 @@ export class ConsentEventService {
             channel: channelUpper,
             action: input.action,
             ...(isDefined(input.source) ? { source: input.source } : {}),
+            ...(isDefined(input.method) ? { method: input.method } : {}),
             occurredAt: input.occurredAt ?? new Date().toISOString(),
             ...(isDefined(input.inboundActivityId)
               ? { inboundActivityId: input.inboundActivityId }
