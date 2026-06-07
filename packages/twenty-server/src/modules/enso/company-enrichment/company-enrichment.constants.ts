@@ -14,6 +14,15 @@ export const SYSTEM_ACTOR = {
   context: {},
 } as const;
 
+// Master kill-switch for ALL company automation (auto-create from work email,
+// enrichment, AND company merge). Default OFF so the code can ship dormant and be
+// activated deliberately — after the custom fields are provisioned and we've
+// sanity-checked — by setting ENSO_COMPANY_AUTOMATION_ENABLED=true on the API
+// service (twenty-server, where the query hooks fire). Checked at the enqueue
+// choke-points, so when off nothing is queued and no jobs run.
+export const isCompanyAutomationEnabled = (): boolean =>
+  process.env.ENSO_COMPANY_AUTOMATION_ENABLED === 'true';
+
 // enrichmentStatus SELECT options on Company.
 export const COMPANY_ENRICHMENT_STATUS = {
   PENDING: 'PENDING',

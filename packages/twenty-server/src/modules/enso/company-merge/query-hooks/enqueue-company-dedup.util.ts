@@ -1,4 +1,5 @@
 import { type MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
+import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
 import { FindCompanyDuplicatesJob } from 'src/modules/enso/company-merge/jobs/find-company-duplicates.job';
 import { type FindCompanyDuplicatesJobData } from 'src/modules/enso/company-merge/jobs/company-merge-job.types';
 import { extractRowRefs } from 'src/modules/enso/person-relationship/query-hooks/extract-row-refs.util';
@@ -13,6 +14,10 @@ export const enqueueCompanyDedup = async (
   workspaceId: string,
   payload: unknown,
 ): Promise<void> => {
+  if (!isCompanyAutomationEnabled()) {
+    return;
+  }
+
   for (const ref of extractRowRefs(payload)) {
     await messageQueueService.add<FindCompanyDuplicatesJobData>(
       FindCompanyDuplicatesJob.name,
