@@ -143,6 +143,13 @@ export class PersonProjectConsentAuditService {
       const projectId = (data.projectId ?? existing?.projectId) as
         | string
         | undefined;
+      // The card conveys the "why" (free-text) + the revoke "how" via these row
+      // fields on the same update; fall back to the existing row.
+      const reason = (data.lastChangeReason ?? existing?.lastChangeReason) as
+        | string
+        | undefined;
+      const revokeMethod = (data.lastRevokeMethod ??
+        existing?.lastRevokeMethod) as string | undefined;
 
       if (isDefined(personId) && isDefined(projectId)) {
         let actor: ConsentEventActor = {
@@ -174,6 +181,12 @@ export class PersonProjectConsentAuditService {
             channel: transition.channel,
             action: transition.action,
             source: transition.source,
+            // Revokes record the "how"; default a manual toggle to MANUAL.
+            method:
+              transition.action === 'REVOKED'
+                ? (revokeMethod ?? 'MANUAL')
+                : null,
+            note: reason ?? null,
             actor,
           });
         }
