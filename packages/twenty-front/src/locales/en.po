@@ -17929,3 +17929,22 @@ msgstr "project"
 msgid "this project"
 msgstr "this project"
 
+#. js-lingui-id: bUEryi
+msgid "Consent granted"
+msgstr "Consent granted"
+
+#. js-lingui-id: df0iEW
+msgid "Consent revoked"
+msgstr "Consent revoked"
+
+#. js-lingui-id: nLGyiK
+msgid "consent"
+msgstr "consent"
+
+#. js-lingui-id: Vi2Pqx
+msgid "by"
+msgstr "by"
+
+#. js-lingui-id: 3y0eQW
+msgid "View triggering activity →"
+msgstr "View triggering activity →"

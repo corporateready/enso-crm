@@ -39,16 +39,22 @@ export class ConsentEventService {
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
-  async record(workspaceId: string, input: ConsentEventInput): Promise<void> {
+  // Returns the created event id (so callers can link a timeline entry to it),
+  // or null when skipped/failed.
+  async record(
+    workspaceId: string,
+    input: ConsentEventInput,
+  ): Promise<string | null> {
     if (
       !workspaceId ||
       !isDefined(input.personId) ||
       !isDefined(input.projectId)
     ) {
-      return;
+      return null;
     }
 
     const systemAuthContext = buildSystemAuthContext(workspaceId);
+    const eventId = randomUUID();
 
     try {
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -100,7 +106,7 @@ export class ConsentEventService {
           );
 
           await eventRepository.insert({
-            id: randomUUID(),
+            id: eventId,
             personId: input.personId,
             projectId: input.projectId,
             channel: channelUpper,
@@ -120,10 +126,14 @@ export class ConsentEventService {
         },
         systemAuthContext,
       );
+
+      return eventId;
     } catch (error) {
       this.logger.warn(
         `Consent event record failed (${input.action} ${input.channel} for person ${input.personId}): ${(error as Error).message}`,
       );
+
+      return null;
     }
   }
 }

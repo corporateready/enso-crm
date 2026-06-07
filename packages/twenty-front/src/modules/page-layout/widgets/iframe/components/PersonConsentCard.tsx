@@ -9,6 +9,7 @@ import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
+import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 
 // ENSO — manager-facing marketing-consent card on the Person record. READ-ONLY
@@ -95,6 +96,7 @@ const EVENT_GQL_FIELDS = {
   method: true,
   note: true,
   occurredAt: true,
+  inboundActivityId: true,
   createdBy: true,
 };
 
@@ -422,6 +424,18 @@ const StyledHistoryNote = styled.div`
   font-style: italic;
 `;
 
+// Clickable "what triggered this" link → opens the causing inbound activity.
+const StyledHistoryLink = styled.button`
+  background: transparent;
+  border: none;
+  color: ${themeCssVariables.color.blue};
+  cursor: pointer;
+  font-size: ${themeCssVariables.font.size.xs};
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+`;
+
 export const PersonConsentCard = () => {
   const { t } = useLingui();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
@@ -501,6 +515,7 @@ export const PersonConsentCard = () => {
     objectNameSingular: 'personProjectConsent',
   });
   const { updateOneRecord } = useUpdateOneRecord();
+  const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
   if (!isPerson || !isDefined(personId)) {
     return null;
@@ -886,6 +901,9 @@ export const PersonConsentCard = () => {
                 (event.createdBy as { name?: string } | null)?.name ?? ''
               ).trim();
               const note = (event.note as string) ?? '';
+              const inboundActivityId = event.inboundActivityId as
+                | string
+                | null;
               const metaParts = [
                 how,
                 actor,
@@ -911,6 +929,18 @@ export const PersonConsentCard = () => {
                   )}
                   {note !== '' && (
                     <StyledHistoryNote>“{note}”</StyledHistoryNote>
+                  )}
+                  {isNonEmptyString(inboundActivityId) && (
+                    <StyledHistoryLink
+                      onClick={() =>
+                        openRecordInSidePanel({
+                          recordId: inboundActivityId,
+                          objectNameSingular: 'inboundActivity',
+                        })
+                      }
+                    >
+                      {t`View triggering activity →`}
+                    </StyledHistoryLink>
                   )}
                 </StyledHistoryItem>
               );

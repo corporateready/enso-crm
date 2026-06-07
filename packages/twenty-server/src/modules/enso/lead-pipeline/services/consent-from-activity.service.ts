@@ -9,6 +9,7 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
 import { ConsentEventService } from 'src/modules/enso/person-project-consent/services/consent-event.service';
 import { PersonProjectConsentNameService } from 'src/modules/enso/person-project-consent/services/person-project-consent-name.service';
 
@@ -26,6 +27,12 @@ const KIND_TO_CONSENT_SOURCE: Record<string, string> = {
   LEAD_AD: 'LEAD_AD',
 };
 
+// Human label for the timeline summary line.
+const SOURCE_LABEL: Record<string, string> = {
+  FORM_WEBSITE: 'Website form',
+  LEAD_AD: 'Lead ad',
+};
+
 // Channels granted per available contact point. Email needs an email; the
 // phone-based channels (SMS, WhatsApp, outbound call) need a phone number.
 const EMAIL_CHANNELS = ['email'] as const;
@@ -39,6 +46,7 @@ export class ConsentFromActivityService {
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly personProjectConsentNameService: PersonProjectConsentNameService,
     private readonly consentEventService: ConsentEventService,
+    private readonly personTimelineService: PersonTimelineService,
   ) {}
 
   async applyFromActivity(
@@ -204,16 +212,36 @@ export class ConsentFromActivityService {
     // Append-only audit log: one GRANTED event per channel, linked to the
     // activity as evidence. Best-effort, emitted outside the write context.
     if (isDefined(granted)) {
-      for (const channel of granted.channels) {
-        await this.consentEventService.record(workspaceId, {
-          personId: granted.personId,
-          projectId: granted.projectId,
+      const grantedNonNull = granted as NonNullable<typeof granted>;
+      let firstEventId: string | null = null;
+
+      for (const channel of grantedNonNull.channels) {
+        const eventId = await this.consentEventService.record(workspaceId, {
+          personId: grantedNonNull.personId,
+          projectId: grantedNonNull.projectId,
           channel,
           action: 'GRANTED',
-          source: granted.source,
-          occurredAt: granted.consentedAt,
+          source: grantedNonNull.source,
+          occurredAt: grantedNonNull.consentedAt,
           inboundActivityId: activityId,
           actor: { source: 'SYSTEM', name: 'System', context: {} },
+        });
+
+        if (!isDefined(firstEventId)) {
+          firstEventId = eventId;
+        }
+      }
+
+      // One aggregated row on the person's main timeline for the whole grant.
+      if (isDefined(firstEventId)) {
+        await this.personTimelineService.recordConsentChange(workspaceId, {
+          personId: grantedNonNull.personId,
+          projectId: grantedNonNull.projectId,
+          consentEventId: firstEventId,
+          action: 'GRANTED',
+          channels: grantedNonNull.channels,
+          detail: SOURCE_LABEL[grantedNonNull.source] ?? grantedNonNull.source,
+          happensAt: grantedNonNull.consentedAt,
         });
       }
     }

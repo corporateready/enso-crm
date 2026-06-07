@@ -5,10 +5,27 @@ import { isDefined } from 'twenty-shared/utils';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
 import {
   type ConsentEventActor,
   ConsentEventService,
 } from 'src/modules/enso/person-project-consent/services/consent-event.service';
+
+// Pretty-print a SELECT code for the timeline summary (VERBAL → "Verbal",
+// IN_CHAT → "In chat").
+const prettyCode = (code?: string | null): string | null => {
+  if (!isDefined(code) || code === '') {
+    return null;
+  }
+
+  return code
+    .toLowerCase()
+    .split('_')
+    .map((word, index) =>
+      index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word,
+    )
+    .join(' ');
+};
 
 // Maintains the per-channel consent audit fields when a HUMAN edits a consent
 // row via the API/UI (the resolver path). On a manual GRANT (channel flips to
@@ -27,6 +44,7 @@ export class PersonProjectConsentAuditService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly consentEventService: ConsentEventService,
+    private readonly personTimelineService: PersonTimelineService,
   ) {}
 
   // Returns the audit-field stamps to merge into the write payload. `recordId`
@@ -174,8 +192,17 @@ export class PersonProjectConsentAuditService {
           };
         }
 
+        // Collect a representative event id per action so each action gets one
+        // aggregated row on the person's main timeline (grants and revokes are
+        // separate rows even within the same edit).
+        const grantedChannels: string[] = [];
+        const revokedChannels: string[] = [];
+        let firstGrantEventId: string | null = null;
+        let firstRevokeEventId: string | null = null;
+        let grantSource: string | null = null;
+
         for (const transition of transitions) {
-          await this.consentEventService.record(workspaceId, {
+          const eventId = await this.consentEventService.record(workspaceId, {
             personId,
             projectId,
             channel: transition.channel,
@@ -188,6 +215,39 @@ export class PersonProjectConsentAuditService {
                 : null,
             note: reason ?? null,
             actor,
+          });
+
+          if (transition.action === 'GRANTED') {
+            grantedChannels.push(transition.channel);
+            firstGrantEventId = firstGrantEventId ?? eventId;
+            grantSource = grantSource ?? transition.source ?? null;
+          } else {
+            revokedChannels.push(transition.channel);
+            firstRevokeEventId = firstRevokeEventId ?? eventId;
+          }
+        }
+
+        if (isDefined(firstGrantEventId) && grantedChannels.length > 0) {
+          await this.personTimelineService.recordConsentChange(workspaceId, {
+            personId,
+            projectId,
+            consentEventId: firstGrantEventId,
+            action: 'GRANTED',
+            channels: grantedChannels,
+            detail: prettyCode(grantSource),
+            happensAt: nowIso,
+          });
+        }
+
+        if (isDefined(firstRevokeEventId) && revokedChannels.length > 0) {
+          await this.personTimelineService.recordConsentChange(workspaceId, {
+            personId,
+            projectId,
+            consentEventId: firstRevokeEventId,
+            action: 'REVOKED',
+            channels: revokedChannels,
+            detail: prettyCode(revokeMethod ?? 'MANUAL'),
+            happensAt: nowIso,
           });
         }
       }
