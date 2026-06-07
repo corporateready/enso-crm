@@ -17831,3 +17831,101 @@ msgstr "Your workspace doesn't have an active subscription. Please contact your 
 #: src/modules/settings/billing/components/SettingsBillingContent.tsx
 msgid "Your workspace will be disabled"
 msgstr "Your workspace will be disabled"
+
+
+#. js-lingui-id: bh/qAr
+msgid "{text} — opt out"
+msgstr "{text} — opt out"
+
+#. js-lingui-id: T1tL/H
+msgid "Add consent for a project…"
+msgstr "Add consent for a project…"
+
+#. js-lingui-id: cx8+A8
+msgid "Click a channel, then confirm. Granting keeps any existing form consent; cancel writes nothing."
+msgstr "Click a channel, then confirm. Granting keeps any existing form consent; cancel writes nothing."
+
+#. js-lingui-id: 1C2m/W
+msgid "Consent check"
+msgstr "Consent check"
+
+#. js-lingui-id: cZR+BY
+msgid "Consent history"
+msgstr "Consent history"
+
+#. js-lingui-id: l9fkrm
+msgid "Consent"
+msgstr "Consent"
+
+#. js-lingui-id: DPfwMq
+msgid "Done"
+msgstr "Done"
+
+#. js-lingui-id: o29Bgq
+msgid "Grant {0} for {1}"
+msgstr "Grant {0} for {1}"
+
+#. js-lingui-id: nE5VAt
+msgid "Grant"
+msgstr "Grant"
+
+#. js-lingui-id: E0rSFg
+msgid "Granted"
+msgstr "Granted"
+
+#. js-lingui-id: Pwqkdw
+msgid "Loading…"
+msgstr "Loading…"
+
+#. js-lingui-id: o6eU2k
+msgid "No marketing consent is on record for {checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now."
+msgstr "No marketing consent is on record for {checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now."
+
+#. js-lingui-id: PBxg/E
+msgid "Not now"
+msgstr "Not now"
+
+#. js-lingui-id: wBW91V
+msgid "Not provided"
+msgstr "Not provided"
+
+#. js-lingui-id: g8Wrb8
+msgid "Note / proof (optional)"
+msgstr "Note / proof (optional)"
+
+#. js-lingui-id: xdzze+
+msgid "Opt {0} out of {1}"
+msgstr "Opt {0} out of {1}"
+
+#. js-lingui-id: DY5FMn
+msgid "Opt out"
+msgstr "Opt out"
+
+#. js-lingui-id: bWVUuH
+msgid "Opted out · {date}"
+msgstr "Opted out · {date}"
+
+#. js-lingui-id: /L/+bH
+msgid "Opted out"
+msgstr "Opted out"
+
+#. js-lingui-id: ikYdso
+msgid "Re-enabling — the original consent source is preserved."
+msgstr "Re-enabling — the original consent source is preserved."
+
+#. js-lingui-id: vCFdY5
+msgid "Read-only. Click Edit to record verbal consent or an opt-out."
+msgstr "Read-only. Click Edit to record verbal consent or an opt-out."
+
+#. js-lingui-id: MijoW0
+msgid "Record consent"
+msgstr "Record consent"
+
+#. js-lingui-id: ysxgu8
+msgid "project"
+msgstr "project"
+
+#. js-lingui-id: ux170F
+msgid "this project"
+msgstr "this project"
+
