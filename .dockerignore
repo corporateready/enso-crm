@@ -3,3 +3,7 @@
 **/node_modules
 .nx/cache
 packages/twenty-server/.env
+packages/enso-docs/out
+packages/enso-docs/.next
+packages/enso-docs/.source
+packages/enso-docs/content

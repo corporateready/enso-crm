@@ -68,7 +68,7 @@ S3-compatible object storage. Same API as AWS S3, ~4× cheaper on storage and ~9
 **For ENSO**: expected first-year volume is a few GB → **effectively $0**. Even at 100 GB it's ~$0.60/month.
 
 **Configured via standard S3 env vars** in each app:
-```env
+```bash
 S3_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 S3_BUCKET=enso-crm
 S3_KEY=<from B2 application key>
