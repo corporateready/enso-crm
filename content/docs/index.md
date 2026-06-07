@@ -7,9 +7,13 @@ description: In-house operational CRM for ENSO/ARTIMA real estate, built as a Tw
 
 Operational CRM for ENSO + ARTIMA + Vanzari Imobiliare + AVENEW BOTANICA. Replaces Attio + Customer.io + Respond.io + most n8n + the Render-hosted `zadarma-signer`. The analytical half (`modern-data-stack/`) stays as-is.
 
-## What this document is
+## What these docs are
 
-A plan, with decisions locked except for the ~15 items in [open-questions](./open-questions). Build follows [phasing](./phasing) — 8-11 weeks direct to production, no staging.
+These docs describe enso-crm **as built** and running in production at [crm.enso.ro](https://crm.enso.ro), plus what's planned next. They started as a build plan; most of it has shipped. Each page carries a **Status** (Shipped / Partial / Planned).
+
+- The original build plan is preserved in [phasing](./phasing).
+- Remaining decisions live in [open-questions](./open-questions); forward work in [roadmap](./roadmap).
+- For developers: the [enso module map](./developers/enso-modules) and [custom-code patterns](./developers/custom-code-patterns).
 
 ## What the CRM owns
 
@@ -51,7 +55,7 @@ A plan, with decisions locked except for the ~15 items in [open-questions](./ope
 | Email | Resend (or SES) via Novu + Knock |
 | SMS | Twilio (or local) via Novu webhook |
 | Auth | Twenty + Google Workspace SSO |
-| Docs viewer | Fumadocs (this site) |
+| Docs viewer | Fumadocs — this site, at crm.enso.ro/docs (gated) |
 
 See [stack](./stack) for the full table and rationale.
 
@@ -69,9 +73,11 @@ See [stack](./stack) for the full table and rationale.
 - [stack](./stack) — every layer's choice + why
 - [phasing](./phasing) — 8 phases, week-by-week
 - [open-questions](./open-questions) — what's still pending
+- [roadmap](./roadmap) — what's planned next
 - **Domains** — business objects (People, Deals, Projects, Sequences, Activities, Workforce)
-- **Systems** — cross-cutting concerns (identity, routing, state machine, SLA, attribution, notifications)
-- **Integrations** — external services (telephony, Chatwoot inbox, Novu, Knock, glue, downstream to CPQ/1C/BQ)
+- **Systems** — cross-cutting concerns (identity, routing, state machine, SLA, attribution, [consent](./systems/consent), notifications)
+- **Integrations** — external services (telephony, [Chatwoot inbox](./integrations/chatwoot-conversations), Novu, Knock, glue, downstream to CPQ/1C/BQ)
+- **Developers** — [enso module map](./developers/enso-modules) + [custom-code patterns](./developers/custom-code-patterns)
 - **Migration** — from Attio
 
 Reference research (in repo root `docs/`):
