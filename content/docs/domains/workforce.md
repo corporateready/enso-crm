@@ -1,81 +1,40 @@
 ---
 title: Workforce
-description: Users, availability, project assignments. The smart-routing primitives.
+description: Members, availability, routing-pool membership. The routing primitives.
 ---
 
 # Workforce
 
-**Status: Shipped.** Managers, roles, and routing-pool membership ([projectRoutingMember](../developers/enso-modules)) are live.
+**Status: Shipped.** Members are standard Twenty `workspaceMember` records (no separate `users` table). The three routing primitives are live: self-service availability (`workspaceMember.isAvailableForRouting`), the admin-managed routing pool (`projectRoutingMember`), and sticky customer ownership (`personProjectAssignment`).
 
-## Users
+> **There is no `sales_manager` role gate on routing.** Any member who is *accepting leads* **and** on a project's routing pool is eligible. Selection is a per-opportunity uniform random pick — **not** round-robin, and there is **no** `last_assigned_at` / `active_clients_count` fairness state (it was removed). See [systems/routing](../systems/routing) and [systems/lead-pipeline](../systems/lead-pipeline) for the as-built algorithm; this page documents the member-side primitives.
 
-```text
-users
-├── id (uuid)
-├── email (text, unique) — Google Workspace email
-├── name_first, name_last, name_display
-├── role (enum: admin, sales_manager, ops, viewer)
-├── available (boolean, default true)
-├── timezone (text, default 'Europe/Chisinau')
-├── languages (text[]) — ro, ru, en — for language-matched routing if used later
-│
-├── -- routing primitives --
-├── max_active_clients (int, nullable) — soft cap for routing
-├── last_assigned_at (timestamptz) — for round-robin fairness
-├── sip_extension (text, nullable) — Zadarma / Moldcell extension
-├── -- m:n with projects --
-│
-├── -- chat --
-├── chatwoot_agent_id (text, nullable) — for assignment writeback
-├── google_chat_user_id (text, nullable) — for direct notifications
-│
-├── created_at, updated_at, deactivated_at (nullable)
-```
+## Members
 
-### Active clients — computed, not stored
+Members are standard Twenty **`workspaceMember`** records — there is no separate `users` table. The one routing-specific field added to that object is:
 
-Today's `active_clients_count` is a number field that n8n increments and decrements imperatively. In Postgres it's a view:
+- **`isAvailableForRouting`** (boolean, default false) — the self-service "accepting leads" switch. Custom field, not on the static `currentWorkspaceMember` type; toggled via the nav presence control (see [Availability](#availability)).
 
-```sql
-CREATE VIEW user_active_clients_count AS
-SELECT
-  owner_user_id,
-  COUNT(*) FILTER (WHERE pipeline_state = 'active' AND stage NOT IN ('ClosedWon', 'ClosedLost')) AS active_clients_count
-FROM deals
-WHERE owner_user_id IS NOT NULL
-GROUP BY owner_user_id;
-```
+> Design-era fields (`role`, `last_assigned_at`, `max_active_clients`, `active_clients_count`, `sip_extension`, `chatwoot_agent_id`, language matching) are **not** part of the shipped routing path. `last_assigned_at` / round-robin and the `active_clients_count` soft cap were dropped entirely — routing keeps no per-member fairness state. SIP / Chatwoot identity mapping is handled in its own integration path, not as routing inputs.
 
-Routing reads the view in real-time.
+## Routing pool — `projectRoutingMember`
 
-## Project assignments
+The admin-managed pool — *which members receive leads for which project* — is the **`projectRoutingMember`** junction (project × member):
 
-```text
-user_projects
-├── user_id (fk)
-├── project_id (fk)
-├── role (enum: primary, secondary) — primary = preferred routing target
-├── assigned_at, assigned_by
-└── PRIMARY KEY (user_id, project_id)
-```
+- `projectId`, `managerId` (→ workspaceMember), `isActive` (boolean)
+- Composite `name` ("Project · Member"), auto-computed by `ProjectRoutingMemberNameService`.
 
-Replaces Attio's `Users.assigned_projects` multi-select. Lets us:
-- Route AVENEW BOTANICA leads to AVENEW-assigned managers (currently broken)
-- Route ENSO LIVING to ENSO-LIVING-assigned managers (currently broken — no manager has it)
-- Distinguish primary specialist from backup
-- Trail when assignments changed
+Managed by admins via the **"Routing Team"** card on a Project (or the Routing Members table). A member with no active `projectRoutingMember` row for a project never receives that project's routed leads — this is the hard project gate that replaces Attio's `Users.assigned_projects` multi-select.
 
-## Availability — and what "available" means
+## Sticky ownership — `personProjectAssignment`
 
-`available=true` is the manual on/off switch. Manager toggles when going on/off shift, taking a meeting, on vacation.
+The customer-specific ownership record (person × project → member, `endedAt IS NULL`). Distinct from the routing pool: it sends *future* leads for that person+project straight to the named member (auto-claimed, even if they're offline). Written automatically on claim, not by hand. See [systems/routing § Claim → sticky](../systems/routing).
 
-Additional implicit availability factors (Phase 2+ if needed):
+## Availability
 
-- **Working hours**: `users.working_hours_jsonb` per weekday (start/end in user timezone). Routing skips users outside hours.
-- **Out-of-office**: `user_unavailability(user_id, from_at, to_at, reason)` — overrides `available`.
-- **Soft cap**: if `active_clients_count >= max_active_clients`, the user is deprioritized but not excluded.
+`isAvailableForRouting = true` is the manual on/off switch. The member toggles it via the always-visible **"Accepting leads / Not accepting leads"** control in the nav when going on/off shift, into a meeting, or on vacation. Members who are off are excluded from **new** routing; their **existing** deals are untouched.
 
-→ Decision: start with just `available` boolean (matches today). Add the rest only if managers ask.
+Richer availability (per-weekday working hours, out-of-office windows) is design-era only — not shipped. Add only if members ask.
 
 ## Roles
 
@@ -86,62 +45,40 @@ Additional implicit availability factors (Phase 2+ if needed):
 | `ops` | View all deals, reassign deals, set availability for other users, manage routing pool |
 | `viewer` | Read-only — for execs, accountants |
 
-Authorization at the route/action level + Postgres row-level via Auth.js session check (not RLS, since we're not on Supabase).
+Roles govern **permissions** (what a member can see/do), handled by Twenty's native role/permission system. They do **not** gate routing eligibility — a member of any role who is accepting leads and on a project's routing pool can be routed a lead.
 
 ## Routing pool
 
-Effective pool of users for new-deal routing:
+The candidate pool for a routed (non-sticky) lead is the **intersection** of two sets, with no role filter and no ordering:
 
-```sql
-SELECT u.*
-FROM users u
-JOIN user_projects up ON up.user_id = u.id
-WHERE u.role = 'sales_manager'
-  AND u.available = true
-  AND u.deactivated_at IS NULL
-  AND up.project_id = $1  -- the deal's project
-ORDER BY (
-  -- proper round-robin: oldest last_assigned wins
-  COALESCE(u.last_assigned_at, '1970-01-01'),
-  RANDOM()  -- tiebreaker
-);
-```
+- members **accepting leads** — `workspaceMember.isAvailableForRouting = true`
+- members on the **deal's project pool** — an active `projectRoutingMember` (`isActive = true`) for `deal.projectId`
 
-Returns ordered candidates; routing picks the first. This is *true* round-robin, unlike today's random pick.
+From that pool one member is chosen **uniformly at random, per-opportunity** (skipping any already tried on that deal). No round-robin, no `last_assigned_at`, no soft cap. Empty pool → the deal parks and retries.
 
-→ See [systems/routing](../systems/routing) for the full algorithm (claim window, reroute, escalation).
+→ See [systems/routing](../systems/routing) for the full algorithm (sticky auto-claim, claim window, reroute, park) and [systems/lead-pipeline](../systems/lead-pipeline) for the wiring.
 
 ## Workspace membership — not a separate object
 
 Attio's Workspaces object had 8 fields and was barely used. The rebuild has no Workspaces table — there's one workspace, the team. Multi-tenancy by brand handled via `project_id` (see [open-questions](../open-questions) #3).
 
-## SIP extension mapping
+## SIP extension mapping (design-era)
 
-For the "who answered" feature (today implemented by `zadarma-signer`):
+> Not yet shipped, and unrelated to routing assignment — this is about call *attribution* ("who answered"), today still handled by `zadarma-signer`. When built, the SIP/Moldcell extension would live on the member (`workspaceMember`) record, not a separate `users` table.
 
-```text
-users
-├── sip_extension (text, nullable) — '101', '102', etc.
-└── moldcell_extension (text, nullable) — separate if PBX uses different numbering
-```
+The Roistat webhook delivers `sip` (the extension that answered); resolving it to a member by extension avoids the N+1 call to Zadarma's `/v1/pbx/internal/` per call event. A periodic job could reconcile Zadarma's extension list against members and flag discrepancies.
 
-The Roistat webhook delivers `sip` (the extension that answered). We resolve to `user_id` by looking up `sip_extension` or `moldcell_extension`. No more N+1 call to Zadarma's `/v1/pbx/internal/` per call event.
+## What we drop from Attio's Users object
 
-Periodically (daily?), a background job pulls Zadarma's extension list + employee names and reconciles with our `users` table — flagging discrepancies for admin attention.
-
-## What we drop from Attio Users object
-
-- `Available` (kept, but as `boolean` not custom field)
-- `Active Clients Count` (computed view)
-- `Last Assigned At` (kept, but written by routing service)
-- `Assigned Projects` multi-select (replaced by `user_projects` m:n table)
-- `Person` 1:1 link to People object (gone — Users are not People; the conflation in Attio was a workaround)
+- `Available` custom field → `workspaceMember.isAvailableForRouting` (boolean, self-toggled).
+- `Active Clients Count` → not used in routing (no soft cap, no fairness state).
+- `Last Assigned At` → removed entirely; selection is per-opportunity random with no rotation state.
+- `Assigned Projects` multi-select → the `projectRoutingMember` junction (admin-managed per-project pool).
+- `Person` 1:1 link to People → gone; members are `workspaceMember`, not People.
 
 ## What we add
 
-- `working_hours_jsonb` (optional, phase 2)
-- `chatwoot_agent_id` for assignment writeback
-- `sip_extension` for direct call resolution
-- `max_active_clients` soft cap
-- `languages` for language-matched routing if added later
-- Role-based authorization (today's Attio has no real RBAC; everyone with access can edit anything)
+- `workspaceMember.isAvailableForRouting` — self-service "accepting leads" toggle.
+- `projectRoutingMember` — admin-managed routing pool (project × member).
+- `personProjectAssignment` — sticky customer ownership (person × project → member), written on claim.
+- Native Twenty roles/permissions for authorization (Attio had no real RBAC).

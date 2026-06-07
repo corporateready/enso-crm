@@ -107,10 +107,10 @@ Recreation rule for live: parse `sequence_name` like "Call Interaction #1 | Lead
 | `user_id` | → | `legacy_attio_user_id` | audit |
 | `primary_email_address` | → | `email` | lowercase |
 | `person` (link to People object) | → | **drop** (broken concept) | — |
-| `available` | → | `available` boolean | unchanged |
-| `active_clients_count` | → | **drop**; computed | — |
-| `last_assigned_at` | → | `last_assigned_at` | unchanged |
-| `assigned_projects` (multi-select) | → | `user_projects` rows | one row per option; resolve project codes |
+| `available` | → | `workspaceMember.isAvailableForRouting` boolean | self-toggled going forward |
+| `active_clients_count` | → | **drop** | not used in routing |
+| `last_assigned_at` | → | **drop** | round-robin not shipped; no rotation state |
+| `assigned_projects` (multi-select) | → | `projectRoutingMember` rows | one row per option (project × member, `isActive`); resolve project codes |
 | `workspace[]` | → | **drop** | — |
 
 ## Data cleanup

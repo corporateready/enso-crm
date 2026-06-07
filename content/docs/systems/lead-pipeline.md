@@ -25,7 +25,7 @@ inboundActivity.createOne  ──POST hook (server)──▶ enqueue ResolveOppo
   resolve: dedup → attach or create Opportunity (stage ROUTING) + frozen snapshot
   route:   sticky-or-random-pick → set owner, schedule claim-check
   notify:  Google Chat (best-effort, env-gated)
-  claim-check (delayed 3 min): unclaimed → reroute (excl. prior owner); escalate at 5 → STALLED
+  claim-check (delayed 3 min): unclaimed → reroute (excl. prior owner) forever; one-time admin heads-up at 5
 
 opportunity.updateOne ──POST hook (server)──▶ on claim (stage left ROUTING w/ owner):
                                               upsert sticky personProjectAssignment
