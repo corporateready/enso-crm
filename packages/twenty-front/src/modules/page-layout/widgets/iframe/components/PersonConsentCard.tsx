@@ -101,6 +101,20 @@ const GRANT_SOURCES = [
   { value: 'MANUAL', label: 'Manual' },
 ] as const;
 
+// How a manual opt-out happened (the event log's `method`). Automated methods
+// (unsubscribe link / SMS STOP / WhatsApp opt-out) are recorded by automation,
+// but a manager may still log them ("customer replied STOP").
+const REVOKE_METHODS = [
+  { value: 'MANUAL', label: 'Manual (manager)' },
+  { value: 'VERBAL_REQUEST', label: 'Verbal/chat request' },
+  { value: 'COMPLAINT', label: 'Complaint' },
+  { value: 'UNSUBSCRIBE', label: 'Unsubscribe link' },
+  { value: 'SMS_STOP', label: 'SMS STOP' },
+  { value: 'WHATSAPP_OPTOUT', label: 'WhatsApp opt-out' },
+  { value: 'LEGAL_ERASURE', label: 'Legal erasure (GDPR)' },
+  { value: 'OTHER', label: 'Other' },
+] as const;
+
 const formatDate = (value: unknown): string => {
   if (typeof value !== 'string' || value === '') {
     return '';
@@ -246,6 +260,47 @@ const StyledAddButton = styled.button`
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
 `;
 
+const StyledPanel = styled.div`
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledPanelTitle = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
+const StyledNoteInput = styled.input`
+  background: ${themeCssVariables.background.primary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.primary};
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+  width: 100%;
+`;
+
+const StyledPanelActions = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+  justify-content: flex-end;
+`;
+
+const StyledCancelButton = styled.button`
+  background: transparent;
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+`;
+
 const StyledHistory = styled.div`
   border-top: 1px solid ${themeCssVariables.border.color.light};
   display: flex;
@@ -310,7 +365,19 @@ export const PersonConsentCard = () => {
 
   const [addProjectId, setAddProjectId] = useState('');
   const [editMode, setEditMode] = useState(false);
-  const [grantSource, setGrantSource] = useState('VERBAL');
+  // The in-progress grant/opt-out, captured before it is applied. While set, the
+  // panel is open; cancelling clears it and NOTHING is written.
+  const [pending, setPending] = useState<{
+    consentId: string;
+    channelKey: string;
+    channelLabel: string;
+    projectLabel: string;
+    kind: 'grant' | 'revoke';
+    neverConsented: boolean;
+  } | null>(null);
+  const [pendingChoice, setPendingChoice] = useState('');
+  const [pendingNote, setPendingNote] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const { records: consents = [], loading } = useFindManyRecords({
     objectNameSingular: 'personProjectConsent',
@@ -372,7 +439,8 @@ export const PersonConsentCard = () => {
     return { state: 'none', text: t`Not set` };
   };
 
-  const toggleChannel = async (
+  // Open the panel for a channel. Writes nothing yet — the manager must confirm.
+  const startAction = (
     consent: Record<string, unknown>,
     key: string,
     label: string,
@@ -381,50 +449,64 @@ export const PersonConsentCard = () => {
     const isOn = consent[`${key}MarketingConsent`] === true;
     const neverConsented = !isDefined(consent[`${key}MarketingConsentedAt`]);
 
-    if (isOn) {
-      // Revoke — deliberate, with the "why" captured.
-      // eslint-disable-next-line no-alert
-      if (
-        !window.confirm(
-          t`Opt ${projectLabel} out of ${label}? This records an opt-out.`,
-        )
-      ) {
-        return;
-      }
-      // eslint-disable-next-line no-alert
-      const reason = window.prompt(t`Reason for opt-out (optional)`) ?? '';
+    setPending({
+      consentId: consent.id as string,
+      channelKey: key,
+      channelLabel: label,
+      projectLabel,
+      kind: isOn ? 'revoke' : 'grant',
+      neverConsented,
+    });
+    // Default the dropdown: grants → first source, opt-outs → manual.
+    setPendingChoice(isOn ? 'MANUAL' : 'VERBAL');
+    setPendingNote('');
+  };
 
-      await updateOneRecord({
-        objectNameSingular: 'personProjectConsent',
-        idToUpdate: consent.id as string,
-        updateOneRecordInput: {
-          [`${key}MarketingConsent`]: false,
-          lastRevokeMethod: 'MANUAL',
-          ...(reason !== '' ? { lastChangeReason: reason } : {}),
-        },
-        optimisticRecord: { [`${key}MarketingConsent`]: false },
-      });
+  // Cancel — the whole point: clears the panel and NEVER writes a change.
+  const cancelPending = () => {
+    setPending(null);
+    setPendingChoice('');
+    setPendingNote('');
+  };
 
+  const confirmPending = async () => {
+    if (!isDefined(pending) || saving) {
       return;
     }
+    const { consentId, channelKey, kind, neverConsented } = pending;
+    const note = pendingNote.trim();
 
-    // Grant — record the proof; set the source only on a FIRST-EVER grant so a
-    // re-grant never overwrites existing provenance (the server guards this too).
-    // eslint-disable-next-line no-alert
-    const reason = window.prompt(t`Reason / proof (optional)`) ?? '';
+    const updateInput: Record<string, unknown> =
+      kind === 'revoke'
+        ? {
+            [`${channelKey}MarketingConsent`]: false,
+            lastRevokeMethod: pendingChoice,
+            ...(note !== '' ? { lastChangeReason: note } : {}),
+          }
+        : {
+            [`${channelKey}MarketingConsent`]: true,
+            // Source is stamped only on a FIRST-EVER grant; the server's
+            // provenance guard refuses to overwrite an existing one.
+            ...(neverConsented
+              ? { [`${channelKey}MarketingConsentSource`]: pendingChoice }
+              : {}),
+            ...(note !== '' ? { lastChangeReason: note } : {}),
+          };
 
-    await updateOneRecord({
-      objectNameSingular: 'personProjectConsent',
-      idToUpdate: consent.id as string,
-      updateOneRecordInput: {
-        [`${key}MarketingConsent`]: true,
-        ...(neverConsented
-          ? { [`${key}MarketingConsentSource`]: grantSource }
-          : {}),
-        ...(reason !== '' ? { lastChangeReason: reason } : {}),
-      },
-      optimisticRecord: { [`${key}MarketingConsent`]: true },
-    });
+    setSaving(true);
+    try {
+      await updateOneRecord({
+        objectNameSingular: 'personProjectConsent',
+        idToUpdate: consentId,
+        updateOneRecordInput: updateInput,
+        optimisticRecord: {
+          [`${channelKey}MarketingConsent`]: kind === 'grant',
+        },
+      });
+    } finally {
+      setSaving(false);
+      cancelPending();
+    }
   };
 
   const addConsent = async () => {
@@ -432,10 +514,11 @@ export const PersonConsentCard = () => {
       return;
     }
 
+    // Establish the person × project row only; channels start ungranted and are
+    // granted one-by-one through the confirmed panel flow (no silent consent).
     await createOneRecord({
       personId,
       projectId: addProjectId,
-      callMarketingConsent: true,
     });
 
     setAddProjectId('');
@@ -446,7 +529,7 @@ export const PersonConsentCard = () => {
       <StyledHeader>
         <StyledHint>
           {editMode
-            ? t`Click a channel to grant; granting keeps any existing form consent. Revoking asks to confirm.`
+            ? t`Click a channel, then confirm. Granting keeps any existing form consent; cancel writes nothing.`
             : t`Read-only. Click Edit to record verbal consent or an opt-out.`}
         </StyledHint>
         {consents.length > 0 && (
@@ -456,20 +539,57 @@ export const PersonConsentCard = () => {
         )}
       </StyledHeader>
 
-      {editMode && consents.length > 0 && (
-        <StyledAddRow>
-          <StyledChannelLabel>{t`Grant source`}</StyledChannelLabel>
-          <StyledSelect
-            value={grantSource}
-            onChange={(event) => setGrantSource(event.target.value)}
-          >
-            {GRANT_SOURCES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </StyledSelect>
-        </StyledAddRow>
+      {isDefined(pending) && (
+        <StyledPanel>
+          <StyledPanelTitle>
+            {pending.kind === 'grant'
+              ? t`Grant ${pending.channelLabel} for ${pending.projectLabel}`
+              : t`Opt ${pending.projectLabel} out of ${pending.channelLabel}`}
+          </StyledPanelTitle>
+
+          {pending.kind === 'revoke' ? (
+            <StyledSelect
+              value={pendingChoice}
+              onChange={(event) => setPendingChoice(event.target.value)}
+            >
+              {REVOKE_METHODS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </StyledSelect>
+          ) : pending.neverConsented ? (
+            <StyledSelect
+              value={pendingChoice}
+              onChange={(event) => setPendingChoice(event.target.value)}
+            >
+              {GRANT_SOURCES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </StyledSelect>
+          ) : (
+            <StyledHint>
+              {t`Re-enabling — the original consent source is preserved.`}
+            </StyledHint>
+          )}
+
+          <StyledNoteInput
+            value={pendingNote}
+            placeholder={t`Note / proof (optional)`}
+            onChange={(event) => setPendingNote(event.target.value)}
+          />
+
+          <StyledPanelActions>
+            <StyledCancelButton onClick={cancelPending}>
+              {t`Cancel`}
+            </StyledCancelButton>
+            <StyledAddButton onClick={confirmPending} disabled={saving}>
+              {pending.kind === 'grant' ? t`Grant` : t`Opt out`}
+            </StyledAddButton>
+          </StyledPanelActions>
+        </StyledPanel>
       )}
 
       {loading
@@ -496,7 +616,7 @@ export const PersonConsentCard = () => {
                         $editable={editMode}
                         onClick={() =>
                           editMode &&
-                          toggleChannel(
+                          startAction(
                             consent,
                             channel.key,
                             channel.label,
