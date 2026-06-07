@@ -5,7 +5,9 @@ description: The engine. Template-driven sequences + ad-hoc tasks coexist. Caden
 
 # Sequences and Tasks
 
-The user-named "whole separate module" — the engine that dictates the next step for managers, with effectiveness analytics built in. Implemented as a NestJS module in our Twenty fork: `sequences`.
+**Status: Planned.** The sequences engine is **not yet built** — there is no `sequences` module in the codebase today. This page describes the intended design.
+
+The user-named "whole separate module" — the engine that dictates the next step for managers, with effectiveness analytics built in. Planned as a NestJS module in our Twenty fork (`sequences`).
 
 Two complementary modes coexist:
 

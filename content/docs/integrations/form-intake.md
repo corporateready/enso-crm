@@ -5,6 +5,8 @@ description: The live website-form intake pipeline — standalone n8n on Railway
 
 # Form intake (n8n → CRM)
 
+**Status: Shipped.** Form intake is the live reference channel; it also establishes per-project marketing [consent](../systems/consent) (Terms+Privacy on the form).
+
 The first rebuilt intake channel: website **form submissions** flow from PostHog
 into a standalone n8n instance, which resolves the project, dedups the person,
 and writes an `inboundActivity` into the CRM. This replaces the form half of the

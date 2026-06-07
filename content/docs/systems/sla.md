@@ -5,6 +5,8 @@ description: Task scheduling, overdue detection, idempotent warnings. Replaces S
 
 # SLA and overdue
 
+**Status: Planned.** The SLA/overdue scanner described below is not yet built. (The routing **claim window** timer — a related but separate mechanism — is live; see [routing](./routing).)
+
 The current `Sequence | Waitings` flow is **261 nodes across 3 crons** of mostly conditional fan-out to send warnings. The rebuild is one cron job + a notification fan-out, idempotent at the DB level.
 
 ## The scanner

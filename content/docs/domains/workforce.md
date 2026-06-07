@@ -5,6 +5,8 @@ description: Users, availability, project assignments. The smart-routing primiti
 
 # Workforce
 
+**Status: Shipped.** Managers, roles, and routing-pool membership ([projectRoutingMember](../developers/enso-modules)) are live.
+
 ## Users
 
 ```text

@@ -5,6 +5,8 @@ description: Inbound capture, normalization, and identity resolution before a De
 
 # Leads
 
+**Status: Shipped (concept).** "Lead" remains a state, not an object — realized via `inboundActivity` + the [lead-pipeline](../systems/lead-pipeline).
+
 A "Lead" is not a primary object in the CRM. It's a **state**: a Person who has triggered an inbound Activity and may or may not have a Deal yet. We track inbound events directly into the `activities` table and resolve identity → Person → maybe-Deal at intake.
 
 ## The intake spine

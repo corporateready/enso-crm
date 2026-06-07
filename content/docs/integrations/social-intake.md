@@ -160,6 +160,18 @@ legacy name-match — too loose). Chatwoot's contact carries phone/email/identif
 `inboundActivity` (`externalId` / `distinctId`); a dedicated Person social-handle
 field is optional and can be added later if needed for matching.
 
+## Social profile enrichment
+
+What we can and can't auto-fill from a social DM:
+
+- **Instagram** — the handle arrives in the `conversation_created` payload, so n8n sets the Person's **`instagramLink`** automatically.
+- **Facebook Messenger** — we only get a **page-scoped PSID**, not a public profile URL; there is **no Facebook profile link** to populate. The thread is reachable via a deep link, not a profile.
+- **`ids_for_business`** (Meta's cross-page user id) is effectively unavailable — don't rely on it.
+- **Avatar / profile picture** is **gated behind Meta App Review** — not fetched.
+- **LinkedIn / X** can't be derived from DM intake; they stay manual.
+
+So of the social links, only Instagram is auto-populated; the rest are manual or unavailable.
+
 ## Conversation granularity / dedup
 
 **One `inboundActivity` per Chatwoot conversation.** Create on
@@ -217,11 +229,7 @@ opportunity.source = SOCIAL_DM`.
 
 ## Consent
 
-Inbound social message = implied consent **for that channel** (per-project, source
-`CHATWOOT`). On a resolved person×project, upsert `personProjectConsent` for the
-messaged channel (e.g. `whatsapp`/`instagram`/`facebook` flag as the model allows).
-Enforcement stays `!doNotContact && consent`. Mirrors form-intake's
-implied/opt-out model.
+An inbound social DM opens a **service / reply window** — we may answer that conversation — but it is **not** marketing consent. Social channels are deliberately excluded from automated marketing-consent grants; only form / lead-ad intake (which carries Terms + Privacy) grants marketing consent. To market later on SMS/WhatsApp/email/call, a manager records an explicit (VERBAL) consent. The reply window itself is enforced via Chatwoot's `can_reply` ([chatwoot-conversations](./chatwoot-conversations)). Full model, against the live code: [consent](../systems/consent).
 
 ## Meta app setup (Business-Manager admin)
 
