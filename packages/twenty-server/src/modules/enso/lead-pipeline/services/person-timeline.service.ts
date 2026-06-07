@@ -12,6 +12,16 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
   'cef40992-41c4-4742-8b4c-234777a1b8c6';
 const OPPORTUNITY_OBJECT_METADATA_ID = 'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
+const CONSENT_EVENT_OBJECT_METADATA_ID =
+  'e4644363-2cb7-43d5-931e-8af41e583831';
+
+// Channel code → human label for the timeline summary line.
+const CHANNEL_LABEL: Record<string, string> = {
+  email: 'Email',
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  call: 'Call',
+};
 
 // Surfaces related-record events on the PERSON's Timeline. Twenty natively only
 // writes timeline activities for notes/tasks, so an inbound activity arriving or
@@ -71,6 +81,63 @@ export class PersonTimelineService {
         linkedRecordId: opportunity.id,
         cachedName: opportunity.name ?? '',
         happensAt: opportunity.createdAt,
+      });
+    });
+  }
+
+  // Aggregated consent change (one row per grant/revoke, listing the channels)
+  // surfaced on the person's main timeline, linked to a representative consent
+  // event so the row opens the audit record. Called from BOTH the pipeline grant
+  // and the manual edit hook.
+  async recordConsentChange(
+    workspaceId: string,
+    params: {
+      personId: string;
+      projectId?: string | null;
+      consentEventId: string;
+      action: 'GRANTED' | 'REVOKED';
+      channels: string[]; // lowercase channel keys
+      detail?: string | null; // source (grant) or method (revoke) label
+      happensAt?: string | null;
+    },
+  ): Promise<void> {
+    await this.run(workspaceId, async () => {
+      if (
+        !isDefined(params.personId) ||
+        !isDefined(params.consentEventId) ||
+        params.channels.length === 0
+      ) {
+        return;
+      }
+
+      const channelList = params.channels
+        .map((channel) => CHANNEL_LABEL[channel] ?? channel)
+        .join(', ');
+
+      let projectName: string | null = null;
+
+      if (isDefined(params.projectId)) {
+        const project = await this.find(
+          workspaceId,
+          'project',
+          params.projectId,
+        );
+
+        projectName = project?.name ?? null;
+      }
+
+      const cachedName = [channelList, projectName, params.detail]
+        .filter(isDefined)
+        .filter((part) => part !== '')
+        .join(' · ');
+
+      await this.writeOnPerson(workspaceId, {
+        personId: params.personId,
+        name: `linked-personProjectConsentEvent.${params.action.toLowerCase()}`,
+        linkedObjectMetadataId: CONSENT_EVENT_OBJECT_METADATA_ID,
+        linkedRecordId: params.consentEventId,
+        cachedName,
+        happensAt: params.happensAt ?? new Date().toISOString(),
       });
     });
   }
