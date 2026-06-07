@@ -24,12 +24,35 @@ const CHANNELS = [
 ] as const;
 
 const SOURCE_LABELS: Record<string, string> = {
-  FORM_WEBSITE: 'Form',
+  FORM_WEBSITE: 'Website Form',
   LEAD_AD: 'Lead Ad',
   VERBAL: 'Verbal',
   DOUBLE_OPT_IN: 'Double opt-in',
   MIGRATION: 'Imported',
+  WALK_IN: 'Walk-in',
+  REFERRAL: 'Referral',
+  MANUAL: 'Manual',
+  IN_CHAT: 'Written (chat)',
   OTHER: 'Other',
+};
+
+// How a revoke happened (the event log's `method`).
+const METHOD_LABELS: Record<string, string> = {
+  UNSUBSCRIBE: 'Unsubscribe link',
+  SMS_STOP: 'SMS STOP',
+  WHATSAPP_OPTOUT: 'WhatsApp opt-out',
+  MANUAL: 'Manual',
+  VERBAL_REQUEST: 'Verbal/chat request',
+  COMPLAINT: 'Complaint',
+  LEGAL_ERASURE: 'Legal erasure (GDPR)',
+  OTHER: 'Other',
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  EMAIL: 'Email',
+  SMS: 'SMS',
+  WHATSAPP: 'WhatsApp',
+  CALL: 'Call',
 };
 
 const CONSENT_GQL_FIELDS = {
@@ -54,6 +77,20 @@ const CONSENT_GQL_FIELDS = {
   callMarketingConsentRevokedAt: true,
 };
 
+// Read-only audit trail (append-only personProjectConsentEvent). createdBy is an
+// ACTOR composite — `true` fetches its subfields (name, source).
+const EVENT_GQL_FIELDS = {
+  id: true,
+  name: true,
+  channel: true,
+  action: true,
+  source: true,
+  method: true,
+  note: true,
+  occurredAt: true,
+  createdBy: true,
+};
+
 // Grant sources a manager can pick (the "how obtained"). Automated sources
 // (FORM_WEBSITE/LEAD_AD) come from the pipeline, not this card.
 const GRANT_SOURCES = [
@@ -76,6 +113,24 @@ const formatDate = (value: unknown): string => {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
+      });
+};
+
+// Date + time for the audit trail (events are point-in-time, time matters).
+const formatDateTime = (value: unknown): string => {
+  if (typeof value !== 'string' || value === '') {
+    return '';
+  }
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
       });
 };
 
@@ -191,6 +246,61 @@ const StyledAddButton = styled.button`
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
 `;
 
+const StyledHistory = styled.div`
+  border-top: 1px solid ${themeCssVariables.border.color.light};
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[2]};
+  margin-top: ${themeCssVariables.spacing[2]};
+  padding-top: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledHistoryTitle = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
+const StyledHistoryItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledHistoryHead = styled.div`
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: ${themeCssVariables.spacing[1]};
+`;
+
+// $action: GRANTED (green) | REVOKED (danger).
+const StyledHistoryAction = styled.span<{ $action: string }>`
+  color: ${({ $action }) =>
+    $action === 'GRANTED'
+      ? themeCssVariables.color.green
+      : themeCssVariables.font.color.danger};
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+  text-transform: uppercase;
+`;
+
+const StyledHistoryChannel = styled.span`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledHistoryMeta = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.xs};
+`;
+
+const StyledHistoryNote = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.xs};
+  font-style: italic;
+`;
+
 export const PersonConsentCard = () => {
   const { t } = useLingui();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
@@ -214,6 +324,14 @@ export const PersonConsentCard = () => {
     recordGqlFields: { id: true, name: true },
     skip: !isPerson,
     limit: 60,
+  });
+
+  const { records: events = [] } = useFindManyRecords({
+    objectNameSingular: 'personProjectConsentEvent',
+    filter: { personId: { eq: personId } },
+    recordGqlFields: EVENT_GQL_FIELDS,
+    skip: !isDefined(personId) || !isPerson,
+    limit: 50,
   });
 
   const { createOneRecord } = useCreateOneRecord({
@@ -416,6 +534,65 @@ export const PersonConsentCard = () => {
             {t`Add`}
           </StyledAddButton>
         </StyledAddRow>
+      )}
+
+      {events.length > 0 && (
+        <StyledHistory>
+          <StyledHistoryTitle>{t`Consent history`}</StyledHistoryTitle>
+          {[...events]
+            .sort((first, second) =>
+              String(second.occurredAt ?? '').localeCompare(
+                String(first.occurredAt ?? ''),
+              ),
+            )
+            .map((event) => {
+              const action = (event.action as string) ?? '';
+              const channelLabel =
+                CHANNEL_LABELS[(event.channel as string) ?? ''] ??
+                (event.channel as string) ??
+                '';
+              const projectLabel =
+                ((event.name as string) ?? '').split(' · ')[1] ?? '';
+              const how =
+                action === 'REVOKED'
+                  ? (METHOD_LABELS[(event.method as string) ?? ''] ??
+                    (event.method as string))
+                  : (SOURCE_LABELS[(event.source as string) ?? ''] ??
+                    (event.source as string));
+              const actor = (
+                (event.createdBy as { name?: string } | null)?.name ?? ''
+              ).trim();
+              const note = (event.note as string) ?? '';
+              const metaParts = [
+                how,
+                actor,
+                formatDateTime(event.occurredAt),
+              ].filter((part) => isDefined(part) && part !== '');
+
+              return (
+                <StyledHistoryItem key={event.id as string}>
+                  <StyledHistoryHead>
+                    <StyledHistoryAction $action={action}>
+                      {action === 'GRANTED' ? t`Granted` : t`Revoked`}
+                    </StyledHistoryAction>
+                    <StyledHistoryChannel>
+                      {projectLabel
+                        ? `${channelLabel} · ${projectLabel}`
+                        : channelLabel}
+                    </StyledHistoryChannel>
+                  </StyledHistoryHead>
+                  {metaParts.length > 0 && (
+                    <StyledHistoryMeta>
+                      {metaParts.join(' · ')}
+                    </StyledHistoryMeta>
+                  )}
+                  {note !== '' && (
+                    <StyledHistoryNote>“{note}”</StyledHistoryNote>
+                  )}
+                </StyledHistoryItem>
+              );
+            })}
+        </StyledHistory>
       )}
     </StyledContainer>
   );
