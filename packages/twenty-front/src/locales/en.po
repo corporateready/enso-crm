@@ -17948,3 +17948,7 @@ msgstr "by"
 #. js-lingui-id: 3y0eQW
 msgid "View triggering activity →"
 msgstr "View triggering activity →"
+
+#. js-lingui-id: B9IKUw
+msgid "via"
+msgstr "via"
