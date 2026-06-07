@@ -80,6 +80,25 @@ RUN if [ -d /app/packages/twenty-front/build ]; then \
 
 
 # ===========================================================================
+# enso-docs (Fumadocs static export, served at /docs by twenty-server)
+# Standalone npm app — isolated from the yarn workspace dependency graph.
+# ===========================================================================
+
+FROM node:24.15.0-alpine3.23@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS enso-docs-build
+
+WORKDIR /app/packages/enso-docs
+
+COPY ./packages/enso-docs/package.json ./packages/enso-docs/package-lock.json ./
+RUN npm ci
+
+COPY ./packages/enso-docs ./
+# Canonical docs live at the repo root; sync-content.mjs copies them in at build.
+COPY ./content/docs /app/content/docs
+RUN npm run build:static
+# Output: /app/packages/enso-docs/out
+
+
+# ===========================================================================
 # Target: twenty-server (server only, no frontend)
 #   docker build --target twenty-server -f packages/twenty-docker/twenty/Dockerfile .
 # ===========================================================================
@@ -150,5 +169,8 @@ USER 1000
 FROM twenty-server AS twenty
 
 COPY --chown=1000 --from=twenty-front-build /app/packages/twenty-front/build /app/packages/twenty-server/dist/front
+
+# enso-docs static export, served at /docs (gated by DocsAuthMiddleware)
+COPY --chown=1000 --from=enso-docs-build /app/packages/enso-docs/out /app/packages/twenty-server/dist/front/docs
 
 LABEL org.opencontainers.image.description="Twenty image with backend and frontend."

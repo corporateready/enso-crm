@@ -22,9 +22,11 @@ import { McpMethodGuardMiddleware } from 'src/engine/api/mcp/middlewares/mcp-met
 import { McpModule } from 'src/engine/api/mcp/mcp.module';
 import { RestApiModule } from 'src/engine/api/rest/rest-api.module';
 import { WorkspaceAuthContextMiddleware } from 'src/engine/core-modules/auth/middlewares/workspace-auth-context.middleware';
+import { JwtModule } from 'src/engine/core-modules/jwt/jwt.module';
 import { MetricsModule } from 'src/engine/core-modules/metrics/metrics.module';
 import { DataloaderModule } from 'src/engine/dataloaders/dataloader.module';
 import { WorkspaceMetadataVersionModule } from 'src/engine/metadata-modules/workspace-metadata-version/workspace-metadata-version.module';
+import { DocsAuthMiddleware } from 'src/engine/middlewares/docs-auth.middleware';
 import { GraphQLHydrateRequestFromTokenMiddleware } from 'src/engine/middlewares/graphql-hydrate-request-from-token.middleware';
 import { MiddlewareModule } from 'src/engine/middlewares/middleware.module';
 import { RestCoreMiddleware } from 'src/engine/middlewares/rest-core.middleware';
@@ -70,6 +72,8 @@ const MIGRATED_REST_METHODS = [
     RestApiModule,
     McpModule,
     MiddlewareModule,
+    // Provides JwtWrapperService for DocsAuthMiddleware (the /docs gate)
+    JwtModule,
     WorkspaceMetadataVersionModule,
     // I18n module for translations
     I18nModule,
@@ -112,6 +116,16 @@ export class AppModule {
   }
 
   configure(consumer: MiddlewareConsumer) {
+    // Gate the static /docs site before ServeStaticModule serves the export.
+    // Non-strict routing makes 'docs' match both /docs and /docs/; 'docs/*path'
+    // covers nested pages and assets. The middleware also re-checks req.path.
+    consumer
+      .apply(DocsAuthMiddleware)
+      .forRoutes(
+        { path: 'docs', method: RequestMethod.GET },
+        { path: 'docs/*path', method: RequestMethod.GET },
+      );
+
     consumer
       .apply(
         GraphQLHydrateRequestFromTokenMiddleware,
