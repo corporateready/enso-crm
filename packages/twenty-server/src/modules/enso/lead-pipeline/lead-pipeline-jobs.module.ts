@@ -11,6 +11,7 @@ import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/ser
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
 import { PersonFirstTouchService } from 'src/modules/enso/lead-pipeline/services/person-first-touch.service';
 import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
+import { ConsentEventService } from 'src/modules/enso/person-project-consent/services/consent-event.service';
 import { PersonProjectConsentNameService } from 'src/modules/enso/person-project-consent/services/person-project-consent-name.service';
 
 // WORKER side of the lead pipeline: the four BullMQ jobs (resolve → route →
@@ -27,6 +28,7 @@ import { PersonProjectConsentNameService } from 'src/modules/enso/person-project
     PersonTimelineService,
     ConsentFromActivityService,
     PersonProjectConsentNameService,
+    ConsentEventService,
     ManagerNotificationService,
     ResolveOpportunityFromActivityJob,
     RouteOpportunityJob,
