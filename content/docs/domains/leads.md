@@ -40,7 +40,7 @@ flowchart LR
 | Website form | HTTPS POST direct to CRM | `form_submitted` | CRM |
 | Roistat (calls) | Roistat webhook (twice per call: start + end) | `call_started`, `call_ended` | Roistat → CRM |
 | Zadarma (direct) | Zadarma webhook (notify_start/answer/end/record) | various | Zadarma → CRM |
-| Meta Lead Ads | n8n facebookLeadAds trigger → CRM POST | `lead_ad_submitted` | n8n → CRM |
+| Meta Lead Ads | n8n `leadgen` webhook (multi-page) → Graph fetch → CRM POST | `lead_ad_submitted` | n8n → CRM |
 | Chatwoot | Chatwoot webhook on inbox events | `message_received`, `conversation_created` | Chatwoot → CRM |
 
 ## Webhook reception
@@ -51,7 +51,7 @@ Single endpoint per source, with HMAC verification where possible:
 |---|---|---|
 | Roistat | None native — IP allowlist + path secret | Cron sweep to reconcile missed events |
 | Zadarma | HMAC signature on signed responses; webhooks: shared secret in path | Use `notify_*` events |
-| Meta Lead Ads | n8n handles Meta auth; we trust n8n via shared secret | Keep n8n as a translation layer to avoid Meta's auth complexity |
+| Meta Lead Ads | Meta verify-token handshake on the webhook + OAuth credential for the Graph fetch; pages subscribed via `subscribed_apps` | Own Meta app "ENSO Lead Ads"; n8n is the translation layer |
 | Chatwoot | API token in header | Self-hosted, easy to rotate |
 | Website form | HMAC signature using a per-site secret | Form sites embed signing in PostHog snippet |
 
