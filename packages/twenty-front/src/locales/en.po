@@ -17956,3 +17956,23 @@ msgstr "via"
 #. js-lingui-id: XIHM3o
 msgid "automatically"
 msgstr "automatically"
+
+#. js-lingui-id: pmI50k
+msgid "Click a channel, then confirm. Cancel writes nothing."
+msgstr "Click a channel, then confirm. Cancel writes nothing."
+
+#. js-lingui-id: Li3ydf
+msgid "Record consent for {0}"
+msgstr "Record consent for {0}"
+
+#. js-lingui-id: dzWUW1
+msgid "Tick the channels they agreed to. Cancel adds nothing."
+msgstr "Tick the channels they agreed to. Cancel adds nothing."
+
+#. js-lingui-id: z3ERlt
+msgid "No phone or email on file yet."
+msgstr "No phone or email on file yet."
+
+#. js-lingui-id: UG8Ira
+msgid "No consent changes recorded yet."
+msgstr "No consent changes recorded yet."

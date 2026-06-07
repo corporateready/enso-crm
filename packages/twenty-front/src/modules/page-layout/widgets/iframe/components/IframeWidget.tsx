@@ -8,6 +8,10 @@ import {
   ENSO_PERSON_CONSENT_MARKER,
   PersonConsentCard,
 } from '@/page-layout/widgets/iframe/components/PersonConsentCard';
+import {
+  ENSO_PERSON_CONSENT_HISTORY_MARKER,
+  PersonConsentHistory,
+} from '@/page-layout/widgets/iframe/components/PersonConsentHistory';
 import { PageLayoutWidgetNoDataDisplay } from '@/page-layout/widgets/components/PageLayoutWidgetNoDataDisplay';
 import { WidgetSkeletonLoader } from '@/page-layout/widgets/components/WidgetSkeletonLoader';
 import { styled } from '@linaria/react';
@@ -85,6 +89,13 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
   // hooks above to keep hook order stable (rules-of-hooks).
   if (isDefined(url) && url.includes(ENSO_CHATWOOT_CONVERSATION_MARKER)) {
     return <ChatwootConversationEmbed />;
+  }
+
+  // ENSO sentinel — read-only consent history (its own Person tab). MUST be
+  // checked before the card marker: the history marker string starts with the
+  // card marker, so a history URL also matches `includes(CARD_MARKER)`.
+  if (isDefined(url) && url.includes(ENSO_PERSON_CONSENT_HISTORY_MARKER)) {
+    return <PersonConsentHistory />;
   }
 
   // ENSO sentinel — manager consent card on the Person record.
