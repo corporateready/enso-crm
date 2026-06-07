@@ -298,6 +298,19 @@ const StyledCheckLabel = styled.label`
   gap: ${themeCssVariables.spacing[2]};
 `;
 
+// A per-project block inside the combined consent-check modal.
+const StyledCheckGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledCheckGroupTitle = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
 export const PersonConsentCard = () => {
   const { t } = useLingui();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
@@ -510,13 +523,20 @@ export const PersonConsentCard = () => {
   };
 
   // ---- shared multi-channel modal helpers ----
-  const toggleCheckChannel = (channelKey: string) => {
+  // Channel selection is keyed by scope:channel so one combined modal can hold
+  // multiple projects at once (scope = projectId for add, consentId for check).
+  const selectionKey = (scopeId: string, channel: string) =>
+    `${scopeId}:${channel}`;
+  const isChannelSelected = (scopeId: string, channel: string) =>
+    !deselected.has(selectionKey(scopeId, channel));
+  const toggleChannel = (scopeId: string, channel: string) => {
+    const key = selectionKey(scopeId, channel);
     setDeselected((previous) => {
       const next = new Set(previous);
-      if (next.has(channelKey)) {
-        next.delete(channelKey);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(channelKey);
+        next.add(key);
       }
       return next;
     });
@@ -556,8 +576,8 @@ export const PersonConsentCard = () => {
     if (!isDefined(addModal) || saving) {
       return;
     }
-    const selected = addModal.channels.filter(
-      (channel) => !deselected.has(channel.key),
+    const selected = addModal.channels.filter((channel) =>
+      isChannelSelected(addModal.projectId, channel.key),
     );
     const note = modalNote.trim();
     const input: Record<string, unknown> = {
@@ -581,94 +601,87 @@ export const PersonConsentCard = () => {
     }
   };
 
-  // ---- auto contact-check nudge ----
-  const consentCheckRow =
+  // ---- auto contact-check nudge (ALL uncovered projects in ONE modal) ----
+  // Each project that we can reach but has no consent and isn't dismissed this
+  // session. Suppressed while another modal is open.
+  const checkRows =
     personLoading || loading || isDefined(pending) || isDefined(addModal)
-      ? undefined
-      : consents.find(
-          (consent) =>
-            !dismissed.has(`${personId}:${consent.projectId as string}`) &&
-            notProvidedChannels(consent).length > 0,
-        );
+      ? []
+      : consents
+          .filter(
+            (consent) =>
+              !dismissed.has(`${personId}:${consent.projectId as string}`) &&
+              notProvidedChannels(consent).length > 0,
+          )
+          .map((consent) => ({
+            consent,
+            projectLabel:
+              ((consent.name as string) ?? '').split(' · ')[1] ?? t`this project`,
+            channels: notProvidedChannels(consent),
+          }));
 
-  const dismissConsentCheck = (consent: Record<string, unknown>) => {
-    const key = `${personId}:${consent.projectId as string}`;
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(`${DISMISS_PREFIX}${key}`, '1');
-    }
-    setDismissed((previous) => new Set(previous).add(key));
+  const dismissAllChecks = () => {
+    setDismissed((previous) => {
+      const next = new Set(previous);
+      for (const row of checkRows) {
+        const key = `${personId}:${row.consent.projectId as string}`;
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(`${DISMISS_PREFIX}${key}`, '1');
+        }
+        next.add(key);
+      }
+      return next;
+    });
     resetModalInputs();
   };
 
-  const recordConsentCheck = async (
-    consent: Record<string, unknown>,
-    channels: readonly { key: string; label: string }[],
-  ) => {
+  const recordAllChecks = async () => {
     if (saving) {
       return;
     }
     const note = modalNote.trim();
-    const updateInput: Record<string, unknown> = {};
-    for (const channel of channels) {
-      updateInput[`${channel.key}MarketingConsent`] = true;
-      updateInput[`${channel.key}MarketingConsentSource`] = modalSource;
-    }
-    if (note !== '') {
-      updateInput.lastChangeReason = note;
+    const updates: Promise<unknown>[] = [];
+    for (const row of checkRows) {
+      const selected = row.channels.filter((channel) =>
+        isChannelSelected(row.consent.id as string, channel.key),
+      );
+      if (selected.length === 0) {
+        continue;
+      }
+      const updateInput: Record<string, unknown> = {};
+      for (const channel of selected) {
+        updateInput[`${channel.key}MarketingConsent`] = true;
+        updateInput[`${channel.key}MarketingConsentSource`] = modalSource;
+      }
+      if (note !== '') {
+        updateInput.lastChangeReason = note;
+      }
+      updates.push(
+        updateOneRecord({
+          objectNameSingular: 'personProjectConsent',
+          idToUpdate: row.consent.id as string,
+          updateOneRecordInput: updateInput,
+        }),
+      );
     }
 
     setSaving(true);
     try {
-      await updateOneRecord({
-        objectNameSingular: 'personProjectConsent',
-        idToUpdate: consent.id as string,
-        updateOneRecordInput: updateInput,
-      });
+      await Promise.all(updates);
     } finally {
       setSaving(false);
       resetModalInputs();
     }
   };
 
-  // The active multi-channel modal — "add a project" takes priority over the
-  // auto contact-check nudge.
-  const checkProjectLabel = isDefined(consentCheckRow)
-    ? (((consentCheckRow.name as string) ?? '').split(' · ')[1] ??
-      t`this project`)
-    : '';
-  const projectModal = isDefined(addModal)
-    ? {
-        title: t`Record consent for ${addModal.projectLabel}`,
-        text: t`Tick the channels they agreed to. Cancel adds nothing.`,
-        channels: addModal.channels,
-        confirmLabel: t`Add`,
-        cancelLabel: t`Cancel`,
-        allowEmpty: true,
-        onCancel: cancelAddModal,
-        onConfirm: confirmAddModal,
-      }
-    : isDefined(consentCheckRow)
-      ? {
-          title: t`Consent check`,
-          text: t`No marketing consent is on record for ${checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now.`,
-          channels: notProvidedChannels(consentCheckRow),
-          confirmLabel: t`Record consent`,
-          cancelLabel: t`Not now`,
-          allowEmpty: false,
-          onCancel: () => dismissConsentCheck(consentCheckRow),
-          onConfirm: () =>
-            recordConsentCheck(
-              consentCheckRow,
-              notProvidedChannels(consentCheckRow).filter(
-                (channel) => !deselected.has(channel.key),
-              ),
-            ),
-        }
-      : null;
-  const projectModalSelectedCount = isDefined(projectModal)
-    ? projectModal.channels.filter((channel) => !deselected.has(channel.key))
-        .length
-    : 0;
+  const checkSelectedCount = checkRows.reduce(
+    (sum, row) =>
+      sum +
+      row.channels.filter((channel) =>
+        isChannelSelected(row.consent.id as string, channel.key),
+      ).length,
+    0,
+  );
 
   return (
     <StyledContainer>
@@ -812,20 +825,26 @@ export const PersonConsentCard = () => {
           document.body,
         )}
 
-      {isDefined(projectModal) &&
+      {isDefined(addModal) &&
         createPortal(
           <StyledModalOverlay>
             <StyledModalDialog>
-              <StyledModalTitle>{projectModal.title}</StyledModalTitle>
-              <StyledModalText>{projectModal.text}</StyledModalText>
-              {projectModal.channels.length > 0 ? (
+              <StyledModalTitle>
+                {t`Record consent for ${addModal.projectLabel}`}
+              </StyledModalTitle>
+              <StyledModalText>
+                {t`Tick the channels they agreed to. Cancel adds nothing.`}
+              </StyledModalText>
+              {addModal.channels.length > 0 ? (
                 <StyledCheckList>
-                  {projectModal.channels.map((channel) => (
+                  {addModal.channels.map((channel) => (
                     <StyledCheckLabel key={channel.key}>
                       <input
                         type="checkbox"
-                        checked={!deselected.has(channel.key)}
-                        onChange={() => toggleCheckChannel(channel.key)}
+                        checked={isChannelSelected(addModal.projectId, channel.key)}
+                        onChange={() =>
+                          toggleChannel(addModal.projectId, channel.key)
+                        }
                       />
                       {channel.label}
                     </StyledCheckLabel>
@@ -850,17 +869,72 @@ export const PersonConsentCard = () => {
                 onChange={(event) => setModalNote(event.target.value)}
               />
               <StyledActions>
-                <StyledCancelButton onClick={projectModal.onCancel}>
-                  {projectModal.cancelLabel}
+                <StyledCancelButton onClick={cancelAddModal}>
+                  {t`Cancel`}
+                </StyledCancelButton>
+                <StyledAddButton onClick={confirmAddModal} disabled={saving}>
+                  {t`Add`}
+                </StyledAddButton>
+              </StyledActions>
+            </StyledModalDialog>
+          </StyledModalOverlay>,
+          document.body,
+        )}
+
+      {checkRows.length > 0 &&
+        createPortal(
+          <StyledModalOverlay>
+            <StyledModalDialog>
+              <StyledModalTitle>{t`Consent check`}</StyledModalTitle>
+              <StyledModalText>
+                {t`We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now.`}
+              </StyledModalText>
+              {checkRows.map((row) => (
+                <StyledCheckGroup key={row.consent.id as string}>
+                  <StyledCheckGroupTitle>
+                    {row.projectLabel}
+                  </StyledCheckGroupTitle>
+                  {row.channels.map((channel) => (
+                    <StyledCheckLabel key={channel.key}>
+                      <input
+                        type="checkbox"
+                        checked={isChannelSelected(
+                          row.consent.id as string,
+                          channel.key,
+                        )}
+                        onChange={() =>
+                          toggleChannel(row.consent.id as string, channel.key)
+                        }
+                      />
+                      {channel.label}
+                    </StyledCheckLabel>
+                  ))}
+                </StyledCheckGroup>
+              ))}
+              <StyledSelect
+                value={modalSource}
+                onChange={(event) => setModalSource(event.target.value)}
+              >
+                {GRANT_SOURCES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </StyledSelect>
+              <StyledNoteInput
+                value={modalNote}
+                placeholder={t`Note / proof (optional)`}
+                onChange={(event) => setModalNote(event.target.value)}
+              />
+              <StyledActions>
+                <StyledCancelButton onClick={dismissAllChecks}>
+                  {t`Not now`}
                 </StyledCancelButton>
                 <StyledAddButton
-                  onClick={projectModal.onConfirm}
-                  disabled={
-                    saving ||
-                    (!projectModal.allowEmpty && projectModalSelectedCount === 0)
-                  }
+                  onClick={recordAllChecks}
+                  disabled={saving || checkSelectedCount === 0}
                 >
-                  {projectModal.confirmLabel}
+                  {t`Record consent`}
                 </StyledAddButton>
               </StyledActions>
             </StyledModalDialog>

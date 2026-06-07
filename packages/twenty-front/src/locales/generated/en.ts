@@ -11,3 +11,5 @@ Object.assign(messages, {"B9IKUw":["via"]});
 Object.assign(messages, {"XIHM3o":["automatically"]});
 // ENSO: consent-card modal/history strings (manual catalog patch).
 Object.assign(messages, {"pmI50k": ["Click a channel, then confirm. Cancel writes nothing."], "Li3ydf": ["Record consent for ", ["0"]], "dzWUW1": ["Tick the channels they agreed to. Cancel adds nothing."], "z3ERlt": ["No phone or email on file yet."], "UG8Ira": ["No consent changes recorded yet."]});
+// ENSO: combined consent-check modal string.
+Object.assign(messages, {"dYv040": ["We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."]});
