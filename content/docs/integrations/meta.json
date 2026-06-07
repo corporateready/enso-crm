@@ -4,6 +4,7 @@
     "form-intake",
     "telephony",
     "messaging",
+    "chatwoot-conversations",
     "external-notifications",
     "internal-notifications",
     "glue",

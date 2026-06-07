@@ -198,3 +198,12 @@ flowchart LR
     Twenty -.events.-> FT --> BQ[(BigQuery)]
     PH -.web events.-> BQ
 ```
+
+## Documentation site (/docs)
+
+These docs are served at **crm.enso.ro/docs** by `twenty-server` itself — no separate service or domain.
+
+- **Source:** the canonical Markdown is this `content/docs/` directory. `packages/enso-docs` (a standalone Next.js + Fumadocs app) renders it as a **static export** (`output: 'export'`, `basePath: '/docs'`). It is intentionally **not** a yarn/nx workspace, so it never affects the `twenty-server` build graph.
+- **Build:** the Dockerfile has an `enso-docs-build` stage (`npm ci && npm run build:static`, which syncs `content/docs` in and runs `next build`); its `out/` is copied into `twenty-server`'s `dist/front/docs`, which the existing `ServeStaticModule` serves at `/docs`.
+- **Access:** gated by `DocsAuthMiddleware` — it verifies the `tokenPair` cookie's access JWT (a plain browser navigation carries no Authorization header) and redirects unauthenticated visitors to sign-in. The gate is coarse (any logged-in user); see [roadmap](./roadmap#docs-access-control).
+- **Editing:** edit Markdown in `content/docs/` only; the package copy is a build artifact. Code fences must use a Shiki-known language. ` ```mermaid ` blocks render to static SVG.
