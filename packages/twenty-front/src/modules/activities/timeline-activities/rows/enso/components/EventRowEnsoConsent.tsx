@@ -67,6 +67,11 @@ export const EventRowEnsoConsent = ({
     ? event.linkedRecordCachedName
     : t`consent`;
 
+  // The "how" (grant source / revoke method) is carried in properties so we can
+  // render it as a labelled "via …" segment rather than buried in the link text.
+  const detail = ((event.properties as { detail?: string } | null) ?? {})
+    .detail;
+
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
   const linkedRecordId = event.linkedRecordId;
@@ -95,6 +100,12 @@ export const EventRowEnsoConsent = ({
             </StyledLinkedRecord>
           ) : (
             <EventRowItem>{cachedName}</EventRowItem>
+          )}
+          {isNonEmptyString(detail) && (
+            <>
+              <EventRowItem variant="action">{t`via`}</EventRowItem>
+              <EventRowItem>{detail}</EventRowItem>
+            </>
           )}
           <EventRowItem variant="action">{t`by`}</EventRowItem>
           <EventRowItem>{authorFullName}</EventRowItem>

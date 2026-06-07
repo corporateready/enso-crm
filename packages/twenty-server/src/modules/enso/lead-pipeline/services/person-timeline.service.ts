@@ -98,6 +98,9 @@ export class PersonTimelineService {
       action: 'GRANTED' | 'REVOKED';
       channels: string[]; // lowercase channel keys
       detail?: string | null; // source (grant) or method (revoke) label
+      // The manager who made a manual change; absent for pipeline (system) grants
+      // so the row reads "by <workspace>" for those.
+      workspaceMemberId?: string | null;
       happensAt?: string | null;
     },
   ): Promise<void> {
@@ -126,7 +129,9 @@ export class PersonTimelineService {
         projectName = project?.name ?? null;
       }
 
-      const cachedName = [channelList, projectName, params.detail]
+      // The clickable label = channels · project; the "how" (source/method) is
+      // carried in properties so the row can render it as "· via <detail>".
+      const cachedName = [channelList, projectName]
         .filter(isDefined)
         .filter((part) => part !== '')
         .join(' · ');
@@ -138,6 +143,8 @@ export class PersonTimelineService {
         linkedRecordId: params.consentEventId,
         cachedName,
         happensAt: params.happensAt ?? new Date().toISOString(),
+        properties: isDefined(params.detail) ? { detail: params.detail } : {},
+        workspaceMemberId: params.workspaceMemberId ?? null,
       });
     });
   }
@@ -151,6 +158,8 @@ export class PersonTimelineService {
       linkedRecordId: string;
       cachedName: string;
       happensAt: Date | string | null;
+      properties?: Record<string, unknown>;
+      workspaceMemberId?: string | null;
     },
   ): Promise<void> {
     const repository = await this.globalWorkspaceOrmManager.getRepository<any>(
@@ -163,10 +172,13 @@ export class PersonTimelineService {
       targetPersonId: params.personId,
       name: params.name,
       happensAt: params.happensAt ?? new Date().toISOString(),
-      properties: {},
+      properties: params.properties ?? {},
       linkedObjectMetadataId: params.linkedObjectMetadataId,
       linkedRecordId: params.linkedRecordId,
       linkedRecordCachedName: params.cachedName,
+      ...(isDefined(params.workspaceMemberId)
+        ? { workspaceMemberId: params.workspaceMemberId }
+        : {}),
     });
   }
 

@@ -235,6 +235,7 @@ export class PersonProjectConsentAuditService {
             action: 'GRANTED',
             channels: grantedChannels,
             detail: prettyCode(grantSource),
+            workspaceMemberId: actor.workspaceMemberId,
             happensAt: nowIso,
           });
         }
@@ -247,6 +248,7 @@ export class PersonProjectConsentAuditService {
             action: 'REVOKED',
             channels: revokedChannels,
             detail: prettyCode(revokeMethod ?? 'MANUAL'),
+            workspaceMemberId: actor.workspaceMemberId,
             happensAt: nowIso,
           });
         }
