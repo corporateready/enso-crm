@@ -20,4 +20,6 @@ export const MESSAGE_QUEUE_PRIORITY = {
   [MessageQueue.aiStreamQueue]: 2,
   [MessageQueue.ensoLeadPipelineQueue]: 4,
   [MessageQueue.ensoPersonMergeQueue]: 4,
+  [MessageQueue.ensoCompanyEnrichmentQueue]: 4,
+  [MessageQueue.ensoCompanyMergeQueue]: 4,
 };

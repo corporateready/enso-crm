@@ -6,7 +6,11 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
-import { PERSON_RELATION_REASSIGNMENTS } from 'src/modules/enso/person-merge/person-merge.constants';
+import {
+  PERSON_RELATION_REASSIGNMENTS,
+  PHONE_MATCH_DIGITS,
+} from 'src/modules/enso/person-merge/person-merge.constants';
+import { buildMergeTimelineActivityInsert } from 'src/modules/enso/record-merge/merge-timeline.util';
 
 // Composite fields come back nested from the workspace ORM.
 type PersonRow = {
@@ -153,11 +157,81 @@ export class PersonMergeExecutorService {
         }
       }
 
+      // 4) Surface the merge on the keeper's timeline (best-effort).
+      try {
+        const timelineRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'timelineActivity',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        await timelineRepository.insert(
+          buildMergeTimelineActivityInsert({
+            targetObject: 'person',
+            keeperId: keeper.id,
+            matchedOn: this.deriveMatchedOn(keeper, duplicates),
+            mergedLabels: duplicates.map((dup) => this.personLabel(dup)),
+          }),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Merge timeline write failed for person ${keeper.id}: ${
+            (error as Error).message
+          }`,
+        );
+      }
+
       this.logger.log(
         `Merged ${duplicateIds.length} duplicate(s) into person ${keeper.id}.`,
       );
 
       return { keeperId: keeper.id, mergedIds: duplicateIds };
     }, systemAuthContext);
+  }
+
+  // Last-N national digits of a phone (formatting/calling-code agnostic), or ''.
+  private phoneLast(value: string | null | undefined): string {
+    const digits = (value ?? '').replace(/\D/g, '');
+
+    return digits.length >= 7 ? digits.slice(-PHONE_MATCH_DIGITS) : '';
+  }
+
+  // Best-effort: which identity key the duplicates shared with the keeper, for
+  // the timeline summary. Falls back to the generic combined label.
+  private deriveMatchedOn(keeper: PersonRow, duplicates: PersonRow[]): string {
+    const keeperEmail = (keeper.emails?.primaryEmail || '').trim().toLowerCase();
+    const keeperPhone = this.phoneLast(keeper.phones?.primaryPhoneNumber);
+
+    const byEmail =
+      keeperEmail.length > 0 &&
+      duplicates.some(
+        (d) =>
+          (d.emails?.primaryEmail || '').trim().toLowerCase() === keeperEmail,
+      );
+    const byPhone =
+      keeperPhone.length > 0 &&
+      duplicates.some((d) => this.phoneLast(d.phones?.primaryPhoneNumber) === keeperPhone);
+
+    if (byEmail && byPhone) return 'email/phone';
+    if (byEmail) return 'email';
+    if (byPhone) return 'phone';
+
+    return 'email/phone';
+  }
+
+  // Human identifier of a merged-away person for the timeline row.
+  private personLabel(person: PersonRow): string {
+    const fullName = [person.name?.firstName, person.name?.lastName]
+      .filter((part) => typeof part === 'string' && part.length > 0)
+      .join(' ')
+      .trim();
+
+    return (
+      fullName ||
+      person.emails?.primaryEmail ||
+      person.phones?.primaryPhoneNumber ||
+      person.id
+    );
   }
 }
