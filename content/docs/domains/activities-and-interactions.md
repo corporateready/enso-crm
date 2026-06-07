@@ -11,6 +11,8 @@ User direction was unambiguous:
 
 So we keep them in two separate tables, both linked to People and Deals.
 
+**Status: Mixed.** The two-stream model is as-built (inbound `inboundActivity`); some schema and provider details below are the original proposal. Inbound chats also surface via the [Chatwoot conversations](../integrations/chatwoot-conversations) view; activity labels follow `{Type} | {name-or-phone} | {project}` (see [enso modules](../developers/enso-modules)).
+
 ## Activities — inbound only
 
 What the prospect did to reach us.
@@ -61,7 +63,7 @@ Two parallel facts on a call activity:
 - `call_status` — what happened (from telephony provider)
 - `sales_pickup` (boolean) — did a sales-eligible extension answer (vs. front desk / security)
 
-If `sales_pickup=false` AND `call_answered_by` is "Paza ARTIMA" / "Reception ARTIMA" / "Техник", the deal **does not advance** to Sales Accepted Lead — those answers don't count for the funnel.
+If `sales_pickup=false` AND `call_answered_by` is "Paza ARTIMA" / "Reception ARTIMA" / "Техник", the call **does not count** as a sales-answered pickup — those answers don't advance the funnel. (There is no "Sales Accepted Lead" stage; it was dropped — see [open-questions](../open-questions).)
 
 See [open-questions](../open-questions) #8 for the user-decided semantics.
 
@@ -120,8 +122,8 @@ The user said don't mix them. There's also a real signal-vs-noise reason: when c
 | `kind` | Provider | Transport |
 |---|---|---|
 | `outbound_call` | Zadarma click-to-call | `GET /v1/request/callback/` |
-| `outbound_sms` | Customer.io transactional API | (existing setup) |
-| `outbound_email` | Customer.io | (existing setup) |
+| `outbound_sms` | Novu → Twilio (or local provider) | Customer.io retired |
+| `outbound_email` | Novu → Resend | Customer.io retired |
 | `outbound_whatsapp` | Chatwoot WhatsApp inbox | Chatwoot API |
 | `outbound_viber` | Chatwoot Viber inbox | Chatwoot API |
 | `outbound_telegram` | Chatwoot Telegram inbox | Chatwoot API |

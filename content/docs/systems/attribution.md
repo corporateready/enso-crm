@@ -7,6 +7,8 @@ description: First-touch attribution preserved from intake to close. Roistat vis
 
 A deal that closes 6 months after first contact should still attribute revenue back to the originating campaign. That requires **first-touch UTM** preservation on the Deal — present in today's Attio schema and kept in the rebuild.
 
+**Status: Shipped.** As-built, the pipeline also freezes **first-touch on the Person** (`person-first-touch` service): the earliest inbound activity sets the person's lead source, traffic type + UTMs, date, and a link to the creating activity. Inbound dedup keys on the provider's **Source External ID**. See [enso modules](../developers/enso-modules).
+
 ## The flow
 
 ```mermaid

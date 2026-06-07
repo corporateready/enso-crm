@@ -5,6 +5,8 @@ description: The customer object model. Phone-keyed, multi-channel, dedup-friend
 
 # People and Companies
 
+**Status: Mixed.** The object model is live, but some schema blocks below show the *original proposed* Postgres shape (snake_case). The as-built objects are Twenty metadata objects (camelCase, composite `emails`/`phones`). Authoritative as-built detail: [consent](../systems/consent), the manager-assignment junction in [enso modules](../developers/enso-modules).
+
 ## People — the central object
 
 ```text
@@ -50,6 +52,8 @@ person_projects
 ```
 
 Computed mostly from Activities + Deals; agents can also pin manually.
+
+> **As-built:** the live junction that carries the **manager assignment** per (person × project) is `personProjectAssignment` (person × project × manager). Its sticky owner is set when a deal is *claimed* — future inquiries for that person+project route straight to that manager — and its composite `name` is `<project> · <manager>`. See [routing](../systems/routing) and [enso modules](../developers/enso-modules). The `interest_level` tracking above was the original proposal.
 
 ### Merge model
 
@@ -166,98 +170,9 @@ Person has two inverse collections from `personRelationship`:
 
 ## Consent (live)
 
-Two layers, intentionally separated:
+Marketing consent is tracked **per person × project** on the `personProjectConsent` junction — **four channels** (email, SMS, WhatsApp, **call**), each with a granted flag, a source, a consented-at and a **revoked-at** timestamp. Default-deny; grants are established automatically from form / lead-ad intake and recorded manually (VERBAL) by managers, with original provenance preserved on re-grant.
 
-### Person-level: hard stop
-
-A global kill switch that overrides everything. If `doNotContact = true`,
-no channel from ENSO Group contacts this person — including operational
-1:1 calls from a manager about a deal they initiated.
-
-| Field | Type | Purpose |
-|---|---|---|
-| `doNotContact` | BOOLEAN, default false | The hard stop |
-| `doNotContactSetAt` | DATE_TIME | When the hard stop was applied (audit) |
-| `doNotContactReason` | SELECT (User Request / GDPR Objection / Hard Bounce / Suspected Fraud / Internal Decision / Other) | Why (audit) |
-
-### Per-project: marketing consent (sparse, default-deny)
-
-Marketing consent lives on a separate junction `personProjectConsent` — one
-row per (person × project) pair, present only when consent has been
-explicitly decided.
-
-```text
-personProjectConsent
-├── id (uuid)
-├── name (composite) — "Maria Popescu · ARTIMA"
-├── person (fk → person)
-├── project (fk → project)
-├── emailMarketingConsent     (boolean, default false)
-├── smsMarketingConsent       (boolean, default false)
-├── whatsappMarketingConsent  (boolean, default false)
-├── emailMarketingConsentedAt    (datetime)
-├── smsMarketingConsentedAt      (datetime)
-├── whatsappMarketingConsentedAt (datetime)
-├── emailMarketingConsentSource    (select)
-├── smsMarketingConsentSource      (select)
-├── whatsappMarketingConsentSource (select)
-└── created_at, updated_at, etc.
-```
-
-Source select options (uniform across channels): Website Form / Lead Ad /
-Verbal (sales call) / Double Opt-In / Migration / Other.
-
-### Sparse-table semantics
-
-- **No row** for (person × project) = no consent decided. Default-deny: do
-  not send.
-- A row with `emailMarketingConsent = true` means **explicit opt-in**, with
-  timestamp + source recorded for audit.
-- A row with `emailMarketingConsent = false` means **explicit opt-out**, also
-  recorded — important for proving "we did stop sending after they asked."
-
-A `false` row is meaningfully different from no row at all: both mean "don't
-send," but the row records the audit trail.
-
-### Read-side enforcement
-
-Every outbound sender (Novu / SMS provider / WhatsApp / n8n broadcast)
-MUST gate sends through these checks. Never trust callers to filter.
-
-```ts
-canEmail(person, project)    = !person.doNotContact && row(person,project)?.emailMarketingConsent === true
-canSMS(person, project)      = !person.doNotContact && row(person,project)?.smsMarketingConsent === true
-canWhatsApp(person, project) = !person.doNotContact && row(person,project)?.whatsappMarketingConsent === true
-canOperational1to1(person)   = !person.doNotContact   // for managers calling about a deal in flight
-```
-
-### Write-side discipline
-
-When flipping a consent to `true`, write all three of that channel's fields
-atomically (boolean + consentedAt + consentSource). Skipping the audit
-fields defeats the purpose.
-
-### Migration default
-
-On Attio import, set all consents to `false` regardless of any Attio data.
-You don't have audit-grade proof of prior consent — re-consent at next
-touch.
-
-### Why not also store per-channel consent at the person level?
-
-Earlier design had email / sms / whatsapp marketing consent BOOLEANs on
-Person itself, intending to act as a "person agreed to marketing from ENSO
-Group at all" umbrella gate above per-project filtering. We dropped that
-layer because:
-
-- All ENSO marketing goes out under specific brand names (ARTIMA newsletter,
-  AVRAM IANCU updates, etc.) — there is no "ENSO Group umbrella newsletter."
-- The umbrella booleans would be permanent `true` placeholders gating
-  nothing; they'd just be noise.
-- Per-project consent IS the marketing consent.
-
-If a real "from ENSO Group" umbrella program ever appears, the umbrella
-booleans can be re-added — but we won't pre-build that.
+This is documented in full, against the live code, on the authoritative **[consent](../systems/consent)** page. Note: there is **no** separate person-level "do not contact" flag in the current build — suppression is per channel via the consent record.
 
 ## Open questions
 

@@ -7,6 +7,8 @@ description: Smart routing — assign deals to managers by availability, project
 
 Replaces `Routing Automation` (38 nodes) + `Distribution of Deals` (24 nodes) + the orphan call-routing flows.
 
+**Status: Shipped.** Implemented in the lead-pipeline jobs (see [enso modules](../developers/enso-modules), [lead-pipeline](./lead-pipeline)). As-built: round-robin assignment opens a **3-minute claim window**; a **sticky owner** — the manager who claimed a prior deal for this person × project ([personProjectAssignment](../domains/people-and-companies)) — skips the window and **auto-claims**; with no available manager the deal is **parked** with a heartbeat and resumes when someone returns; unclaimed deals **reroute indefinitely**, with an admin heads-up after repeated reroutes.
+
 ## The algorithm
 
 ```mermaid

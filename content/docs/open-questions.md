@@ -5,6 +5,8 @@ description: What's left. Most architectural decisions are closed; remaining ite
 
 # Open questions
 
+**Status: Live build.** enso-crm is in production; the items below are remaining defaults (override anytime) and deferrals, not blockers. Forward work is tracked in [roadmap](./roadmap).
+
 After the last round, nearly everything is decided. What remains is either defaulted (with the option to override later) or explicitly deferred from v1.
 
 ## Defaults (override anytime)

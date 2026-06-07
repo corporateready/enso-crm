@@ -5,6 +5,8 @@ description: 8-11 weeks, direct build to production, no parallel staging.
 
 # Phasing
 
+**Status: Historical plan.** enso-crm is live in production. This page is the original build plan, kept as a record of how it was sequenced. For current as-built behavior see the **Systems**, **Integrations**, and **Developers** pages; for what's still planned see [roadmap](./roadmap). The core path — intake → identity/dedup → opportunity routing → claim → pipeline, with [attribution](./systems/attribution), [consent](./systems/consent), and the [Chatwoot inbox](./integrations/chatwoot-conversations) — has shipped.
+
 Production from day 1. No fan-out, no shadow run, no staging environment. Each phase ends with something usable in production.
 
 ## Phase 0 — Foundation (2-3 days)

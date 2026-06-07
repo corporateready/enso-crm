@@ -7,6 +7,8 @@ description: The deal lifecycle. State machine with 2D state model. Field valida
 
 The core object. One **open** deal per Person per project — dedup is person × project over non-closed deals with no time window; a closed deal lets a fresh inquiry open a new one (#9 resolved; see [systems/lead-pipeline](../systems/lead-pipeline)).
 
+**Status: Shipped.** Inbound-created deals get a composite name `Deal | <phone or name> | <project>` (the channel/source lives in the Opportunity's **Source** field, not the name). Routing, claim, and sticky ownership are described in [routing](../systems/routing).
+
 ## Schema
 
 ```text
