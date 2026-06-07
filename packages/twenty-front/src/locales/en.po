@@ -17952,3 +17952,7 @@ msgstr "View triggering activity →"
 #. js-lingui-id: B9IKUw
 msgid "via"
 msgstr "via"
+
+#. js-lingui-id: XIHM3o
+msgid "automatically"
+msgstr "automatically"

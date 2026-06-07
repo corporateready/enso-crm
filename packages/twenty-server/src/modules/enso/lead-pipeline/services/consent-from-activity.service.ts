@@ -241,6 +241,7 @@ export class ConsentFromActivityService {
           action: 'GRANTED',
           channels: grantedNonNull.channels,
           detail: SOURCE_LABEL[grantedNonNull.source] ?? grantedNonNull.source,
+          auto: true,
           happensAt: grantedNonNull.consentedAt,
         });
       }

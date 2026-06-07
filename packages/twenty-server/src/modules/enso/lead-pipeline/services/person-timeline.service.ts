@@ -101,6 +101,9 @@ export class PersonTimelineService {
       // The manager who made a manual change; absent for pipeline (system) grants
       // so the row reads "by <workspace>" for those.
       workspaceMemberId?: string | null;
+      // true for pipeline/system grants → row reads "automatically" instead of
+      // "by <someone>".
+      auto?: boolean;
       happensAt?: string | null;
     },
   ): Promise<void> {
@@ -143,7 +146,10 @@ export class PersonTimelineService {
         linkedRecordId: params.consentEventId,
         cachedName,
         happensAt: params.happensAt ?? new Date().toISOString(),
-        properties: isDefined(params.detail) ? { detail: params.detail } : {},
+        properties: {
+          ...(isDefined(params.detail) ? { detail: params.detail } : {}),
+          ...(params.auto === true ? { auto: true } : {}),
+        },
         workspaceMemberId: params.workspaceMemberId ?? null,
       });
     });

@@ -67,10 +67,12 @@ export const EventRowEnsoConsent = ({
     ? event.linkedRecordCachedName
     : t`consent`;
 
-  // The "how" (grant source / revoke method) is carried in properties so we can
-  // render it as a labelled "via …" segment rather than buried in the link text.
-  const detail = ((event.properties as { detail?: string } | null) ?? {})
-    .detail;
+  // The "how" (grant source / revoke method) + whether the change was automatic
+  // (pipeline) are carried in properties.
+  const properties =
+    (event.properties as { detail?: string; auto?: boolean } | null) ?? {};
+  const detail = properties.detail;
+  const isAutomatic = properties.auto === true;
 
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
@@ -107,8 +109,14 @@ export const EventRowEnsoConsent = ({
               <EventRowItem>{detail}</EventRowItem>
             </>
           )}
-          <EventRowItem variant="action">{t`by`}</EventRowItem>
-          <EventRowItem>{authorFullName}</EventRowItem>
+          {isAutomatic ? (
+            <EventRowItem variant="action">{t`automatically`}</EventRowItem>
+          ) : (
+            <>
+              <EventRowItem variant="action">{t`by`}</EventRowItem>
+              <EventRowItem>{authorFullName}</EventRowItem>
+            </>
+          )}
         </StyledRow>
         <StyledItemTitleDate>{createdAt}</StyledItemTitleDate>
       </StyledRowContainer>

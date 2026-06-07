@@ -8,3 +8,4 @@ Object.assign(messages, {"bh/qAr": [["text"], " — opt out"], "T1tL/H": ["Add c
 // ENSO: consent-loop timeline strings (manual catalog patch, see PR note).
 Object.assign(messages, {"bUEryi": ["Consent granted"], "df0iEW": ["Consent revoked"], "nLGyiK": ["consent"], "Vi2Pqx": ["by"], "3y0eQW": ["View triggering activity →"]});
 Object.assign(messages, {"B9IKUw":["via"]});
+Object.assign(messages, {"XIHM3o":["automatically"]});
