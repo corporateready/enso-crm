@@ -54,6 +54,16 @@ const CONSENT_GQL_FIELDS = {
   callMarketingConsentRevokedAt: true,
 };
 
+// Grant sources a manager can pick (the "how obtained"). Automated sources
+// (FORM_WEBSITE/LEAD_AD) come from the pipeline, not this card.
+const GRANT_SOURCES = [
+  { value: 'VERBAL', label: 'Verbal (call)' },
+  { value: 'IN_CHAT', label: 'Written (chat/DM)' },
+  { value: 'WALK_IN', label: 'Walk-in' },
+  { value: 'REFERRAL', label: 'Referral' },
+  { value: 'MANUAL', label: 'Manual' },
+] as const;
+
 const formatDate = (value: unknown): string => {
   if (typeof value !== 'string' || value === '') {
     return '';
@@ -190,6 +200,7 @@ export const PersonConsentCard = () => {
 
   const [addProjectId, setAddProjectId] = useState('');
   const [editMode, setEditMode] = useState(false);
+  const [grantSource, setGrantSource] = useState('VERBAL');
 
   const { records: consents = [], loading } = useFindManyRecords({
     objectNameSingular: 'personProjectConsent',
@@ -250,24 +261,51 @@ export const PersonConsentCard = () => {
     projectLabel: string,
   ) => {
     const isOn = consent[`${key}MarketingConsent`] === true;
-    const nextValue = !isOn;
+    const neverConsented = !isDefined(consent[`${key}MarketingConsentedAt`]);
 
-    // Revoking opts the person out — make it deliberate.
-    if (
-      !nextValue &&
+    if (isOn) {
+      // Revoke — deliberate, with the "why" captured.
       // eslint-disable-next-line no-alert
-      !window.confirm(
-        t`Opt ${projectLabel} out of ${label}? This records an opt-out.`,
-      )
-    ) {
+      if (
+        !window.confirm(
+          t`Opt ${projectLabel} out of ${label}? This records an opt-out.`,
+        )
+      ) {
+        return;
+      }
+      // eslint-disable-next-line no-alert
+      const reason = window.prompt(t`Reason for opt-out (optional)`) ?? '';
+
+      await updateOneRecord({
+        objectNameSingular: 'personProjectConsent',
+        idToUpdate: consent.id as string,
+        updateOneRecordInput: {
+          [`${key}MarketingConsent`]: false,
+          lastRevokeMethod: 'MANUAL',
+          ...(reason !== '' ? { lastChangeReason: reason } : {}),
+        },
+        optimisticRecord: { [`${key}MarketingConsent`]: false },
+      });
+
       return;
     }
+
+    // Grant — record the proof; set the source only on a FIRST-EVER grant so a
+    // re-grant never overwrites existing provenance (the server guards this too).
+    // eslint-disable-next-line no-alert
+    const reason = window.prompt(t`Reason / proof (optional)`) ?? '';
 
     await updateOneRecord({
       objectNameSingular: 'personProjectConsent',
       idToUpdate: consent.id as string,
-      updateOneRecordInput: { [`${key}MarketingConsent`]: nextValue },
-      optimisticRecord: { [`${key}MarketingConsent`]: nextValue },
+      updateOneRecordInput: {
+        [`${key}MarketingConsent`]: true,
+        ...(neverConsented
+          ? { [`${key}MarketingConsentSource`]: grantSource }
+          : {}),
+        ...(reason !== '' ? { lastChangeReason: reason } : {}),
+      },
+      optimisticRecord: { [`${key}MarketingConsent`]: true },
     });
   };
 
@@ -299,6 +337,22 @@ export const PersonConsentCard = () => {
           </StyledEditButton>
         )}
       </StyledHeader>
+
+      {editMode && consents.length > 0 && (
+        <StyledAddRow>
+          <StyledChannelLabel>{t`Grant source`}</StyledChannelLabel>
+          <StyledSelect
+            value={grantSource}
+            onChange={(event) => setGrantSource(event.target.value)}
+          >
+            {GRANT_SOURCES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </StyledSelect>
+        </StyledAddRow>
+      )}
 
       {loading
         ? <StyledHint>{t`Loading…`}</StyledHint>
