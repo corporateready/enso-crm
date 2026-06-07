@@ -9,6 +9,8 @@ Self-hosted omnichannel inbox. Replaces Respond.io. Owned conversations across I
 
 Notifications (email, SMS, in-app) go through [Novu](./external-notifications) and [Knock](./internal-notifications), not Chatwoot.
 
+**Status: Shipped.** How Chatwoot is wired into the CRM — agent provisioning, assignment writeback on claim, the `can_reply` reply-window gate, the in-CRM Conversations view, and the 24h auto-resolve / resolve-on-close lifecycle — is documented on [Chatwoot conversations](./chatwoot-conversations).
+
 ## Direction of integration
 
 ```mermaid

@@ -7,6 +7,8 @@ description: Zadarma SDK direct in Twenty + Roistat webhook in n8n + Moldcell ob
 
 Three players. Roistat is the attribution layer. Zadarma is the programmable RO provider. Moldcell is the MD call-center (no public API).
 
+**Status: Shipped (intake).** Inbound calls land as `inboundActivity` rows and drive the pipeline ([lead-pipeline](../systems/lead-pipeline)); first-touch attribution keys on the Roistat visit id ([attribution](../systems/attribution)).
+
 ## Where each piece lives
 
 | Piece | Layer | Module / flow |

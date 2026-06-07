@@ -5,6 +5,8 @@ description: Phone-keyed deduplication of People at intake and asynchronously.
 
 # Identity resolution
 
+**Status: Shipped.** Beyond intake-time dedup, a background **person-merge** flow ([enso modules](../developers/enso-modules)) detects when a created/updated person now shares a phone or email with others and merges the duplicate set **into the oldest** record.
+
 ## The primary key — E.164 phone
 
 70% of inbound has phone, not always email. All four intake channels (call, form, social, lead ad) carry phone reliably. Phone (E.164) is the identity key.
