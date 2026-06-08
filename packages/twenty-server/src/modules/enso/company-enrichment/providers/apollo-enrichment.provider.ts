@@ -85,6 +85,12 @@ export class ApolloEnrichmentProvider implements CompanyEnrichmentProvider {
       return null;
     }
 
+    // TEMP debug: inspect what Apollo actually returns for industry (free-tier
+    // field coverage check). Remove once confirmed.
+    this.logger.warn(
+      `apollo-debug[${input.domain}] industry=${JSON.stringify(organization.industry)} industries=${JSON.stringify(organization.industries)} secondary_industries=${JSON.stringify(organization.secondary_industries)} keys=${Object.keys(organization).join(',')}`,
+    );
+
     return this.mapOrganization(organization);
   }
 
