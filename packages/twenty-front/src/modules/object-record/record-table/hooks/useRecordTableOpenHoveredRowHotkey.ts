@@ -5,16 +5,11 @@ import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSide
 import { useHotkeysOnFocusedElement } from '@/ui/utilities/hotkey/hooks/useHotkeysOnFocusedElement';
 import { useAtomComponentStateCallbackState } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateCallbackState';
 import { useStore } from 'jotai';
-import { useRef } from 'react';
-import { AppPath } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
-import { useNavigateApp } from '~/hooks/useNavigateApp';
 
-// A second Space press within this window opens the record in full page.
-const DOUBLE_PRESS_THRESHOLD_IN_MS = 300;
-
-// Space on the hovered row opens it in the side panel; a quick second
-// Space on the same row opens it in full page.
+// Space on the hovered row opens it in the side panel. Pressing Space again
+// while the side panel is open hides it (handled at the side-panel focus scope,
+// not here — opening the side panel takes over the keyboard focus).
 export const useRecordTableOpenHoveredRowHotkey = ({
   focusId,
 }: {
@@ -23,7 +18,6 @@ export const useRecordTableOpenHoveredRowHotkey = ({
   const { recordTableId, objectNameSingular } = useRecordTableContextOrThrow();
 
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
-  const navigate = useNavigateApp();
   const store = useStore();
 
   const hoverPositionCallbackState = useAtomComponentStateCallbackState(
@@ -35,11 +29,6 @@ export const useRecordTableOpenHoveredRowHotkey = ({
     recordIdByRealIndexComponentState,
     recordTableId,
   );
-
-  const lastSpacePressRef = useRef<{
-    recordId: string;
-    timestamp: number;
-  } | null>(null);
 
   const handleSpace = (keyboardEvent: KeyboardEvent) => {
     const hoverPosition = store.get(hoverPositionCallbackState);
@@ -59,24 +48,6 @@ export const useRecordTableOpenHoveredRowHotkey = ({
     // we actually have a hovered record to open.
     keyboardEvent.preventDefault();
 
-    const now = Date.now();
-    const lastSpacePress = lastSpacePressRef.current;
-
-    const isDoublePress =
-      isDefined(lastSpacePress) &&
-      lastSpacePress.recordId === recordId &&
-      now - lastSpacePress.timestamp < DOUBLE_PRESS_THRESHOLD_IN_MS;
-
-    if (isDoublePress) {
-      lastSpacePressRef.current = null;
-      navigate(AppPath.RecordShowPage, {
-        objectNameSingular,
-        objectRecordId: recordId,
-      });
-      return;
-    }
-
-    lastSpacePressRef.current = { recordId, timestamp: now };
     openRecordInSidePanel({
       recordId,
       objectNameSingular,
@@ -88,7 +59,7 @@ export const useRecordTableOpenHoveredRowHotkey = ({
     keys: ['space'],
     callback: handleSpace,
     focusId,
-    dependencies: [openRecordInSidePanel, navigate, objectNameSingular, store],
+    dependencies: [openRecordInSidePanel, objectNameSingular, store],
     options: {
       preventDefault: false,
     },
