@@ -1,7 +1,7 @@
-import { useRecordShowPageGoBackOnAltSpaceHotkey } from '@/object-record/record-show/hooks/useRecordShowPageGoBackOnAltSpaceHotkey';
+import { useRecordShowPageGoBackHotkey } from '@/object-record/record-show/hooks/useRecordShowPageGoBackHotkey';
 
 export const RecordShowPageGoBackHotkeyEffect = () => {
-  useRecordShowPageGoBackOnAltSpaceHotkey();
+  useRecordShowPageGoBackHotkey();
 
   return null;
 };
