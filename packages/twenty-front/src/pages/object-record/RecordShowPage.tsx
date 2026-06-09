@@ -10,6 +10,7 @@ import { isLayoutCustomizationModeEnabledState } from '@/layout-customization/st
 import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { RecordComponentInstanceContextsWrapper } from '@/object-record/components/RecordComponentInstanceContextsWrapper';
 import { PageLayoutRecordPageRenderer } from '@/object-record/record-show/components/PageLayoutRecordPageRenderer';
+import { RecordShowPageGoBackHotkeyEffect } from '@/object-record/record-show/components/RecordShowPageGoBackHotkeyEffect';
 import { RecordShowPageSSESubscribeEffect } from '@/object-record/record-show/components/RecordShowPageSSESubscribeEffect';
 import { useRecordShowPage } from '@/object-record/record-show/hooks/useRecordShowPage';
 import { computeRecordShowComponentInstanceId } from '@/object-record/record-show/utils/computeRecordShowComponentInstanceId';
@@ -75,6 +76,7 @@ export const RecordShowPage = () => {
                   objectNameSingular={objectNameSingular}
                   recordId={objectRecordId}
                 />
+                <RecordShowPageGoBackHotkeyEffect />
               </TimelineActivityContext.Provider>
             </MainContainerLayoutWithSidePanel>
           </PageContainer>

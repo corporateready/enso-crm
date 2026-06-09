@@ -29,7 +29,13 @@ export const KEYBOARD_SHORTCUTS_TABLE: Shortcut[] = [
     areSimultaneous: true,
   },
   {
-    label: 'Open hovered record in full page',
+    label: 'Hide side panel',
+    type: ShortcutType.Table,
+    firstHotKey: 'Space',
+    areSimultaneous: true,
+  },
+  {
+    label: 'Go back from record page',
     type: ShortcutType.Table,
     firstHotKey: 'Space',
     secondHotKey: 'Space',
