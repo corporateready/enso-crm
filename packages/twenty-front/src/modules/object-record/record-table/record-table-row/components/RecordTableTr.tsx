@@ -11,6 +11,8 @@ import { isRecordTableRowFocusedComponentFamilyState } from '@/object-record/rec
 import { useAtomComponentFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentFamilyStateValue';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
 import { forwardRef, type ReactNode } from 'react';
+import { AppPath } from 'twenty-shared/types';
+import { useNavigateApp } from '~/hooks/useNavigateApp';
 
 type RecordTableTrProps = {
   children: ReactNode;
@@ -25,6 +27,17 @@ type RecordTableTrProps = {
 export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
   ({ children, recordId, focusIndex, isDragging = false, ...props }, ref) => {
     const { objectMetadataItem } = useRecordTableContextOrThrow();
+
+    const navigate = useNavigateApp();
+
+    // Double-clicking a row opens the record in full page, regardless of the
+    // "open record in" setting (which only governs single-click).
+    const handleDoubleClick = () => {
+      navigate(AppPath.RecordShowPage, {
+        objectNameSingular: objectMetadataItem.nameSingular,
+        objectRecordId: recordId,
+      });
+    };
 
     const isRowSelected = useAtomComponentFamilyStateValue(
       isRowSelectedComponentFamilyState,
@@ -68,6 +81,7 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
           className="table-row"
           isDragging={isDragging}
           ref={ref}
+          onDoubleClick={handleDoubleClick}
           data-active={isRecordTableRowActive}
           data-focused={
             isRecordTableRowFocusActive &&

@@ -37,8 +37,7 @@ export const KEYBOARD_SHORTCUTS_TABLE: Shortcut[] = [
   {
     label: 'Go back from record page',
     type: ShortcutType.Table,
-    firstHotKey: '⌥',
-    secondHotKey: 'Space',
+    firstHotKey: 'Space',
     areSimultaneous: true,
   },
 ];
