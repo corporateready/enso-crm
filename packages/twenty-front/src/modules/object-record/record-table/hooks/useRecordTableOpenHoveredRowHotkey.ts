@@ -5,11 +5,14 @@ import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSide
 import { useHotkeysOnFocusedElement } from '@/ui/utilities/hotkey/hooks/useHotkeysOnFocusedElement';
 import { useAtomComponentStateCallbackState } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateCallbackState';
 import { useStore } from 'jotai';
+import { AppPath } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
+import { useNavigateApp } from '~/hooks/useNavigateApp';
 
-// Space on the hovered row opens it in the side panel. Pressing Space again
-// while the side panel is open hides it (handled at the side-panel focus scope,
-// not here — opening the side panel takes over the keyboard focus).
+// On the hovered row: Space opens it in the side panel, Option+Space opens it
+// in full page. Pressing Space again while the side panel is open hides it
+// (handled at the side-panel focus scope, not here — opening the side panel
+// takes over the keyboard focus).
 export const useRecordTableOpenHoveredRowHotkey = ({
   focusId,
 }: {
@@ -18,6 +21,7 @@ export const useRecordTableOpenHoveredRowHotkey = ({
   const { recordTableId, objectNameSingular } = useRecordTableContextOrThrow();
 
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
+  const navigate = useNavigateApp();
   const store = useStore();
 
   const hoverPositionCallbackState = useAtomComponentStateCallbackState(
@@ -30,15 +34,20 @@ export const useRecordTableOpenHoveredRowHotkey = ({
     recordTableId,
   );
 
-  const handleSpace = (keyboardEvent: KeyboardEvent) => {
+  const resolveHoveredRecordId = () => {
     const hoverPosition = store.get(hoverPositionCallbackState);
 
     if (!isDefined(hoverPosition)) {
-      return;
+      return undefined;
     }
 
     const recordIdByRealIndex = store.get(recordIdByRealIndexCallbackState);
-    const recordId = recordIdByRealIndex.get(hoverPosition.row);
+
+    return recordIdByRealIndex.get(hoverPosition.row);
+  };
+
+  const handleSpace = (keyboardEvent: KeyboardEvent) => {
+    const recordId = resolveHoveredRecordId();
 
     if (!isDefined(recordId)) {
       return;
@@ -55,11 +64,36 @@ export const useRecordTableOpenHoveredRowHotkey = ({
     });
   };
 
+  const handleAltSpace = (keyboardEvent: KeyboardEvent) => {
+    const recordId = resolveHoveredRecordId();
+
+    if (!isDefined(recordId)) {
+      return;
+    }
+
+    keyboardEvent.preventDefault();
+
+    navigate(AppPath.RecordShowPage, {
+      objectNameSingular,
+      objectRecordId: recordId,
+    });
+  };
+
   useHotkeysOnFocusedElement({
     keys: ['space'],
     callback: handleSpace,
     focusId,
     dependencies: [openRecordInSidePanel, objectNameSingular, store],
+    options: {
+      preventDefault: false,
+    },
+  });
+
+  useHotkeysOnFocusedElement({
+    keys: ['alt+space'],
+    callback: handleAltSpace,
+    focusId,
+    dependencies: [navigate, objectNameSingular, store],
     options: {
       preventDefault: false,
     },
