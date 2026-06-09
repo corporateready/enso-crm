@@ -22,4 +22,17 @@ export const KEYBOARD_SHORTCUTS_TABLE: Shortcut[] = [
     firstHotKey: 'esc',
     areSimultaneous: true,
   },
+  {
+    label: 'Open hovered record in side panel',
+    type: ShortcutType.Table,
+    firstHotKey: 'Space',
+    areSimultaneous: true,
+  },
+  {
+    label: 'Open hovered record in full page',
+    type: ShortcutType.Table,
+    firstHotKey: 'Space',
+    secondHotKey: 'Space',
+    areSimultaneous: false,
+  },
 ];
