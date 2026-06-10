@@ -63,11 +63,8 @@ export class ResolveOpportunityFromActivityJob {
       return;
     }
 
-    // Surface the new opportunity on the person's timeline (best-effort).
-    await this.personTimelineService.recordOpportunityCreated(
-      workspaceId,
-      result.opportunityId,
-    );
+    // The opportunity-created timeline row is now emitted inside
+    // OpportunityResolutionService.recordCreatedEvent (richer: B2B/B2C + source).
 
     await this.messageQueueService.add<RouteOpportunityJobData>(
       RouteOpportunityJob.name,

@@ -14,6 +14,7 @@ import {
   CLOSED_OPPORTUNITY_STAGES,
   coerceTrafficType,
   mapOpportunitySource,
+  OPPORTUNITY_SOURCE_LABEL,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
@@ -283,8 +284,19 @@ export class OpportunityResolutionService {
 
         await activityRepository.update({ id: activity.id }, { opportunityId });
 
+        // Rich provenance on the timeline: a B2B/B2C deal opened from this inbound
+        // activity, automatically. Replaces the generic "created by" row.
+        await this.recordCreatedEvent(workspaceId, {
+          opportunityId,
+          name: typeof name === 'string' ? name : '',
+          clientType,
+          companyId,
+          personId: activity.personId,
+          source,
+        });
+
         this.logger.log(
-          `Created opportunity ${opportunityId} from activity ${activityId}.`,
+          `Created ${clientType} opportunity ${opportunityId} from activity ${activityId}.`,
         );
 
         return { opportunityId, created: true };
@@ -418,6 +430,59 @@ export class OpportunityResolutionService {
     } catch (error) {
       this.logger.warn(
         `Attach timeline write failed for deal ${opportunity.id}: ${
+          (error as Error).message
+        }`,
+      );
+    }
+  }
+
+  // Rich "deal opened" timeline event — replaces the generic created-by row.
+  // Reads e.g. "Opened deal {name} · B2B account deal · from Form — automatically",
+  // on the deal + person (+ company for B2B). Best-effort.
+  private async recordCreatedEvent(
+    workspaceId: string,
+    params: {
+      opportunityId: string;
+      name: string;
+      clientType: string;
+      companyId: string | null;
+      personId: string;
+      source: string;
+    },
+  ): Promise<void> {
+    try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const isB2b = params.clientType === 'B2B';
+      const fromLabel = OPPORTUNITY_SOURCE_LABEL[params.source] ?? 'lead';
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'deal-created',
+        target: {
+          personId: params.personId,
+          opportunityId: params.opportunityId,
+          ...(isB2b && isDefined(params.companyId)
+            ? { companyId: params.companyId }
+            : {}),
+        },
+        reason: `${isB2b ? 'B2B account deal' : 'B2C deal'} · from ${fromLabel}`,
+        auto: true,
+        linkedObjectMetadataId: OPPORTUNITY_OBJECT_METADATA_ID,
+        linkedRecordId: params.opportunityId,
+        linkedRecordCachedName: params.name || '',
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Created timeline write failed for deal ${params.opportunityId}: ${
           (error as Error).message
         }`,
       );

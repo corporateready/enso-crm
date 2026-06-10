@@ -224,7 +224,7 @@ export class ConsentFromActivityService {
           source: grantedNonNull.source,
           occurredAt: grantedNonNull.consentedAt,
           inboundActivityId: activityId,
-          actor: { source: 'SYSTEM', name: 'System', context: {} },
+          actor: { source: 'SYSTEM', name: 'ENSO CRM', context: {} },
         });
 
         if (!isDefined(firstEventId)) {

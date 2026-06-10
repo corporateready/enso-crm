@@ -5,7 +5,7 @@
 // NULL). Pipeline-created records are system-generated, so stamp them as SYSTEM.
 export const SYSTEM_ACTOR = {
   source: 'SYSTEM',
-  name: 'System',
+  name: 'ENSO CRM',
   context: {},
 } as const;
 

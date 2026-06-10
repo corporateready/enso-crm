@@ -10,7 +10,7 @@
 // system-generated, so stamp it SYSTEM. (Mirrors lead-pipeline's SYSTEM_ACTOR.)
 export const SYSTEM_ACTOR = {
   source: 'SYSTEM',
-  name: 'System',
+  name: 'ENSO CRM',
   context: {},
 } as const;
 
