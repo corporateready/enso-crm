@@ -101,7 +101,7 @@ export class PersonTimelineService {
       // The manager who made a manual change; absent for pipeline (system) grants
       // so the row reads "by <workspace>" for those.
       workspaceMemberId?: string | null;
-      // true for pipeline/system grants → row reads "automatically" instead of
+      // true for pipeline/system grants → row reads "by ENSO CRM" instead of
       // "by <someone>".
       auto?: boolean;
       happensAt?: string | null;

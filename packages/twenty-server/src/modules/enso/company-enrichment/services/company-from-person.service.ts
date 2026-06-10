@@ -109,7 +109,7 @@ export class CompanyFromPersonService {
   }
 
   // Provenance on the person's timeline (best-effort): which company was linked
-  // and why ("Linked to {Company} · work-email domain {domain} — automatically").
+  // and why ("Linked to {Company} … on the company domain {domain} — by ENSO CRM").
   // Runs inside the caller's workspace context.
   private async recordCompanyLinked(
     workspaceId: string,

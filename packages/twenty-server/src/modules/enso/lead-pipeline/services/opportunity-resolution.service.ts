@@ -291,7 +291,7 @@ export class OpportunityResolutionService {
         await activityRepository.update({ id: activity.id }, { opportunityId });
 
         // Rich provenance on the timeline: a B2B/B2C deal opened from this inbound
-        // activity, automatically. Replaces the generic "created by" row.
+        // activity, by ENSO CRM. Replaces the generic "created by" row.
         await this.recordCreatedEvent(workspaceId, {
           opportunityId,
           clientType,
@@ -476,7 +476,7 @@ export class OpportunityResolutionService {
   }
 
   // Plain-English "deal opened" event — replaces the generic created-by row.
-  // Reads e.g. "Created a B2B deal from {Form · Alice · …} — automatically",
+  // Reads e.g. "Created a B2B deal from {Form · Alice · …} — by ENSO CRM",
   // on the deal + person (+ company for B2B). Best-effort.
   private async recordCreatedEvent(
     workspaceId: string,
