@@ -123,31 +123,34 @@ export const EventRowEnsoEvent = ({
   return (
     <StyledRowContainer>
       <StyledSentence>
-        {segments.map((segment, index) =>
-          isLinkSegment(segment) ? (
-            <Fragment key={index}>
-              {isNonEmptyString(
-                OBJECT_TYPE_LABELS[segment.objectNameSingular],
-              ) && (
-                <StyledType>
-                  {OBJECT_TYPE_LABELS[segment.objectNameSingular]}
-                </StyledType>
-              )}
-              <StyledLink
-                onClick={() =>
-                  openRecordInSidePanel({
-                    recordId: segment.recordId,
-                    objectNameSingular: segment.objectNameSingular,
-                  })
-                }
-              >
-                {segment.label}
-              </StyledLink>
-            </Fragment>
-          ) : (
-            <span key={index}>{(segment as { text: string }).text}</span>
-          ),
-        )}
+        {segments.map((segment, index) => {
+          if (isLinkSegment(segment)) {
+            // Skip the tag when the record name already starts with the type
+            // word (e.g. a deal named "Deal | …" → no redundant "Deal" tag).
+            const typeLabel = OBJECT_TYPE_LABELS[segment.objectNameSingular];
+            const showType =
+              isNonEmptyString(typeLabel) &&
+              !segment.label.toLowerCase().startsWith(typeLabel.toLowerCase());
+
+            return (
+              <Fragment key={index}>
+                {showType && <StyledType>{typeLabel}</StyledType>}
+                <StyledLink
+                  onClick={() =>
+                    openRecordInSidePanel({
+                      recordId: segment.recordId,
+                      objectNameSingular: segment.objectNameSingular,
+                    })
+                  }
+                >
+                  {segment.label}
+                </StyledLink>
+              </Fragment>
+            );
+          }
+
+          return <span key={index}>{(segment as { text: string }).text}</span>;
+        })}
         <StyledActor>
           {auto ? t` — by ENSO CRM` : t` — by ${authorFullName}`}
         </StyledActor>
