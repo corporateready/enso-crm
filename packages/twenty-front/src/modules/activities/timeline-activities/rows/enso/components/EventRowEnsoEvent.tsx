@@ -1,116 +1,104 @@
 import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent.types';
-import { EventRowItem } from '@/activities/timeline-activities/rows/components/EventRowItem';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { isNonEmptyString } from '@sniptt/guards';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
-// ENSO — generic renderer for `enso-event.<action>` automation events (company
-// linking, B2B account-deal flow, etc.). Driven entirely by the event payload:
-// a verb from the action, the clickable linked record (linkedRecordCachedName),
-// the "why" (properties.reason), and the actor (properties.auto → "automatically",
-// else "by {author}"). Mirrors EventRowEnsoConsent. Keep the prefix in sync with
-// ENSO_EVENT_ACTIVITY_NAME_PREFIX on the server.
+// ENSO — renders `enso-event.<action>` automation events (company linking, B2B
+// account-deal flow). The backend composes a plain-English sentence as an array
+// of `properties.segments`: plain-text runs and clickable record links. We render
+// them inline so it reads as a sentence, then append the actor:
+//   properties.auto → "— automatically", else "— by {author}".
 
-// action → leading verb. Phrased to read naturally with the linked record name.
-const ACTION_VERB: Record<string, string> = {
-  'company-linked': t`Linked to`,
-  'activity-logged': t`Logged`,
-  'deal-activity-attached': t`Activity added to deal`,
-  'deal-created': t`Created`,
-  'deal-contact-added': t`Added contact`,
-  'account-assigned': t`Set account owner`,
-};
+type EnsoTimelineSegment =
+  | { text: string }
+  | { label: string; objectNameSingular: string; recordId: string };
+
+const isLinkSegment = (
+  segment: EnsoTimelineSegment,
+): segment is {
+  label: string;
+  objectNameSingular: string;
+  recordId: string;
+} =>
+  isNonEmptyString((segment as { recordId?: string }).recordId) &&
+  isNonEmptyString(
+    (segment as { objectNameSingular?: string }).objectNameSingular,
+  );
 
 const StyledRowContainer = styled.div`
-  align-items: center;
+  align-items: baseline;
   display: flex;
-  gap: ${themeCssVariables.spacing[1]};
+  gap: ${themeCssVariables.spacing[2]};
   justify-content: space-between;
 `;
 
-const StyledRow = styled.div`
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: ${themeCssVariables.spacing[1]};
-  overflow: hidden;
+const StyledSentence = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  line-height: 1.5;
 `;
 
-const StyledLinked = styled.span`
+const StyledLink = styled.span`
   color: ${themeCssVariables.font.color.primary};
   cursor: pointer;
-  overflow: hidden;
+  font-weight: 500;
   text-decoration: underline;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 `;
 
-const StyledPlain = styled.span`
-  color: ${themeCssVariables.font.color.primary};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+const StyledActor = styled.span`
+  color: ${themeCssVariables.font.color.tertiary};
 `;
 
-const StyledItemTitleDate = styled.div`
+const StyledDate = styled.div`
   @media (max-width: ${MOBILE_VIEWPORT}px) {
     display: none;
   }
   color: ${themeCssVariables.font.color.tertiary};
+  flex-shrink: 0;
   padding: 0 ${themeCssVariables.spacing[1]};
 `;
 
 export const EventRowEnsoEvent = ({
   authorFullName,
   event,
-  linkedObjectMetadataItem,
   createdAt,
 }: EventRowDynamicComponentProps) => {
-  const action = event.name.split('.')[1] ?? '';
-  const verb = ACTION_VERB[action] ?? action.replace(/-/g, ' ');
-
-  const cachedName = isNonEmptyString(event.linkedRecordCachedName)
-    ? event.linkedRecordCachedName
-    : t`a record`;
-
-  const reason = event.properties?.reason as string | undefined;
-  const auto = event.properties?.auto === true;
-
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
-  const linkedRecordId = event.linkedRecordId;
-  const objectNameSingular = linkedObjectMetadataItem?.nameSingular;
-  const clickable =
-    isNonEmptyString(linkedRecordId) && isNonEmptyString(objectNameSingular);
+
+  const segments: EnsoTimelineSegment[] = Array.isArray(
+    event.properties?.segments,
+  )
+    ? event.properties.segments
+    : [];
+
+  const auto = event.properties?.auto === true;
 
   return (
     <StyledRowContainer>
-      <StyledRow>
-        <EventRowItem variant="action">{verb}</EventRowItem>
-        {clickable ? (
-          <StyledLinked
-            onClick={() =>
-              openRecordInSidePanel({
-                recordId: linkedRecordId,
-                objectNameSingular,
-              })
-            }
-          >
-            {cachedName}
-          </StyledLinked>
-        ) : (
-          <StyledPlain>{cachedName}</StyledPlain>
+      <StyledSentence>
+        {segments.map((segment, index) =>
+          isLinkSegment(segment) ? (
+            <StyledLink
+              key={index}
+              onClick={() =>
+                openRecordInSidePanel({
+                  recordId: segment.recordId,
+                  objectNameSingular: segment.objectNameSingular,
+                })
+              }
+            >
+              {segment.label}
+            </StyledLink>
+          ) : (
+            <span key={index}>{(segment as { text: string }).text}</span>
+          ),
         )}
-        {isNonEmptyString(reason) && (
-          <EventRowItem>{`· ${reason}`}</EventRowItem>
-        )}
-        <EventRowItem variant="action">
-          {auto ? t`— automatically` : t`— by`}
-        </EventRowItem>
-        {!auto && <EventRowItem>{authorFullName}</EventRowItem>}
-      </StyledRow>
-      <StyledItemTitleDate>{createdAt}</StyledItemTitleDate>
+        <StyledActor>
+          {auto ? t` — automatically` : t` — by ${authorFullName}`}
+        </StyledActor>
+      </StyledSentence>
+      <StyledDate>{createdAt}</StyledDate>
     </StyledRowContainer>
   );
 };

@@ -2,17 +2,16 @@ import { isDefined } from 'twenty-shared/utils';
 
 // Reusable rich-timeline event for enso automation (company linking, B2B account
 // deals, etc.), modeled on the consent timeline. Every event carries:
+//   - A plain-English SENTENCE composed of `segments` (text runs + clickable
+//     record links) so the row reads naturally with good navigation.
 //   - ACTOR: workspaceMemberId (a human → "by {member}") OR auto:true (pipeline →
 //     "automatically"). Never a generic "System" author.
-//   - REASON: a human "why" string in properties.reason.
-//   - CAUSE: the triggering/linked record (activity, deal, person, company) via
-//     linkedRecord* + cachedName → clickable, like consent rows link their event.
 // One timelineActivity row is written PER target so the event surfaces on each
 // relevant timeline (person / company / opportunity).
 //
-// Frontend routes these by the `enso-event.` name prefix to a single generic row
-// (EventRowEnsoEvent) that maps `action` → verb and renders reason + by/auto.
-// Keep ENSO_EVENT_ACTIVITY_NAME_PREFIX in sync with the frontend.
+// Frontend routes these by the `enso-event.` name prefix to a single row
+// (EventRowEnsoEvent) that renders the segments + the actor suffix. Keep
+// ENSO_EVENT_ACTIVITY_NAME_PREFIX in sync with the frontend.
 export const ENSO_EVENT_ACTIVITY_NAME_PREFIX = 'enso-event';
 
 export type EnsoTimelineTarget = {
@@ -21,16 +20,27 @@ export type EnsoTimelineTarget = {
   opportunityId?: string | null;
 };
 
+// A sentence is built from segments: plain text, or a clickable link to a record.
+// The backend composes the full plain-English sentence; the frontend renders text
+// runs as-is and link segments as clickable chips (open record in side panel).
+export type EnsoTimelineSegment =
+  | { text: string }
+  | { label: string; objectNameSingular: string; recordId: string };
+
 export type EnsoTimelineEvent = {
-  // → timelineActivity.name = `enso-event.<action>`; the front maps action to a verb.
+  // → timelineActivity.name = `enso-event.<action>` (drives the row icon).
   action: string;
   target: EnsoTimelineTarget;
-  reason?: string | null;
-  // true → row reads "automatically" (pipeline/system).
+  // The readable sentence as segments (preferred). e.g.
+  //   [{text:'Linked to '},{label:'Stripe',objectNameSingular:'company',recordId},
+  //    {text:' — work-email domain stripe.com is a company domain'}]
+  segments?: EnsoTimelineSegment[];
+  // true → sentence ends "— automatically" (pipeline/system).
   auto?: boolean;
-  // a human actor → row reads "by {member}". Omit for auto events.
+  // a human actor → ends "— by {member}". Omit for auto events.
   workspaceMemberId?: string | null;
-  // The clickable linked record (its object metadata id + record id + a label).
+  // Optional: a primary linked record, used for the row ICON (and as a fallback
+  // click target). The sentence's own link segments are the main navigation.
   linkedObjectMetadataId?: string | null;
   linkedRecordId?: string | null;
   linkedRecordCachedName?: string | null;
@@ -50,8 +60,8 @@ export const buildEnsoTimelineInserts = (
     linkedRecordCachedName: event.linkedRecordCachedName ?? '',
     properties: {
       action: event.action,
-      ...(isDefined(event.reason) && event.reason !== ''
-        ? { reason: event.reason }
+      ...(isDefined(event.segments) && event.segments.length > 0
+        ? { segments: event.segments }
         : {}),
       ...(event.auto === true ? { auto: true } : {}),
     },

@@ -18,13 +18,18 @@ import {
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
-import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
+import {
+  buildEnsoTimelineInserts,
+  type EnsoTimelineSegment,
+} from 'src/modules/enso/timeline/enso-timeline.util';
 import { isWorkEmail } from 'src/utils/is-work-email';
 
 // Workspace-specific object metadata ids (single prod workspace) for timeline
 // linkedObjectMetadataId — so attach events can link to the deal / company.
 const OPPORTUNITY_OBJECT_METADATA_ID =
   'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
+const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
+  'cef40992-41c4-4742-8b4c-234777a1b8c6';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 
@@ -40,6 +45,7 @@ export type ResolutionResult = {
 // relations as flat `<name>Id` columns.
 type ActivityRow = {
   id: string;
+  name?: string | null;
   personId?: string | null;
   projectId?: string | null;
   opportunityId?: string | null;
@@ -205,12 +211,12 @@ export class OpportunityResolutionService {
             );
           }
 
-          // Rich timeline: surface the attach on the deal (and company/person).
-          // For B2B, a DIFFERENT contact from the same company joining the account
-          // deal is the notable case ("same company + project (account deal)").
+          // Rich timeline: surface the attach on the deal (and company/person),
+          // linking the actual inbound activity + the contact.
           await this.recordAttachEvent(
             workspaceId,
             existing,
+            { id: activity.id, name: activity.name },
             activity.personId,
             dedupByCompany,
             companyId,
@@ -288,11 +294,12 @@ export class OpportunityResolutionService {
         // activity, automatically. Replaces the generic "created by" row.
         await this.recordCreatedEvent(workspaceId, {
           opportunityId,
-          name: typeof name === 'string' ? name : '',
           clientType,
           companyId,
           personId: activity.personId,
           source,
+          activityId: activity.id,
+          activityName: activity.name,
         });
 
         this.logger.log(
@@ -391,16 +398,49 @@ export class OpportunityResolutionService {
     return null;
   }
 
-  // Rich timeline event when an activity attaches to an existing open deal —
-  // shown on the deal, the company (B2B), and the person. Best-effort.
+  // Plain-English timeline event when an activity attaches to an existing open
+  // deal — shown on the deal, the company (B2B) and the person, linking the
+  // actual inbound activity + the contact. Best-effort.
   private async recordAttachEvent(
     workspaceId: string,
     opportunity: { id: string; name?: string | null },
+    activity: { id: string; name?: string | null },
     personId: string,
     isB2b: boolean,
     companyId: string | null,
   ): Promise<void> {
     try {
+      const personName = await this.lookupName(workspaceId, 'person', personId);
+      const companyName =
+        isB2b && isDefined(companyId)
+          ? await this.lookupName(workspaceId, 'company', companyId)
+          : null;
+      const activityLabel = activity.name || 'an inbound activity';
+
+      const segments: EnsoTimelineSegment[] = [
+        {
+          label: activityLabel,
+          objectNameSingular: 'inboundActivity',
+          recordId: activity.id,
+        },
+        { text: ' was added to this deal — ' },
+        { label: personName, objectNameSingular: 'person', recordId: personId },
+      ];
+
+      if (isB2b && isDefined(companyId)) {
+        segments.push(
+          { text: ' is another contact at ' },
+          {
+            label: companyName ?? 'the same company',
+            objectNameSingular: 'company',
+            recordId: companyId,
+          },
+          { text: ' working on this project.' },
+        );
+      } else {
+        segments.push({ text: ' reached out again about this project.' });
+      }
+
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
           workspaceId,
@@ -415,13 +455,12 @@ export class OpportunityResolutionService {
           personId,
           ...(isB2b && isDefined(companyId) ? { companyId } : {}),
         },
-        reason: isB2b
-          ? 'same company + project (account deal)'
-          : 'same person + project',
+        segments,
         auto: true,
-        linkedObjectMetadataId: OPPORTUNITY_OBJECT_METADATA_ID,
-        linkedRecordId: opportunity.id,
-        linkedRecordCachedName: opportunity.name || '',
+        // icon + fallback click target = the inbound activity that was added.
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
+        linkedRecordId: activity.id,
+        linkedRecordCachedName: activityLabel,
       });
 
       if (rows.length > 0) {
@@ -436,30 +475,43 @@ export class OpportunityResolutionService {
     }
   }
 
-  // Rich "deal opened" timeline event — replaces the generic created-by row.
-  // Reads e.g. "Opened deal {name} · B2B account deal · from Form — automatically",
+  // Plain-English "deal opened" event — replaces the generic created-by row.
+  // Reads e.g. "Created a B2B deal from {Form · Alice · …} — automatically",
   // on the deal + person (+ company for B2B). Best-effort.
   private async recordCreatedEvent(
     workspaceId: string,
     params: {
       opportunityId: string;
-      name: string;
       clientType: string;
       companyId: string | null;
       personId: string;
       source: string;
+      activityId: string;
+      activityName?: string | null;
     },
   ): Promise<void> {
     try {
+      const isB2b = params.clientType === 'B2B';
+      const fromLabel = OPPORTUNITY_SOURCE_LABEL[params.source] ?? 'lead';
+      const activityLabel =
+        params.activityName || `an inbound ${fromLabel.toLowerCase()}`;
+
+      const segments: EnsoTimelineSegment[] = [
+        { text: `Created a ${params.clientType} deal from ` },
+        {
+          label: activityLabel,
+          objectNameSingular: 'inboundActivity',
+          recordId: params.activityId,
+        },
+        { text: '.' },
+      ];
+
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
           workspaceId,
           'timelineActivity',
           { shouldBypassPermissionChecks: true },
         );
-
-      const isB2b = params.clientType === 'B2B';
-      const fromLabel = OPPORTUNITY_SOURCE_LABEL[params.source] ?? 'lead';
 
       const rows = buildEnsoTimelineInserts({
         action: 'deal-created',
@@ -470,11 +522,11 @@ export class OpportunityResolutionService {
             ? { companyId: params.companyId }
             : {}),
         },
-        reason: `${isB2b ? 'B2B account deal' : 'B2C deal'} · from ${fromLabel}`,
+        segments,
         auto: true,
-        linkedObjectMetadataId: OPPORTUNITY_OBJECT_METADATA_ID,
-        linkedRecordId: params.opportunityId,
-        linkedRecordCachedName: params.name || '',
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
+        linkedRecordId: params.activityId,
+        linkedRecordCachedName: activityLabel,
       });
 
       if (rows.length > 0) {
@@ -486,6 +538,38 @@ export class OpportunityResolutionService {
           (error as Error).message
         }`,
       );
+    }
+  }
+
+  // Best-effort display name for a record (person → full name, else .name).
+  private async lookupName(
+    workspaceId: string,
+    objectNameSingular: string,
+    recordId: string,
+  ): Promise<string> {
+    try {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          objectNameSingular,
+          { shouldBypassPermissionChecks: true },
+        );
+      const record = await repository.findOne({ where: { id: recordId } });
+
+      if (!record) {
+        return '';
+      }
+
+      if (objectNameSingular === 'person') {
+        return [record.name?.firstName, record.name?.lastName]
+          .filter((part) => typeof part === 'string' && part.length > 0)
+          .join(' ')
+          .trim();
+      }
+
+      return typeof record.name === 'string' ? record.name : '';
+    } catch {
+      return '';
     }
   }
 }
