@@ -9,7 +9,12 @@ import { useRecordTableRowContextOrThrow } from '@/object-record/record-table/co
 import { RecordTableUpdateContext } from '@/object-record/record-table/contexts/RecordTableUpdateContext';
 import { isRecordTableCellsNonEditableComponentState } from '@/object-record/record-table/states/isRecordTableCellsNonEditableComponentState';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
-import { useContext, type ReactNode } from 'react';
+import { useContext, useRef, type MouseEvent, type ReactNode } from 'react';
+import { AppPath } from 'twenty-shared/types';
+import { useNavigateApp } from '~/hooks/useNavigateApp';
+
+// A second chip click within this window counts as a double-click.
+const DOUBLE_CLICK_THRESHOLD_IN_MS = 300;
 
 type RecordTableCellFieldContextLabelIdentifierProps = {
   children: ReactNode;
@@ -49,7 +54,43 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
   const fieldDefinition =
     fieldDefinitionByFieldMetadataItemId[recordField.fieldMetadataItemId];
 
-  const handleChipClick = () => {
+  const navigate = useNavigateApp();
+  const lastChipClickTimestampRef = useRef<number | null>(null);
+
+  const openRecordInFullPage = () => {
+    navigate(AppPath.RecordShowPage, {
+      objectNameSingular: objectMetadataItem.nameSingular,
+      objectRecordId: recordId,
+    });
+  };
+
+  // The name lives in the frozen first column, outside the row's own handler,
+  // so the open-in-full-page gesture is handled here on the chip click. Option+
+  // click and double-click open the full page; a plain click opens as usual.
+  const handleChipClick = (event: MouseEvent) => {
+    if (event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastChipClickTimestampRef.current = null;
+      openRecordInFullPage();
+      return;
+    }
+
+    const now = Date.now();
+    const lastTimestamp = lastChipClickTimestampRef.current;
+    const isDoubleClick =
+      lastTimestamp !== null &&
+      now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
+
+    if (isDoubleClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastChipClickTimestampRef.current = null;
+      openRecordInFullPage();
+      return;
+    }
+
+    lastChipClickTimestampRef.current = now;
     onRecordIdentifierClick?.(rowIndex, recordId);
   };
 
