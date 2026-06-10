@@ -3,7 +3,20 @@ import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSide
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { isNonEmptyString } from '@sniptt/guards';
+import { Fragment } from 'react';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
+
+// Human-readable object-type tag shown just before each linked record, so a row
+// reads "Person Maximilian … is another contact at Company Globex …". Keyed by
+// the segment's objectNameSingular; unknown types render no tag.
+const OBJECT_TYPE_LABELS: Record<string, string> = {
+  person: 'Person',
+  company: 'Company',
+  opportunity: 'Deal',
+  inboundActivity: 'Inbound activity',
+  project: 'Project',
+  workspaceMember: 'Manager',
+};
 
 // ENSO — renders `enso-event.<action>` automation events (company linking, B2B
 // account-deal flow). The backend composes a plain-English sentence as an array
@@ -56,6 +69,14 @@ const StyledLink = styled.span`
   text-decoration: underline;
 `;
 
+// Subtle, non-clickable type tag preceding a record link. Greyed + slightly
+// smaller so it reads as a label, not part of the record name.
+const StyledType = styled.span`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  margin-right: ${themeCssVariables.spacing[1]};
+`;
+
 const StyledActor = styled.span`
   color: ${themeCssVariables.font.color.tertiary};
 `;
@@ -104,17 +125,25 @@ export const EventRowEnsoEvent = ({
       <StyledSentence>
         {segments.map((segment, index) =>
           isLinkSegment(segment) ? (
-            <StyledLink
-              key={index}
-              onClick={() =>
-                openRecordInSidePanel({
-                  recordId: segment.recordId,
-                  objectNameSingular: segment.objectNameSingular,
-                })
-              }
-            >
-              {segment.label}
-            </StyledLink>
+            <Fragment key={index}>
+              {isNonEmptyString(
+                OBJECT_TYPE_LABELS[segment.objectNameSingular],
+              ) && (
+                <StyledType>
+                  {OBJECT_TYPE_LABELS[segment.objectNameSingular]}
+                </StyledType>
+              )}
+              <StyledLink
+                onClick={() =>
+                  openRecordInSidePanel({
+                    recordId: segment.recordId,
+                    objectNameSingular: segment.objectNameSingular,
+                  })
+                }
+              >
+                {segment.label}
+              </StyledLink>
+            </Fragment>
           ) : (
             <span key={index}>{(segment as { text: string }).text}</span>
           ),
