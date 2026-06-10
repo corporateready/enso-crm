@@ -9,7 +9,7 @@ import { useRecordTableRowContextOrThrow } from '@/object-record/record-table/co
 import { RecordTableUpdateContext } from '@/object-record/record-table/contexts/RecordTableUpdateContext';
 import { isRecordTableCellsNonEditableComponentState } from '@/object-record/record-table/states/isRecordTableCellsNonEditableComponentState';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
-import { useContext, useEffect, useRef, type ReactNode } from 'react';
+import { useContext, useRef, type MouseEvent, type ReactNode } from 'react';
 import { AppPath } from 'twenty-shared/types';
 import { useNavigateApp } from '~/hooks/useNavigateApp';
 
@@ -55,55 +55,32 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
     fieldDefinitionByFieldMetadataItemId[recordField.fieldMetadataItemId];
 
   const navigate = useNavigateApp();
-  const objectNameSingular = objectMetadataItem.nameSingular;
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const lastChipClickTimestampRef = useRef<number | null>(null);
 
-  const handleChipClick = () => {
-    onRecordIdentifierClick?.(rowIndex, recordId);
-  };
+  // Double-click on the name opens the record in full page (a single click
+  // opens it per the "open record in" setting). Option+click is handled
+  // globally in useMouseDownNavigation, so it isn't repeated here.
+  const handleChipClick = (event: MouseEvent) => {
+    const now = Date.now();
+    const lastTimestamp = lastChipClickTimestampRef.current;
+    const isDoubleClick =
+      lastTimestamp !== null &&
+      now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
 
-  // The name lives in the frozen first column (outside the row's own handler)
-  // and is a real <a> link, so Option+click triggers the browser's "download
-  // link" default. Use a NATIVE capture-phase listener (not React's synthetic
-  // onClickCapture, which can miss on a display:contents wrapper): it always
-  // fires before the anchor's default, so preventDefault reliably cancels the
-  // download. Option+click and double-click open the full page; stopPropagation
-  // suppresses the chip's own click; a plain click falls through.
-  useEffect(() => {
-    const wrapperElement = wrapperRef.current;
-
-    if (!wrapperElement) {
+    if (isDoubleClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastChipClickTimestampRef.current = null;
+      navigate(AppPath.RecordShowPage, {
+        objectNameSingular: objectMetadataItem.nameSingular,
+        objectRecordId: recordId,
+      });
       return;
     }
 
-    const handleClickCapture = (event: globalThis.MouseEvent) => {
-      const now = Date.now();
-      const lastTimestamp = lastChipClickTimestampRef.current;
-      const isDoubleClick =
-        lastTimestamp !== null &&
-        now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
-
-      if (event.altKey || isDoubleClick) {
-        event.preventDefault();
-        event.stopPropagation();
-        lastChipClickTimestampRef.current = null;
-        navigate(AppPath.RecordShowPage, {
-          objectNameSingular,
-          objectRecordId: recordId,
-        });
-        return;
-      }
-
-      lastChipClickTimestampRef.current = now;
-    };
-
-    wrapperElement.addEventListener('click', handleClickCapture, true);
-
-    return () => {
-      wrapperElement.removeEventListener('click', handleClickCapture, true);
-    };
-  }, [navigate, objectNameSingular, recordId]);
+    lastChipClickTimestampRef.current = now;
+    onRecordIdentifierClick?.(rowIndex, recordId);
+  };
 
   return (
     <FieldContext.Provider
@@ -134,9 +111,7 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
         triggerEvent,
       }}
     >
-      <div ref={wrapperRef} style={{ display: 'contents' }}>
-        {children}
-      </div>
+      {children}
     </FieldContext.Provider>
   );
 };
