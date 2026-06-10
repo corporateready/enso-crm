@@ -270,6 +270,16 @@ export class CompanyFromPersonService {
           { shouldBypassPermissionChecks: true },
         );
 
+      // Idempotent: resolveFromPerson runs on both create and (pre-link) update,
+      // so guard against a second person-created if one already exists.
+      const existing = await timelineRepository.findOne({
+        where: { name: 'enso-event.person-created', targetPersonId: personId },
+      });
+
+      if (existing) {
+        return;
+      }
+
       const rows = buildEnsoTimelineInserts({
         action: 'person-created',
         target: { personId },
