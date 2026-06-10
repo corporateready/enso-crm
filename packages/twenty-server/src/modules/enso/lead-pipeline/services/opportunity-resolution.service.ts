@@ -3,17 +3,27 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { isDefined } from 'twenty-shared/utils';
-import { In, Not } from 'typeorm';
+import { ILike, In, Not } from 'typeorm';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { extractDomainFromLink } from 'src/modules/contact-creation-manager/utils/extract-domain-from-link.util';
+import { getDomainNameFromHandle } from 'src/modules/contact-creation-manager/utils/get-domain-name-from-handle.util';
 import {
   CLOSED_OPPORTUNITY_STAGES,
   coerceTrafficType,
   mapOpportunitySource,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
+import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
+import { isWorkEmail } from 'src/utils/is-work-email';
+
+// Workspace-specific object metadata ids (single prod workspace) for timeline
+// linkedObjectMetadataId — so attach events can link to the deal / company.
+const OPPORTUNITY_OBJECT_METADATA_ID =
+  'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 
@@ -124,16 +134,43 @@ export class OpportunityResolutionService {
             { shouldBypassPermissionChecks: true },
           );
 
-        // Dedup: an OPEN deal for this (person × project), any age. Legacy Attio
-        // matched person × project "ever exists" (no time window); we keep that
-        // and additionally exclude CLOSED deals — so a fresh inquiry after a
-        // closed-won/lost deal opens a new one instead of reviving a dead one.
+        // Determine B2B/B2C up front — it drives the dedup key. B2B = the contact
+        // is linked to a company (work-email domain). Race-safe: if the
+        // company-link job hasn't written person.companyId yet, fall back to a
+        // read-only company-by-domain lookup, so (company × project) account
+        // dedup is reliable from the first deal.
+        const personRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
+        const person = await personRepository.findOne({
+          where: { id: activity.personId },
+        });
+        const companyId = await this.resolveCompanyId(workspaceId, person);
+        // clientType label is always derived (harmless). The (company × project)
+        // DEDUP behavior is gated by the master flag so it's a clean kill-switch:
+        // off → falls back to the original (person × project) dedup.
+        const clientType = isDefined(companyId) ? 'B2B' : 'B2C';
+        const dedupByCompany =
+          isDefined(companyId) && isCompanyAutomationEnabled();
+
+        // Dedup over OPEN deals (any age; closed deals let a fresh inquiry open a
+        // new one). B2B → (company × project): a NEW contact from the same company
+        // attaches to the account's open deal. B2C → (person × project), as before.
         const existing = await opportunityRepository.findOne({
-          where: {
-            pointOfContactId: activity.personId,
-            projectId: activity.projectId,
-            stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
-          },
+          where: dedupByCompany
+            ? {
+                companyId,
+                projectId: activity.projectId,
+                stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
+              }
+            : {
+                pointOfContactId: activity.personId,
+                projectId: activity.projectId,
+                stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
+              },
           order: { createdAt: 'DESC' },
         });
 
@@ -167,6 +204,17 @@ export class OpportunityResolutionService {
             );
           }
 
+          // Rich timeline: surface the attach on the deal (and company/person).
+          // For B2B, a DIFFERENT contact from the same company joining the account
+          // deal is the notable case ("same company + project (account deal)").
+          await this.recordAttachEvent(
+            workspaceId,
+            existing,
+            activity.personId,
+            dedupByCompany,
+            companyId,
+          );
+
           // Ping the owner only when the deal is already claimed (out of ROUTING
           // with an owner) — during ROUTING the routing flow already notifies.
           if (isDefined(existing.ownerId) && existing.stage !== 'ROUTING') {
@@ -174,30 +222,11 @@ export class OpportunityResolutionService {
           }
 
           this.logger.log(
-            `Activity ${activityId} attached to existing opportunity ${existing.id} (re-engagement).`,
+            `Activity ${activityId} attached to existing opportunity ${existing.id} (${dedupByCompany ? 'B2B account' : 're-engagement'}).`,
           );
 
           return { opportunityId: existing.id, created: false };
         }
-
-        // B2B/B2C signal: a deal is B2B when the contact is linked to a company
-        // (work-email domain). Best-effort — if the company-link job hasn't run
-        // yet (race), it resolves as B2C; Phase 3 makes this authoritative for
-        // the (company × project) dedup.
-        const personRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'person',
-            { shouldBypassPermissionChecks: true },
-          );
-        const person = await personRepository.findOne({
-          where: { id: activity.personId },
-        });
-        const companyId: string | null = person?.companyId ?? null;
-        // clientType, NOT dealType — dealType already exists on Opportunity and
-        // means the SALE type (Primary/Resale/Lease/…). clientType is the B2B/B2C
-        // axis.
-        const clientType = isDefined(companyId) ? 'B2B' : 'B2C';
 
         const source = mapOpportunitySource(activity.kind);
 
@@ -277,5 +306,121 @@ export class OpportunityResolutionService {
     }
 
     return result;
+  }
+
+  // Resolve the contact's company for B2B classification + (company × project)
+  // dedup. Prefers person.companyId; if unset (the company-link job may not have
+  // landed yet), falls back to a read-only lookup of the company by the person's
+  // work-email domain. Read-only — never creates a company (that's the
+  // company-enrichment flow's job; creating here would skip its enrichment).
+  private async resolveCompanyId(
+    workspaceId: string,
+    person: {
+      companyId?: string | null;
+      emails?: {
+        primaryEmail?: string | null;
+        additionalEmails?: string[] | null;
+      } | null;
+    } | null,
+  ): Promise<string | null> {
+    if (isDefined(person?.companyId)) {
+      return person.companyId;
+    }
+
+    const domain = this.workEmailDomain(person);
+
+    if (!domain) {
+      return null;
+    }
+
+    const companyRepository =
+      await this.globalWorkspaceOrmManager.getRepository<any>(
+        workspaceId,
+        'company',
+        { shouldBypassPermissionChecks: true },
+      );
+
+    const candidates = await companyRepository.find({
+      where: { domainName: { primaryLinkUrl: ILike(`%${domain}%`) } },
+    });
+    const match = candidates.find(
+      (company: { domainName?: { primaryLinkUrl?: string } }) =>
+        isDefined(company.domainName?.primaryLinkUrl) &&
+        extractDomainFromLink(company.domainName.primaryLinkUrl) === domain,
+    );
+
+    return match?.id ?? null;
+  }
+
+  // First work-email registrable domain on the person, or null (personal only).
+  private workEmailDomain(
+    person: {
+      emails?: {
+        primaryEmail?: string | null;
+        additionalEmails?: string[] | null;
+      } | null;
+    } | null,
+  ): string | null {
+    const emails = [
+      person?.emails?.primaryEmail,
+      ...(person?.emails?.additionalEmails ?? []),
+    ].filter((email): email is string => isDefined(email) && email.length > 0);
+
+    for (const email of emails) {
+      if (isWorkEmail(email)) {
+        const domain = getDomainNameFromHandle(email);
+
+        if (domain) {
+          return domain;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Rich timeline event when an activity attaches to an existing open deal —
+  // shown on the deal, the company (B2B), and the person. Best-effort.
+  private async recordAttachEvent(
+    workspaceId: string,
+    opportunity: { id: string; name?: string | null },
+    personId: string,
+    isB2b: boolean,
+    companyId: string | null,
+  ): Promise<void> {
+    try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'deal-activity-attached',
+        target: {
+          opportunityId: opportunity.id,
+          personId,
+          ...(isB2b && isDefined(companyId) ? { companyId } : {}),
+        },
+        reason: isB2b
+          ? 'same company + project (account deal)'
+          : 'same person + project',
+        auto: true,
+        linkedObjectMetadataId: OPPORTUNITY_OBJECT_METADATA_ID,
+        linkedRecordId: opportunity.id,
+        linkedRecordCachedName: opportunity.name || '',
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Attach timeline write failed for deal ${opportunity.id}: ${
+          (error as Error).message
+        }`,
+      );
+    }
   }
 }
