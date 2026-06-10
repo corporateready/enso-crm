@@ -9,7 +9,10 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import { PersonProjectAssignmentNameService } from 'src/modules/enso/person-project-assignment/services/person-project-assignment-name.service';
-import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
+import {
+  buildEnsoTimelineInserts,
+  type EnsoTimelineSegment,
+} from 'src/modules/enso/timeline/enso-timeline.util';
 
 // Workspace member object metadata id (single prod workspace) — the account-
 // assigned timeline event links to the manager record.
@@ -265,15 +268,52 @@ export class OpportunityClaimService {
           'project',
           { shouldBypassPermissionChecks: true },
         );
+      const companyRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'company',
+          { shouldBypassPermissionChecks: true },
+        );
       const manager = await workspaceMemberRepository.findOne({
         where: { id: opportunity.ownerId },
       });
       const project = await projectRepository.findOne({
         where: { id: opportunity.projectId },
       });
+      const company = await companyRepository.findOne({
+        where: { id: opportunity.companyId },
+      });
       const managerName = manager?.name
         ? `${manager.name.firstName ?? ''} ${manager.name.lastName ?? ''}`.trim()
-        : '';
+        : 'A manager';
+
+      const segments: EnsoTimelineSegment[] = [
+        {
+          label: managerName,
+          objectNameSingular: 'workspaceMember',
+          recordId: opportunity.ownerId,
+        },
+        { text: ' became the account owner for ' },
+        {
+          label: company?.name || 'this company',
+          objectNameSingular: 'company',
+          recordId: opportunity.companyId,
+        },
+      ];
+
+      if (project?.name) {
+        segments.push(
+          { text: ' on ' },
+          {
+            label: project.name,
+            objectNameSingular: 'project',
+            recordId: opportunity.projectId,
+          },
+        );
+      }
+      segments.push({
+        text: ' — future leads from this company on this project route to them.',
+      });
 
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
@@ -285,7 +325,7 @@ export class OpportunityClaimService {
       const rows = buildEnsoTimelineInserts({
         action: 'account-assigned',
         target: { companyId: opportunity.companyId },
-        reason: project?.name ? `for ${project.name}` : undefined,
+        segments,
         auto: true,
         linkedObjectMetadataId: WORKSPACE_MEMBER_OBJECT_METADATA_ID,
         linkedRecordId: opportunity.ownerId,

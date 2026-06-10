@@ -129,14 +129,21 @@ export class CompanyFromPersonService {
           { shouldBypassPermissionChecks: true },
         );
 
+      const companyName = company?.name || domain;
       const rows = buildEnsoTimelineInserts({
         action: 'company-linked',
         target: { personId },
-        reason: `work-email domain ${domain}`,
+        segments: [
+          { text: 'Linked to ' },
+          { label: companyName, objectNameSingular: 'company', recordId: companyId },
+          {
+            text: ` — their work email is on the company domain ${domain}, so they were matched to this company.`,
+          },
+        ],
         auto: true,
         linkedObjectMetadataId: COMPANY_OBJECT_METADATA_ID,
         linkedRecordId: companyId,
-        linkedRecordCachedName: company?.name || domain,
+        linkedRecordCachedName: companyName,
       });
 
       if (rows.length > 0) {
