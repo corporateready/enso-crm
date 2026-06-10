@@ -9,7 +9,7 @@ import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 // account-deal flow). The backend composes a plain-English sentence as an array
 // of `properties.segments`: plain-text runs and clickable record links. We render
 // them inline so it reads as a sentence, then append the actor:
-//   properties.auto → "— automatically", else "— by {author}".
+//   properties.auto → "— by ENSO CRM", else "— by {author}".
 
 type EnsoTimelineSegment =
   | { text: string }
@@ -32,11 +32,18 @@ const StyledRowContainer = styled.div`
   display: flex;
   gap: ${themeCssVariables.spacing[2]};
   justify-content: space-between;
+  width: 100%;
 `;
 
+// flex: 1 + min-width: 0 lets a long sentence shrink and wrap to the next line
+// instead of overflowing the timeline width; overflow-wrap breaks any single
+// over-long token (e.g. a record label) rather than spilling past the edge.
 const StyledSentence = styled.div`
   color: ${themeCssVariables.font.color.primary};
+  flex: 1;
   line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
 `;
 
 const StyledLink = styled.span`
@@ -110,7 +117,7 @@ export const EventRowEnsoEvent = ({
           ),
         )}
         <StyledActor>
-          {auto ? t` — automatically` : t` — by ${authorFullName}`}
+          {auto ? t` — by ENSO CRM` : t` — by ${authorFullName}`}
         </StyledActor>
       </StyledSentence>
       <StyledDate>{createdAt}</StyledDate>

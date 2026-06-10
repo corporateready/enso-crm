@@ -5,7 +5,7 @@ import { isDefined } from 'twenty-shared/utils';
 //   - A plain-English SENTENCE composed of `segments` (text runs + clickable
 //     record links) so the row reads naturally with good navigation.
 //   - ACTOR: workspaceMemberId (a human → "by {member}") OR auto:true (pipeline →
-//     "automatically"). Never a generic "System" author.
+//     "by ENSO CRM"). Never a generic "System" author.
 // One timelineActivity row is written PER target so the event surfaces on each
 // relevant timeline (person / company / opportunity).
 //
@@ -35,7 +35,7 @@ export type EnsoTimelineEvent = {
   //   [{text:'Linked to '},{label:'Stripe',objectNameSingular:'company',recordId},
   //    {text:' — work-email domain stripe.com is a company domain'}]
   segments?: EnsoTimelineSegment[];
-  // true → sentence ends "— automatically" (pipeline/system).
+  // true → sentence ends "— by ENSO CRM" (pipeline/system).
   auto?: boolean;
   // a human actor → ends "— by {member}". Omit for auto events.
   workspaceMemberId?: string | null;

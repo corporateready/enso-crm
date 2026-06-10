@@ -110,7 +110,10 @@ export const EventRowEnsoConsent = ({
             </>
           )}
           {isAutomatic ? (
-            <EventRowItem variant="action">{t`automatically`}</EventRowItem>
+            <>
+              <EventRowItem variant="action">{t`by`}</EventRowItem>
+              <EventRowItem>ENSO CRM</EventRowItem>
+            </>
           ) : (
             <>
               <EventRowItem variant="action">{t`by`}</EventRowItem>
