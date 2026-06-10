@@ -38,12 +38,15 @@ const StyledRowContainer = styled.div`
 // flex: 1 + min-width: 0 lets a long sentence shrink and wrap to the next line
 // instead of overflowing the timeline width; overflow-wrap breaks any single
 // over-long token (e.g. a record label) rather than spilling past the edge.
+// white-space: normal overrides the `white-space: nowrap` the shared timeline
+// row container (EventRow) sets — without it the line can never break.
 const StyledSentence = styled.div`
   color: ${themeCssVariables.font.color.primary};
   flex: 1;
   line-height: 1.5;
   min-width: 0;
   overflow-wrap: anywhere;
+  white-space: normal;
 `;
 
 const StyledLink = styled.span`

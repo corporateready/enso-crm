@@ -55,7 +55,21 @@ export const useTimelineActivities = (
     fetchPolicy: 'cache-and-network',
   });
 
-  const activityIds = timelineActivities
+  // Our `enso-event.deal-created` row is the readable replacement for the generic
+  // native "<deal> was created" row. When it's present, drop the native
+  // `opportunity.created` so a B2B deal's creation isn't shown twice. Scoped to
+  // the literal `opportunity.created` name (which only ever appears on the deal's
+  // own timeline) so person/company "created" rows are never affected.
+  const hasEnsoDealCreated = timelineActivities.some(
+    (timelineActivity) => timelineActivity.name === 'enso-event.deal-created',
+  );
+  const visibleTimelineActivities = hasEnsoDealCreated
+    ? timelineActivities.filter(
+        (timelineActivity) => timelineActivity.name !== 'opportunity.created',
+      )
+    : timelineActivities;
+
+  const activityIds = visibleTimelineActivities
     .filter((timelineActivity) => timelineActivity.name.match(/note|task/i))
     .map((timelineActivity) => timelineActivity.linkedRecordId)
     .filter(isDefined);
@@ -65,7 +79,7 @@ export const useTimelineActivities = (
   const loading = loadingTimelineActivities;
 
   return {
-    timelineActivities,
+    timelineActivities: visibleTimelineActivities,
     loading,
     fetchMoreRecords,
   };
