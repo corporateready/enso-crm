@@ -42,6 +42,13 @@ export const KEYBOARD_SHORTCUTS_TABLE: Shortcut[] = [
     areSimultaneous: true,
   },
   {
+    label: 'Open side panel record in full page',
+    type: ShortcutType.Table,
+    firstHotKey: '⌥',
+    secondHotKey: 'Space',
+    areSimultaneous: true,
+  },
+  {
     label: 'Go back from record page',
     type: ShortcutType.Table,
     firstHotKey: 'Space',
