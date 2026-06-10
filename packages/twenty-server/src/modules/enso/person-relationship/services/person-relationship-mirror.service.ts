@@ -36,7 +36,7 @@ type RelationshipRow = {
 // Mirror rows are system-generated, so stamp them as a SYSTEM actor.
 const SYSTEM_ACTOR = {
   source: 'SYSTEM',
-  name: 'System',
+  name: 'ENSO CRM',
   context: {},
 } as const;
 

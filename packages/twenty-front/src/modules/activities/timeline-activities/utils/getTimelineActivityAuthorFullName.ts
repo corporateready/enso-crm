@@ -11,5 +11,7 @@ export const getTimelineActivityAuthorFullName = (
       ? 'You'
       : `${event.workspaceMember?.name.firstName} ${event.workspaceMember?.name.lastName}`;
   }
-  return 'Twenty';
+  // ENSO branding: system/API-authored timeline events show "ENSO CRM" (the
+  // app), not the upstream product name.
+  return 'ENSO CRM';
 };
