@@ -10,9 +10,12 @@ import { isRecordTableRowFocusedComponentFamilyState } from '@/object-record/rec
 
 import { useAtomComponentFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentFamilyStateValue';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useRef, type ReactNode } from 'react';
 import { AppPath } from 'twenty-shared/types';
 import { useNavigateApp } from '~/hooks/useNavigateApp';
+
+// A second primary-button press within this window counts as a double-click.
+const DOUBLE_CLICK_THRESHOLD_IN_MS = 300;
 
 type RecordTableTrProps = {
   children: ReactNode;
@@ -30,13 +33,37 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
 
     const navigate = useNavigateApp();
 
-    // Double-clicking a row opens the record in full page, regardless of the
-    // "open record in" setting (which only governs single-click).
-    const handleDoubleClick = () => {
-      navigate(AppPath.RecordShowPage, {
-        objectNameSingular: objectMetadataItem.nameSingular,
-        objectRecordId: recordId,
-      });
+    const lastPrimaryMouseDownTimestampRef = useRef<number | null>(null);
+
+    // A native dblclick never reaches the row: the first click opens the cell
+    // editor (or the record), re-rendering the cell so the second click lands
+    // on a different element. So detect the double-click ourselves on mousedown
+    // capture, which always fires on the row whatever the cell re-renders into.
+    const handleRowMouseDownCapture = (
+      event: React.MouseEvent<HTMLDivElement>,
+    ) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const now = Date.now();
+      const lastTimestamp = lastPrimaryMouseDownTimestampRef.current;
+      const isDoubleClick =
+        lastTimestamp !== null &&
+        now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
+
+      if (isDoubleClick) {
+        lastPrimaryMouseDownTimestampRef.current = null;
+        event.preventDefault();
+        event.stopPropagation();
+        navigate(AppPath.RecordShowPage, {
+          objectNameSingular: objectMetadataItem.nameSingular,
+          objectRecordId: recordId,
+        });
+        return;
+      }
+
+      lastPrimaryMouseDownTimestampRef.current = now;
     };
 
     const isRowSelected = useAtomComponentFamilyStateValue(
@@ -81,7 +108,7 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
           className="table-row"
           isDragging={isDragging}
           ref={ref}
-          onDoubleClick={handleDoubleClick}
+          onMouseDownCapture={handleRowMouseDownCapture}
           data-active={isRecordTableRowActive}
           data-focused={
             isRecordTableRowFocusActive &&
