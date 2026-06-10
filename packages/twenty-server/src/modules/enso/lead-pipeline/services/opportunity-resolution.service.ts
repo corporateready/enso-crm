@@ -180,6 +180,25 @@ export class OpportunityResolutionService {
           return { opportunityId: existing.id, created: false };
         }
 
+        // B2B/B2C signal: a deal is B2B when the contact is linked to a company
+        // (work-email domain). Best-effort — if the company-link job hasn't run
+        // yet (race), it resolves as B2C; Phase 3 makes this authoritative for
+        // the (company × project) dedup.
+        const personRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
+        const person = await personRepository.findOne({
+          where: { id: activity.personId },
+        });
+        const companyId: string | null = person?.companyId ?? null;
+        // clientType, NOT dealType — dealType already exists on Opportunity and
+        // means the SALE type (Primary/Resale/Lease/…). clientType is the B2B/B2C
+        // axis.
+        const clientType = isDefined(companyId) ? 'B2B' : 'B2C';
+
         const source = mapOpportunitySource(activity.kind);
 
         const name = await this.opportunityNameService.computeName(
@@ -214,6 +233,9 @@ export class OpportunityResolutionService {
           source,
           projectId: activity.projectId,
           pointOfContactId: activity.personId,
+          // B2B/B2C classification + link the account (company) on B2B deals.
+          clientType,
+          ...(isDefined(companyId) ? { companyId } : {}),
           // Frozen first-touch attribution snapshot (immutable on the deal).
           utmSource: activity.utmSource ?? null,
           utmMedium: activity.utmMedium ?? null,
