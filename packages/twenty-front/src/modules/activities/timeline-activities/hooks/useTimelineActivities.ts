@@ -50,6 +50,12 @@ export const useTimelineActivities = (
       {
         createdAt: 'DescNullsFirst',
       },
+      // Tiebreaker: rows written in the same instant (e.g. several enso-event
+      // rows from one pipeline job share a createdAt) order by the semantic
+      // event time so the sequence stays deterministic.
+      {
+        happensAt: 'DescNullsFirst',
+      },
     ],
     recordGqlFields: depthOneRecordGqlFields,
     fetchPolicy: 'cache-and-network',

@@ -14,10 +14,11 @@ import {
   type EnsoTimelineSegment,
 } from 'src/modules/enso/timeline/enso-timeline.util';
 
-// Workspace member object metadata id (single prod workspace) — the account-
-// assigned timeline event links to the manager record.
-const WORKSPACE_MEMBER_OBJECT_METADATA_ID =
-  'b3c22c83-033d-4c0c-a312-8fcfedba7e55';
+// Inbound-activity object metadata id (single prod workspace) — used as the
+// linkedObjectMetadataId on enso-event rows so they share the green ENSO icon
+// (the icon is decorative; record navigation is via the sentence links).
+const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
+  'cef40992-41c4-4742-8b4c-234777a1b8c6';
 
 // When an opportunity is claimed (leaves ROUTING with an owner), make that
 // manager the sticky owner of the (person × project) so future inquiries route
@@ -85,9 +86,11 @@ export class OpportunityClaimService {
     workspaceId: string,
     authContext: WorkspaceAuthContext,
     opportunity: {
+      id: string;
       ownerId: string;
       projectId: string;
       pointOfContactId: string;
+      companyId?: string | null;
     },
   ): Promise<void> {
     const assignmentRepository =
@@ -124,29 +127,38 @@ export class OpportunityClaimService {
           ...(isDefined(name) ? { name } : {}),
         },
       );
+    } else {
+      const lastPosition = await assignmentRepository.maximum(
+        'position',
+        undefined,
+      );
 
-      return;
+      await assignmentRepository.insert({
+        personId: opportunity.pointOfContactId,
+        projectId: opportunity.projectId,
+        managerId: opportunity.ownerId,
+        assignedAt: new Date(),
+        position: (lastPosition ?? 0) + 1,
+        createdBy: SYSTEM_ACTOR,
+        updatedBy: SYSTEM_ACTOR,
+        ...(isDefined(name) ? { name } : {}),
+      });
+
+      this.logger.log(
+        `Sticky assignment set: person ${opportunity.pointOfContactId} × project ${opportunity.projectId} → ${opportunity.ownerId}.`,
+      );
     }
 
-    const lastPosition = await assignmentRepository.maximum(
-      'position',
-      undefined,
-    );
-
-    await assignmentRepository.insert({
-      personId: opportunity.pointOfContactId,
-      projectId: opportunity.projectId,
-      managerId: opportunity.ownerId,
-      assignedAt: new Date(),
-      position: (lastPosition ?? 0) + 1,
-      createdBy: SYSTEM_ACTOR,
-      updatedBy: SYSTEM_ACTOR,
-      ...(isDefined(name) ? { name } : {}),
-    });
-
-    this.logger.log(
-      `Sticky assignment set: person ${opportunity.pointOfContactId} × project ${opportunity.projectId} → ${opportunity.ownerId}.`,
-    );
+    // B2C deals (no company) surface a deal-claimed event on the deal + person.
+    // B2B deals get the company-level account-assigned event instead.
+    if (!isDefined(opportunity.companyId)) {
+      await this.recordDealClaimedEvent(workspaceId, {
+        id: opportunity.id,
+        ownerId: opportunity.ownerId,
+        projectId: opportunity.projectId,
+        pointOfContactId: opportunity.pointOfContactId,
+      });
+    }
   }
 
   // Sticky (company × project) → manager (B2B account ownership), written on
@@ -250,70 +262,49 @@ export class OpportunityClaimService {
     }
   }
 
-  // account-assigned timeline event on the company, linked to the manager.
+  // account-assigned (B2B) timeline event on the deal + company: the manager
+  // became the account owner for the company on this project.
   private async recordAccountAssignedEvent(
     workspaceId: string,
     opportunity: { id: string; ownerId: string; projectId: string; companyId: string },
   ): Promise<void> {
     try {
-      const workspaceMemberRepository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'workspaceMember',
-          { shouldBypassPermissionChecks: true },
-        );
-      const projectRepository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'project',
-          { shouldBypassPermissionChecks: true },
-        );
-      const companyRepository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'company',
-          { shouldBypassPermissionChecks: true },
-        );
-      const manager = await workspaceMemberRepository.findOne({
-        where: { id: opportunity.ownerId },
-      });
-      const project = await projectRepository.findOne({
-        where: { id: opportunity.projectId },
-      });
-      const company = await companyRepository.findOne({
-        where: { id: opportunity.companyId },
-      });
-      const managerName = manager?.name
-        ? `${manager.name.firstName ?? ''} ${manager.name.lastName ?? ''}`.trim()
-        : 'A manager';
+      const managerName = await this.lookupMemberName(
+        workspaceId,
+        opportunity.ownerId,
+      );
+      const dealName = await this.lookupName(
+        workspaceId,
+        'opportunity',
+        opportunity.id,
+      );
+      const companyName = await this.lookupName(
+        workspaceId,
+        'company',
+        opportunity.companyId,
+      );
 
       const segments: EnsoTimelineSegment[] = [
+        { text: 'Assigned ' },
+        {
+          label: dealName || 'this deal',
+          objectNameSingular: 'opportunity',
+          recordId: opportunity.id,
+        },
+        { text: ' to ' },
         {
           label: managerName,
           objectNameSingular: 'workspaceMember',
           recordId: opportunity.ownerId,
         },
-        { text: ' became the account owner for ' },
+        { text: ' as account owner — future leads from ' },
         {
-          label: company?.name || 'this company',
+          label: companyName || 'this company',
           objectNameSingular: 'company',
           recordId: opportunity.companyId,
         },
+        { text: ' on this project route to them.' },
       ];
-
-      if (project?.name) {
-        segments.push(
-          { text: ' on ' },
-          {
-            label: project.name,
-            objectNameSingular: 'project',
-            recordId: opportunity.projectId,
-          },
-        );
-      }
-      segments.push({
-        text: ' — future leads from this company on this project route to them.',
-      });
 
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
@@ -324,12 +315,13 @@ export class OpportunityClaimService {
 
       const rows = buildEnsoTimelineInserts({
         action: 'account-assigned',
-        target: { companyId: opportunity.companyId },
+        target: {
+          opportunityId: opportunity.id,
+          companyId: opportunity.companyId,
+        },
         segments,
         auto: true,
-        linkedObjectMetadataId: WORKSPACE_MEMBER_OBJECT_METADATA_ID,
-        linkedRecordId: opportunity.ownerId,
-        linkedRecordCachedName: managerName,
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
       });
 
       if (rows.length > 0) {
@@ -341,6 +333,149 @@ export class OpportunityClaimService {
           (error as Error).message
         }`,
       );
+    }
+  }
+
+  // deal-claimed (B2C) timeline event on the deal + person: the manager owns
+  // this lead on the project going forward. B2B deals use account-assigned
+  // instead (company-level ownership).
+  private async recordDealClaimedEvent(
+    workspaceId: string,
+    opportunity: {
+      id: string;
+      ownerId: string;
+      projectId: string;
+      pointOfContactId: string;
+    },
+  ): Promise<void> {
+    try {
+      const managerName = await this.lookupMemberName(
+        workspaceId,
+        opportunity.ownerId,
+      );
+      const personName = await this.lookupName(
+        workspaceId,
+        'person',
+        opportunity.pointOfContactId,
+      );
+      const projectName = await this.lookupName(
+        workspaceId,
+        'project',
+        opportunity.projectId,
+      );
+
+      const segments: EnsoTimelineSegment[] = [
+        { text: 'Routed during intake and assigned to ' },
+        {
+          label: managerName,
+          objectNameSingular: 'workspaceMember',
+          recordId: opportunity.ownerId,
+        },
+        { text: ' — from now on responsible for ' },
+        {
+          label: personName || 'this contact',
+          objectNameSingular: 'person',
+          recordId: opportunity.pointOfContactId,
+        },
+      ];
+
+      if (projectName) {
+        segments.push(
+          { text: ' on ' },
+          {
+            label: projectName,
+            objectNameSingular: 'project',
+            recordId: opportunity.projectId,
+          },
+        );
+      }
+      segments.push({ text: '.' });
+
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'deal-claimed',
+        target: {
+          opportunityId: opportunity.id,
+          personId: opportunity.pointOfContactId,
+        },
+        segments,
+        auto: true,
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `deal-claimed timeline write failed for opportunity ${opportunity.id}: ${
+          (error as Error).message
+        }`,
+      );
+    }
+  }
+
+  // "First Last" for a workspace member, or "A manager" fallback.
+  private async lookupMemberName(
+    workspaceId: string,
+    workspaceMemberId: string,
+  ): Promise<string> {
+    try {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'workspaceMember',
+          { shouldBypassPermissionChecks: true },
+        );
+      const member = await repository.findOne({
+        where: { id: workspaceMemberId },
+      });
+
+      const name = member?.name
+        ? `${member.name.firstName ?? ''} ${member.name.lastName ?? ''}`.trim()
+        : '';
+
+      return name.length > 0 ? name : 'A manager';
+    } catch {
+      return 'A manager';
+    }
+  }
+
+  // Best-effort display name for a record (person → full name, else .name).
+  private async lookupName(
+    workspaceId: string,
+    objectNameSingular: string,
+    recordId: string,
+  ): Promise<string> {
+    try {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          objectNameSingular,
+          { shouldBypassPermissionChecks: true },
+        );
+      const record = await repository.findOne({ where: { id: recordId } });
+
+      if (!record) {
+        return '';
+      }
+
+      if (objectNameSingular === 'person') {
+        return [record.name?.firstName, record.name?.lastName]
+          .filter((part) => typeof part === 'string' && part.length > 0)
+          .join(' ')
+          .trim();
+      }
+
+      return typeof record.name === 'string' ? record.name : '';
+    } catch {
+      return '';
     }
   }
 }

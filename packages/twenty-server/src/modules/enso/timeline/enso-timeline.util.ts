@@ -18,6 +18,8 @@ export type EnsoTimelineTarget = {
   personId?: string | null;
   companyId?: string | null;
   opportunityId?: string | null;
+  inboundActivityId?: string | null;
+  projectId?: string | null;
 };
 
 // A sentence is built from segments: plain text, or a clickable link to a record.
@@ -86,6 +88,15 @@ export const buildEnsoTimelineInserts = (
   }
   if (isDefined(event.target.opportunityId)) {
     rows.push({ ...base, targetOpportunityId: event.target.opportunityId });
+  }
+  if (isDefined(event.target.inboundActivityId)) {
+    rows.push({
+      ...base,
+      targetInboundActivityId: event.target.inboundActivityId,
+    });
+  }
+  if (isDefined(event.target.projectId)) {
+    rows.push({ ...base, targetProjectId: event.target.projectId });
   }
 
   return rows;

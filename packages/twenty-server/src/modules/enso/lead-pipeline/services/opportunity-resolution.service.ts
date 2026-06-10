@@ -300,6 +300,7 @@ export class OpportunityResolutionService {
           source,
           activityId: activity.id,
           activityName: activity.name,
+          dealName: name,
         });
 
         this.logger.log(
@@ -453,6 +454,7 @@ export class OpportunityResolutionService {
         target: {
           opportunityId: opportunity.id,
           personId,
+          inboundActivityId: activity.id,
           ...(isB2b && isDefined(companyId) ? { companyId } : {}),
         },
         segments,
@@ -476,8 +478,9 @@ export class OpportunityResolutionService {
   }
 
   // Plain-English "deal opened" event — replaces the generic created-by row.
-  // Reads e.g. "Created a B2B deal from {Form · Alice · …} — by ENSO CRM",
-  // on the deal + person (+ company for B2B). Best-effort.
+  // Reads e.g. "{Deal | Alice · …} was opened as a B2B deal from {Form · …} —
+  // by ENSO CRM", on the deal + person + inbound activity (+ company for B2B).
+  // Best-effort.
   private async recordCreatedEvent(
     workspaceId: string,
     params: {
@@ -488,6 +491,7 @@ export class OpportunityResolutionService {
       source: string;
       activityId: string;
       activityName?: string | null;
+      dealName?: string | null;
     },
   ): Promise<void> {
     try {
@@ -495,9 +499,15 @@ export class OpportunityResolutionService {
       const fromLabel = OPPORTUNITY_SOURCE_LABEL[params.source] ?? 'lead';
       const activityLabel =
         params.activityName || `an inbound ${fromLabel.toLowerCase()}`;
+      const dealLabel = params.dealName || 'A deal';
 
       const segments: EnsoTimelineSegment[] = [
-        { text: `Created a ${params.clientType} deal from ` },
+        {
+          label: dealLabel,
+          objectNameSingular: 'opportunity',
+          recordId: params.opportunityId,
+        },
+        { text: ` was opened as a ${params.clientType} deal from ` },
         {
           label: activityLabel,
           objectNameSingular: 'inboundActivity',
@@ -518,6 +528,7 @@ export class OpportunityResolutionService {
         target: {
           personId: params.personId,
           opportunityId: params.opportunityId,
+          inboundActivityId: params.activityId,
           ...(isB2b && isDefined(params.companyId)
             ? { companyId: params.companyId }
             : {}),

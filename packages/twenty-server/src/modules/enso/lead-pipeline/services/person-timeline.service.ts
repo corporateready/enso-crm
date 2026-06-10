@@ -5,6 +5,10 @@ import { isDefined } from 'twenty-shared/utils';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import {
+  buildEnsoTimelineInserts,
+  type EnsoTimelineSegment,
+} from 'src/modules/enso/timeline/enso-timeline.util';
 
 // Workspace-specific object metadata ids (single prod workspace). Used as the
 // timelineActivity.linkedObjectMetadataId so the front can resolve the linked
@@ -23,6 +27,16 @@ const CHANNEL_LABEL: Record<string, string> = {
   call: 'Call',
 };
 
+// inboundActivity.kind → "Captured from {phrase}" for the genesis sentence.
+const INBOUND_CHANNEL_PHRASE: Record<string, string> = {
+  FORM_SUBMISSION: 'a website form submission',
+  INCOMING_CALL: 'an inbound call',
+  SOCIAL_MESSAGE: 'a social message',
+  LEAD_AD: 'a lead ad',
+  APPOINTMENT_BOOKED: 'a booked appointment',
+  CALLBACK_REQUEST: 'a callback request',
+};
+
 // Surfaces related-record events on the PERSON's Timeline. Twenty natively only
 // writes timeline activities for notes/tasks, so an inbound activity arriving or
 // an opportunity being created never shows on the person's timeline. We write a
@@ -37,6 +51,8 @@ export class PersonTimelineService {
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
+  // Genesis event on the inbound activity's own timeline: "Captured from a
+  // website form submission on {Project}." (channel derived from kind).
   async recordInboundActivity(
     workspaceId: string,
     activityId: string,
@@ -52,14 +68,57 @@ export class PersonTimelineService {
         return;
       }
 
-      await this.writeOnPerson(workspaceId, {
-        personId: activity.personId,
-        name: 'linked-inboundActivity.created',
+      const channelPhrase =
+        INBOUND_CHANNEL_PHRASE[activity.kind] ?? 'an inbound submission';
+      const segments: EnsoTimelineSegment[] = [
+        { text: `Captured from ${channelPhrase}` },
+      ];
+
+      if (isDefined(activity.projectId)) {
+        const project = await this.find(
+          workspaceId,
+          'project',
+          activity.projectId,
+        );
+
+        if (project?.name) {
+          segments.push(
+            { text: ' on ' },
+            {
+              label: project.name,
+              objectNameSingular: 'project',
+              recordId: activity.projectId,
+            },
+          );
+        }
+      }
+      segments.push({ text: '.' });
+
+      const happensAt = activity.occurredAt ?? activity.createdAt;
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'inbound-activity-created',
+        target: { inboundActivityId: activity.id },
+        segments,
+        auto: true,
         linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
         linkedRecordId: activity.id,
-        cachedName: activity.name ?? '',
-        happensAt: activity.occurredAt ?? activity.createdAt,
+        linkedRecordCachedName: activity.name ?? '',
+        ...(isDefined(happensAt)
+          ? { happensAt: new Date(happensAt).toISOString() }
+          : {}),
       });
+
+      if (rows.length > 0) {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'timelineActivity',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        await repository.insert(rows);
+      }
     });
   }
 
