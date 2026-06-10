@@ -64,25 +64,23 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
     });
   };
 
-  // The name lives in the frozen first column, outside the row's own handler,
-  // so the open-in-full-page gesture is handled here on the chip click. Option+
-  // click and double-click open the full page; a plain click opens as usual.
-  const handleChipClick = (event: MouseEvent) => {
-    if (event.altKey) {
-      event.preventDefault();
-      event.stopPropagation();
-      lastChipClickTimestampRef.current = null;
-      openRecordInFullPage();
-      return;
-    }
+  const handleChipClick = () => {
+    onRecordIdentifierClick?.(rowIndex, recordId);
+  };
 
+  // The name lives in the frozen first column (outside the row's own handler)
+  // and is a real <a> link. Handle the open-in-full-page gesture on click
+  // CAPTURE, above the anchor: preventDefault cancels the browser's Option+click
+  // "download link" default, and stopPropagation suppresses the chip's own click
+  // so it doesn't also open the side panel. A plain click falls through.
+  const handleLabelClickCapture = (event: MouseEvent<HTMLDivElement>) => {
     const now = Date.now();
     const lastTimestamp = lastChipClickTimestampRef.current;
     const isDoubleClick =
       lastTimestamp !== null &&
       now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
 
-    if (isDoubleClick) {
+    if (event.altKey || isDoubleClick) {
       event.preventDefault();
       event.stopPropagation();
       lastChipClickTimestampRef.current = null;
@@ -91,7 +89,6 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
     }
 
     lastChipClickTimestampRef.current = now;
-    onRecordIdentifierClick?.(rowIndex, recordId);
   };
 
   return (
@@ -123,7 +120,9 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
         triggerEvent,
       }}
     >
-      {children}
+      <div style={{ display: 'contents' }} onClickCapture={handleLabelClickCapture}>
+        {children}
+      </div>
     </FieldContext.Provider>
   );
 };
