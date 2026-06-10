@@ -66,13 +66,28 @@ export const EventRowEnsoEvent = ({
 }: EventRowDynamicComponentProps) => {
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
+  const auto = event.properties?.auto === true;
+
+  // Legacy fallback: events written before the segments format (no
+  // properties.segments) get a simple text sentence from the old fields so
+  // historical rows still read sensibly.
+  const legacySegments = (): EnsoTimelineSegment[] => {
+    const action = event.name.split('.')[1]?.replace(/-/g, ' ') ?? '';
+    const cached = isNonEmptyString(event.linkedRecordCachedName)
+      ? ` ${event.linkedRecordCachedName}`
+      : '';
+    const reason = isNonEmptyString(event.properties?.reason)
+      ? ` · ${event.properties.reason}`
+      : '';
+
+    return [{ text: `${action}${cached}${reason}` }];
+  };
+
   const segments: EnsoTimelineSegment[] = Array.isArray(
     event.properties?.segments,
   )
     ? event.properties.segments
-    : [];
-
-  const auto = event.properties?.auto === true;
+    : legacySegments();
 
   return (
     <StyledRowContainer>
