@@ -3,7 +3,9 @@ import { useLingui } from '@lingui/react/macro';
 import { styled } from '@linaria/react';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { isDefined } from 'twenty-shared/utils';
+import { Link } from 'react-router-dom';
+import { AppPath } from 'twenty-shared/types';
+import { getAppPath, isDefined } from 'twenty-shared/utils';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
@@ -311,6 +313,19 @@ const StyledCheckGroupTitle = styled.div`
   font-weight: ${themeCssVariables.font.weight.medium};
 `;
 
+// The record the check is about — links to the Person's show page so the
+// manager can jump straight in.
+const StyledPersonLink = styled(Link)`
+  color: ${themeCssVariables.color.blue};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
 export const PersonConsentCard = () => {
   const { t } = useLingui();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
@@ -400,6 +415,19 @@ export const PersonConsentCard = () => {
   );
 
   const person = persons[0] as Record<string, unknown> | undefined;
+  const personName = (() => {
+    const name = person?.name as
+      | { firstName?: string; lastName?: string }
+      | undefined;
+    return [name?.firstName, name?.lastName]
+      .filter(isNonEmptyString)
+      .join(' ')
+      .trim();
+  })();
+  const personHref = getAppPath(AppPath.RecordShowPage, {
+    objectNameSingular: 'person',
+    objectRecordId: personId,
+  });
   const hasEmail = isNonEmptyString(
     (person?.emails as { primaryEmail?: string } | undefined)?.primaryEmail,
   );
@@ -886,6 +914,11 @@ export const PersonConsentCard = () => {
           <StyledModalOverlay>
             <StyledModalDialog>
               <StyledModalTitle>{t`Consent check`}</StyledModalTitle>
+              {personName !== '' && (
+                <StyledPersonLink to={personHref}>
+                  {personName}
+                </StyledPersonLink>
+              )}
               <StyledModalText>
                 {t`We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now.`}
               </StyledModalText>
