@@ -263,6 +263,14 @@ export class CompanyFromPersonService {
     personName: string,
   ): Promise<void> {
     try {
+      // Skip unnamed shells (the UI creates a person with an empty name first,
+      // then sets it via an update). resolveFromPerson re-runs on that update,
+      // emitting person-created with the real name. n8n single-payload creates
+      // already carry the name, so they fire here directly.
+      if (!personName || personName.length === 0) {
+        return;
+      }
+
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
           workspaceId,
