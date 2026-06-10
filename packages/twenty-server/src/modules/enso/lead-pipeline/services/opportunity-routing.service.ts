@@ -6,6 +6,7 @@ import { IsNull } from 'typeorm';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { isCompanyAutomationEnabled } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
 
 export type RoutingResult =
   // assigned: owner set. autoClaimed=true means a sticky owner took it straight
@@ -28,6 +29,7 @@ type OpportunityRow = {
   ownerId?: string | null;
   projectId?: string | null;
   pointOfContactId?: string | null;
+  companyId?: string | null;
   routingCount?: number | null;
 };
 
@@ -199,34 +201,66 @@ export class OpportunityRoutingService {
     return ownerChanged ? current + 1 : current;
   }
 
+  // Sticky owner for an opportunity, in precedence order:
+  //   (1) person × project — the actual returning human wins.
+  //   (2) company × project — B2B account continuity: a DIFFERENT contact from
+  //       the same company routes to the account owner (survives closed deals).
+  //       Gated by ENSO_COMPANY_AUTOMATION_ENABLED.
   private async findStickyManagerId(
     workspaceId: string,
     opportunity: OpportunityRow,
   ): Promise<string | undefined> {
-    if (
-      !isDefined(opportunity.pointOfContactId) ||
-      !isDefined(opportunity.projectId)
-    ) {
+    if (!isDefined(opportunity.projectId)) {
       return undefined;
     }
 
-    const assignmentRepository =
-      await this.globalWorkspaceOrmManager.getRepository<any>(
-        workspaceId,
-        'personProjectAssignment',
-        { shouldBypassPermissionChecks: true },
-      );
+    // (1) person-sticky
+    if (isDefined(opportunity.pointOfContactId)) {
+      const personAssignmentRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'personProjectAssignment',
+          { shouldBypassPermissionChecks: true },
+        );
 
-    const assignment = await assignmentRepository.findOne({
-      where: {
-        personId: opportunity.pointOfContactId,
-        projectId: opportunity.projectId,
-        endedAt: IsNull(),
-      },
-      order: { assignedAt: 'DESC' },
-    });
+      const personAssignment = await personAssignmentRepository.findOne({
+        where: {
+          personId: opportunity.pointOfContactId,
+          projectId: opportunity.projectId,
+          endedAt: IsNull(),
+        },
+        order: { assignedAt: 'DESC' },
+      });
 
-    return assignment?.managerId ?? undefined;
+      if (isDefined(personAssignment?.managerId)) {
+        return personAssignment.managerId;
+      }
+    }
+
+    // (2) company-sticky (B2B account continuity)
+    if (isCompanyAutomationEnabled() && isDefined(opportunity.companyId)) {
+      const companyAssignmentRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'companyProjectAssignment',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const companyAssignment = await companyAssignmentRepository.findOne({
+        where: {
+          companyId: opportunity.companyId,
+          projectId: opportunity.projectId,
+          endedAt: IsNull(),
+        },
+        order: { assignedAt: 'DESC' },
+      });
+
+      if (isDefined(companyAssignment?.managerId)) {
+        return companyAssignment.managerId;
+      }
+    }
+
+    return undefined;
   }
 
   // Per-opportunity, independent uniform-random pick over the project's routing

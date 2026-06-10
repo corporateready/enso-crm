@@ -18,7 +18,7 @@ const ACTION_VERB: Record<string, string> = {
   'company-linked': t`Linked to`,
   'activity-logged': t`Logged`,
   'deal-activity-attached': t`Activity added to deal`,
-  'deal-created': t`Opened deal`,
+  'deal-created': t`Created`,
   'deal-contact-added': t`Added contact`,
   'account-assigned': t`Set account owner`,
 };
