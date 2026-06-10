@@ -1,6 +1,7 @@
 import { EventRowActivity } from '@/activities/timeline-activities/rows/activity/components/EventRowActivity';
 import { EventRowCalendarEvent } from '@/activities/timeline-activities/rows/calendar/components/EventRowCalendarEvent';
 import { EventRowEnsoConsent } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent';
+import { EventRowEnsoEvent } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoEvent';
 import { EventRowEnsoLinkedRecord } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord';
 import { EventRowEnsoMerge } from '@/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge';
 import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent.types';
@@ -9,6 +10,9 @@ import { type EventRowDynamicComponentProps } from '@/activities/timeline-activi
 // with ENSO_RECORD_MERGED_ACTIVITY_NAME on the server. Routed by name (no linked
 // record — the duplicate is soft-deleted), before the linked-object switch.
 const ENSO_RECORD_MERGED_ACTIVITY_NAME = 'enso-record.merged';
+// ENSO — generic automation events (company linking, B2B account deals). Kept in
+// sync with ENSO_EVENT_ACTIVITY_NAME_PREFIX on the server.
+const ENSO_EVENT_ACTIVITY_NAME_PREFIX = 'enso-event.';
 import { EventRowMainObject } from '@/activities/timeline-activities/rows/main-object/components/EventRowMainObject';
 import { EventRowMessage } from '@/activities/timeline-activities/rows/message/components/EventRowMessage';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
@@ -25,6 +29,20 @@ export const EventRowDynamicComponent = ({
   if (event.name === ENSO_RECORD_MERGED_ACTIVITY_NAME) {
     return (
       <EventRowEnsoMerge
+        labelIdentifierValue={labelIdentifierValue}
+        event={event}
+        mainObjectMetadataItem={mainObjectMetadataItem}
+        linkedObjectMetadataItem={linkedObjectMetadataItem}
+        authorFullName={authorFullName}
+        createdAt={createdAt}
+      />
+    );
+  }
+
+  // ENSO — generic automation events (company linking, B2B account deals).
+  if (event.name?.startsWith(ENSO_EVENT_ACTIVITY_NAME_PREFIX)) {
+    return (
+      <EventRowEnsoEvent
         labelIdentifierValue={labelIdentifierValue}
         event={event}
         mainObjectMetadataItem={mainObjectMetadataItem}

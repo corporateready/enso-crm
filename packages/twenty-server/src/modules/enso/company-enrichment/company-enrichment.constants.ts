@@ -23,6 +23,12 @@ export const SYSTEM_ACTOR = {
 export const isCompanyAutomationEnabled = (): boolean =>
   process.env.ENSO_COMPANY_AUTOMATION_ENABLED === 'true';
 
+// Workspace-specific Company object metadata id (single prod workspace), used as
+// timelineActivity.linkedObjectMetadataId so timeline rows can link to the
+// company. (Same hardcoding pattern as PersonTimelineService's object ids.)
+export const COMPANY_OBJECT_METADATA_ID =
+  'adf37f19-46e1-419b-a27d-29ef4f11ae36';
+
 // enrichmentStatus SELECT options on Company.
 export const COMPANY_ENRICHMENT_STATUS = {
   PENDING: 'PENDING',

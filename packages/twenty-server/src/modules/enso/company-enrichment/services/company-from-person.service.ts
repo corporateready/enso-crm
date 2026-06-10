@@ -10,8 +10,10 @@ import { getCompanyNameFromDomainName } from 'src/modules/contact-creation-manag
 import { getDomainNameFromHandle } from 'src/modules/contact-creation-manager/utils/get-domain-name-from-handle.util';
 import {
   COMPANY_ENRICHMENT_STATUS,
+  COMPANY_OBJECT_METADATA_ID,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
+import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
 import { isWorkEmail } from 'src/utils/is-work-email';
 
 export type ResolveCompanyOutcome = {
@@ -85,6 +87,14 @@ export class CompanyFromPersonService {
             { companyId, updatedBy: SYSTEM_ACTOR },
           );
 
+          await this.recordCompanyLinked(
+            workspaceId,
+            personId,
+            companyId,
+            domain,
+            companyRepository,
+          );
+
           return { companyId, created };
         },
         systemAuthContext,
@@ -95,6 +105,49 @@ export class CompanyFromPersonService {
       );
 
       return null;
+    }
+  }
+
+  // Provenance on the person's timeline (best-effort): which company was linked
+  // and why ("Linked to {Company} · work-email domain {domain} — automatically").
+  // Runs inside the caller's workspace context.
+  private async recordCompanyLinked(
+    workspaceId: string,
+    personId: string,
+    companyId: string,
+    domain: string,
+    companyRepository: any,
+  ): Promise<void> {
+    try {
+      const company = await companyRepository.findOne({
+        where: { id: companyId },
+      });
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'company-linked',
+        target: { personId },
+        reason: `work-email domain ${domain}`,
+        auto: true,
+        linkedObjectMetadataId: COMPANY_OBJECT_METADATA_ID,
+        linkedRecordId: companyId,
+        linkedRecordCachedName: company?.name || domain,
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `company-linked timeline write failed for person ${personId}: ${
+          (error as Error).message
+        }`,
+      );
     }
   }
 
