@@ -1,6 +1,6 @@
 import { CommandMenuComponentInstanceContext } from '@/command-menu/states/contexts/CommandMenuComponentInstanceContext';
 import { TimelineActivityContext } from '@/activities/timeline-activities/contexts/TimelineActivityContext';
-import { useCloseSidePanelRecordOnSpaceHotkey } from '@/side-panel/pages/record-page/hooks/useCloseSidePanelRecordOnSpaceHotkey';
+import { useSidePanelRecordHotkeys } from '@/side-panel/pages/record-page/hooks/useSidePanelRecordHotkeys';
 import { viewableRecordIdComponentState } from '@/side-panel/pages/record-page/states/viewableRecordIdComponentState';
 import { viewableRecordNameSingularComponentState } from '@/side-panel/pages/record-page/states/viewableRecordNameSingularComponentState';
 import { SidePanelPageComponentInstanceContext } from '@/side-panel/states/contexts/SidePanelPageComponentInstanceContext';
@@ -27,8 +27,6 @@ const StyledSidePanelRecord = styled.div<{
 `;
 
 export const SidePanelRecordPage = () => {
-  useCloseSidePanelRecordOnSpaceHotkey();
-
   const viewableRecordNameSingular = useAtomComponentStateValue(
     viewableRecordNameSingularComponentState,
   );
@@ -49,6 +47,8 @@ export const SidePanelRecordPage = () => {
     viewableRecordNameSingular,
     viewableRecordId,
   );
+
+  useSidePanelRecordHotkeys({ objectNameSingular, objectRecordId });
 
   const recordDeletedAt = useAtomFamilySelectorValue(
     recordStoreFamilySelector,
