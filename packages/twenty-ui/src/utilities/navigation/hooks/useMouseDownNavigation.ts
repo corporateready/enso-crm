@@ -27,6 +27,24 @@ export const useMouseDownNavigation = ({
 
     // For modifier keys, let the default browser behavior handle it
     if (isNavigationModifierPressed(event)) {
+      // Exception: Option/Alt+click on an <a href> is interpreted by the
+      // browser (macOS) as "download the link target", which is never useful
+      // for an in-app record link. Navigate to the target instead. Cmd/Ctrl/
+      // Shift keep their native behavior (open in a new tab/window).
+      const isOnlyAltPressed =
+        event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        event.button === 0;
+
+      if (isOnlyAltPressed && isDefined(to)) {
+        event.preventDefault();
+        onBeforeNavigation?.();
+        navigate(to);
+        return;
+      }
+
       onBeforeNavigation?.();
       if (isDefined(onClick) && !isDefined(to)) {
         onClick(event);
