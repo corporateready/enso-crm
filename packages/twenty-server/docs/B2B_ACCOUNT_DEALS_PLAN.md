@@ -3,6 +3,19 @@
 Status: in progress (2026-06-08). Builds on the company auto-creation + enrichment
 + merge feature (PR #53/#54). Gated behind `ENSO_COMPANY_AUTOMATION_ENABLED`.
 
+## Updates (2026-06-10)
+- The B2B/B2C field is **`clientType`** (Opportunity), NOT `dealType`. `dealType`
+  already exists and means the SALE type (Primary Sale / Additional Sale / Cross
+  Sale / Lease / Resale). `clientType` (B2B/B2C) is the orthogonal axis.
+- **`opportunityContact` DROPPED** — multi-contact-on-deal is redundant: the manager
+  reads the account's people on the Company; the deal keeps one primary
+  `pointOfContact`, and other people's involvement shows via their activities linked
+  to the deal. (Revisit only if one company runs concurrent deals needing per-deal
+  stakeholder lists + roles.)
+- Phase 1 (timeline foundation + `company-linked`) MERGED + verified (PR #63).
+- Phase 2 = additive signal only: `clientType` + `companyId` on opportunity create
+  (no dedup change — that's Phase 3).
+
 ## Goal
 Treat a B2B opportunity as an **account deal**: one open deal per (company ×
 project), with multiple contacts attaching to it, durable account ownership, and
