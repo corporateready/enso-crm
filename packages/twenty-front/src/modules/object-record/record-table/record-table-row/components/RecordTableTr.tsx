@@ -35,14 +35,30 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
 
     const lastPrimaryMouseDownTimestampRef = useRef<number | null>(null);
 
+    const openRecordInFullPage = (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigate(AppPath.RecordShowPage, {
+        objectNameSingular: objectMetadataItem.nameSingular,
+        objectRecordId: recordId,
+      });
+    };
+
     // A native dblclick never reaches the row: the first click opens the cell
     // editor (or the record), re-rendering the cell so the second click lands
     // on a different element. So detect the double-click ourselves on mousedown
     // capture, which always fires on the row whatever the cell re-renders into.
+    // Option+click is handled the same way (open in full page immediately).
     const handleRowMouseDownCapture = (
       event: React.MouseEvent<HTMLDivElement>,
     ) => {
       if (event.button !== 0) {
+        return;
+      }
+
+      if (event.altKey) {
+        lastPrimaryMouseDownTimestampRef.current = null;
+        openRecordInFullPage(event);
         return;
       }
 
@@ -54,12 +70,7 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
 
       if (isDoubleClick) {
         lastPrimaryMouseDownTimestampRef.current = null;
-        event.preventDefault();
-        event.stopPropagation();
-        navigate(AppPath.RecordShowPage, {
-          objectNameSingular: objectMetadataItem.nameSingular,
-          objectRecordId: recordId,
-        });
+        openRecordInFullPage(event);
         return;
       }
 
