@@ -14,7 +14,7 @@ import { forwardRef, useRef, type ReactNode } from 'react';
 import { AppPath } from 'twenty-shared/types';
 import { useNavigateApp } from '~/hooks/useNavigateApp';
 
-// A second primary-button press within this window counts as a double-click.
+// A second click within this window counts as a double-click.
 const DOUBLE_CLICK_THRESHOLD_IN_MS = 300;
 
 type RecordTableTrProps = {
@@ -33,9 +33,11 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
 
     const navigate = useNavigateApp();
 
-    const lastPrimaryMouseDownTimestampRef = useRef<number | null>(null);
+    const lastPrimaryClickTimestampRef = useRef<number | null>(null);
 
     const openRecordInFullPage = (event: React.MouseEvent<HTMLDivElement>) => {
+      // Suppress the cell's own click (which would open the side panel / cell
+      // editor) so we land cleanly on the full page.
       event.preventDefault();
       event.stopPropagation();
       navigate(AppPath.RecordShowPage, {
@@ -44,37 +46,31 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
       });
     };
 
-    // A native dblclick never reaches the row: the first click opens the cell
-    // editor (or the record), re-rendering the cell so the second click lands
-    // on a different element. So detect the double-click ourselves on mousedown
-    // capture, which always fires on the row whatever the cell re-renders into.
-    // Option+click is handled the same way (open in full page immediately).
-    const handleRowMouseDownCapture = (
-      event: React.MouseEvent<HTMLDivElement>,
-    ) => {
-      if (event.button !== 0) {
-        return;
-      }
-
+    // Handled on click *capture* (before the cell's own click handler) so we
+    // can both detect the gesture and stop the cell from acting on it. The cell
+    // editor portals inside the cell, so a second click still reaches the row
+    // here — we time it ourselves rather than rely on the native dblclick,
+    // which needs the same target. Option+click opens full page immediately.
+    const handleRowClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
       if (event.altKey) {
-        lastPrimaryMouseDownTimestampRef.current = null;
+        lastPrimaryClickTimestampRef.current = null;
         openRecordInFullPage(event);
         return;
       }
 
       const now = Date.now();
-      const lastTimestamp = lastPrimaryMouseDownTimestampRef.current;
+      const lastTimestamp = lastPrimaryClickTimestampRef.current;
       const isDoubleClick =
         lastTimestamp !== null &&
         now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
 
       if (isDoubleClick) {
-        lastPrimaryMouseDownTimestampRef.current = null;
+        lastPrimaryClickTimestampRef.current = null;
         openRecordInFullPage(event);
         return;
       }
 
-      lastPrimaryMouseDownTimestampRef.current = now;
+      lastPrimaryClickTimestampRef.current = now;
     };
 
     const isRowSelected = useAtomComponentFamilyStateValue(
@@ -119,7 +115,7 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
           className="table-row"
           isDragging={isDragging}
           ref={ref}
-          onMouseDownCapture={handleRowMouseDownCapture}
+          onClickCapture={handleRowClickCapture}
           data-active={isRecordTableRowActive}
           data-focused={
             isRecordTableRowFocusActive &&
