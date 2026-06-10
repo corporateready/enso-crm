@@ -10,11 +10,16 @@ import { getCompanyNameFromDomainName } from 'src/modules/contact-creation-manag
 import { getDomainNameFromHandle } from 'src/modules/contact-creation-manager/utils/get-domain-name-from-handle.util';
 import {
   COMPANY_ENRICHMENT_STATUS,
-  COMPANY_OBJECT_METADATA_ID,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/company-enrichment/company-enrichment.constants';
 import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
 import { isWorkEmail } from 'src/utils/is-work-email';
+
+// Inbound-activity object metadata id (single prod workspace). Used as the
+// linkedObjectMetadataId on every enso-event row so they share the green ENSO
+// icon (the icon is decorative — no record link needed).
+const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
+  'cef40992-41c4-4742-8b4c-234777a1b8c6';
 
 export type ResolveCompanyOutcome = {
   companyId: string;
@@ -64,6 +69,15 @@ export class CompanyFromPersonService {
             return null;
           }
 
+          // person-created: surface every freshly created, not-yet-linked
+          // contact on its own timeline (both B2B and B2C — runs before the
+          // work-email branch below). Best-effort.
+          await this.recordPersonCreated(
+            workspaceId,
+            personId,
+            this.personFullName(person),
+          );
+
           const domain = this.extractWorkDomain(person);
 
           if (!domain) {
@@ -87,13 +101,33 @@ export class CompanyFromPersonService {
             { companyId, updatedBy: SYSTEM_ACTOR },
           );
 
-          await this.recordCompanyLinked(
-            workspaceId,
+          const personName = this.personFullName(person);
+          const company = await companyRepository.findOne({
+            where: { id: companyId },
+          });
+          const companyName = company?.name || domain;
+
+          // Company genesis first (only when we actually created it), then the
+          // link. happensAt offset keeps "created" below "linked" on the
+          // company timeline (newest-first).
+          if (created) {
+            await this.recordCompanyCreated(workspaceId, {
+              companyId,
+              companyName,
+              personId,
+              personName,
+              domain,
+              happensAt: new Date(Date.now() - 1000).toISOString(),
+            });
+          }
+
+          await this.recordCompanyLinked(workspaceId, {
             personId,
+            personName,
             companyId,
+            companyName,
             domain,
-            companyRepository,
-          );
+          });
 
           return { companyId, created };
         },
@@ -108,20 +142,20 @@ export class CompanyFromPersonService {
     }
   }
 
-  // Provenance on the person's timeline (best-effort): which company was linked
-  // and why ("Linked to {Company} … on the company domain {domain} — by ENSO CRM").
-  // Runs inside the caller's workspace context.
+  // Provenance on the person + company timeline (best-effort): which contact was
+  // matched to which company and why ("Linked {Person} to {Company} — their work
+  // email is on the company domain {domain}, … — by ENSO CRM").
   private async recordCompanyLinked(
     workspaceId: string,
-    personId: string,
-    companyId: string,
-    domain: string,
-    companyRepository: any,
+    params: {
+      personId: string;
+      personName: string;
+      companyId: string;
+      companyName: string;
+      domain: string;
+    },
   ): Promise<void> {
     try {
-      const company = await companyRepository.findOne({
-        where: { id: companyId },
-      });
       const timelineRepository =
         await this.globalWorkspaceOrmManager.getRepository<any>(
           workspaceId,
@@ -129,21 +163,28 @@ export class CompanyFromPersonService {
           { shouldBypassPermissionChecks: true },
         );
 
-      const companyName = company?.name || domain;
       const rows = buildEnsoTimelineInserts({
         action: 'company-linked',
-        target: { personId },
+        target: { personId: params.personId, companyId: params.companyId },
         segments: [
-          { text: 'Linked to ' },
-          { label: companyName, objectNameSingular: 'company', recordId: companyId },
+          { text: 'Linked ' },
           {
-            text: ` — their work email is on the company domain ${domain}, so they were matched to this company.`,
+            label: params.personName || 'this contact',
+            objectNameSingular: 'person',
+            recordId: params.personId,
+          },
+          { text: ' to ' },
+          {
+            label: params.companyName,
+            objectNameSingular: 'company',
+            recordId: params.companyId,
+          },
+          {
+            text: ` — their work email is on the company domain ${params.domain}, so they were matched to this company.`,
           },
         ],
         auto: true,
-        linkedObjectMetadataId: COMPANY_OBJECT_METADATA_ID,
-        linkedRecordId: companyId,
-        linkedRecordCachedName: companyName,
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
       });
 
       if (rows.length > 0) {
@@ -151,11 +192,119 @@ export class CompanyFromPersonService {
       }
     } catch (error) {
       this.logger.warn(
-        `company-linked timeline write failed for person ${personId}: ${
+        `company-linked timeline write failed for person ${params.personId}: ${
           (error as Error).message
         }`,
       );
     }
+  }
+
+  // Company genesis on the company's timeline (best-effort): the company was
+  // auto-created from the first contact's work-email domain. Only emitted when
+  // this run actually created the company.
+  private async recordCompanyCreated(
+    workspaceId: string,
+    params: {
+      companyId: string;
+      companyName: string;
+      personId: string;
+      personName: string;
+      domain: string;
+      happensAt: string;
+    },
+  ): Promise<void> {
+    try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'company-created',
+        target: { companyId: params.companyId },
+        segments: [
+          {
+            label: params.companyName,
+            objectNameSingular: 'company',
+            recordId: params.companyId,
+          },
+          { text: ' was created from the work email of ' },
+          {
+            label: params.personName || 'a new contact',
+            objectNameSingular: 'person',
+            recordId: params.personId,
+          },
+          { text: ` on the company domain ${params.domain}.` },
+        ],
+        auto: true,
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
+        happensAt: params.happensAt,
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `company-created timeline write failed for company ${params.companyId}: ${
+          (error as Error).message
+        }`,
+      );
+    }
+  }
+
+  // person-created genesis on the person's own timeline (best-effort):
+  // "{Person} was created as a new contact. — by ENSO CRM".
+  private async recordPersonCreated(
+    workspaceId: string,
+    personId: string,
+    personName: string,
+  ): Promise<void> {
+    try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'timelineActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const rows = buildEnsoTimelineInserts({
+        action: 'person-created',
+        target: { personId },
+        segments: [
+          {
+            label: personName || 'A new contact',
+            objectNameSingular: 'person',
+            recordId: personId,
+          },
+          { text: ' was created as a new contact.' },
+        ],
+        auto: true,
+        linkedObjectMetadataId: INBOUND_ACTIVITY_OBJECT_METADATA_ID,
+      });
+
+      if (rows.length > 0) {
+        await timelineRepository.insert(rows);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `person-created timeline write failed for person ${personId}: ${
+          (error as Error).message
+        }`,
+      );
+    }
+  }
+
+  // "First Last" for a person, or '' when unavailable.
+  private personFullName(person: {
+    name?: { firstName?: string | null; lastName?: string | null } | null;
+  }): string {
+    return [person.name?.firstName, person.name?.lastName]
+      .filter((part) => typeof part === 'string' && part.length > 0)
+      .join(' ')
+      .trim();
   }
 
   // First work email wins (primary, then additional). Returns the registrable
