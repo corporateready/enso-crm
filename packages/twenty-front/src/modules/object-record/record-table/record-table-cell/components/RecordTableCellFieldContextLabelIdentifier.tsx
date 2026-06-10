@@ -9,7 +9,7 @@ import { useRecordTableRowContextOrThrow } from '@/object-record/record-table/co
 import { RecordTableUpdateContext } from '@/object-record/record-table/contexts/RecordTableUpdateContext';
 import { isRecordTableCellsNonEditableComponentState } from '@/object-record/record-table/states/isRecordTableCellsNonEditableComponentState';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
-import { useContext, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, type ReactNode } from 'react';
 import { AppPath } from 'twenty-shared/types';
 import { useNavigateApp } from '~/hooks/useNavigateApp';
 
@@ -55,41 +55,55 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
     fieldDefinitionByFieldMetadataItemId[recordField.fieldMetadataItemId];
 
   const navigate = useNavigateApp();
+  const objectNameSingular = objectMetadataItem.nameSingular;
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const lastChipClickTimestampRef = useRef<number | null>(null);
-
-  const openRecordInFullPage = () => {
-    navigate(AppPath.RecordShowPage, {
-      objectNameSingular: objectMetadataItem.nameSingular,
-      objectRecordId: recordId,
-    });
-  };
 
   const handleChipClick = () => {
     onRecordIdentifierClick?.(rowIndex, recordId);
   };
 
   // The name lives in the frozen first column (outside the row's own handler)
-  // and is a real <a> link. Handle the open-in-full-page gesture on click
-  // CAPTURE, above the anchor: preventDefault cancels the browser's Option+click
-  // "download link" default, and stopPropagation suppresses the chip's own click
-  // so it doesn't also open the side panel. A plain click falls through.
-  const handleLabelClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    const now = Date.now();
-    const lastTimestamp = lastChipClickTimestampRef.current;
-    const isDoubleClick =
-      lastTimestamp !== null &&
-      now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
+  // and is a real <a> link, so Option+click triggers the browser's "download
+  // link" default. Use a NATIVE capture-phase listener (not React's synthetic
+  // onClickCapture, which can miss on a display:contents wrapper): it always
+  // fires before the anchor's default, so preventDefault reliably cancels the
+  // download. Option+click and double-click open the full page; stopPropagation
+  // suppresses the chip's own click; a plain click falls through.
+  useEffect(() => {
+    const wrapperElement = wrapperRef.current;
 
-    if (event.altKey || isDoubleClick) {
-      event.preventDefault();
-      event.stopPropagation();
-      lastChipClickTimestampRef.current = null;
-      openRecordInFullPage();
+    if (!wrapperElement) {
       return;
     }
 
-    lastChipClickTimestampRef.current = now;
-  };
+    const handleClickCapture = (event: globalThis.MouseEvent) => {
+      const now = Date.now();
+      const lastTimestamp = lastChipClickTimestampRef.current;
+      const isDoubleClick =
+        lastTimestamp !== null &&
+        now - lastTimestamp < DOUBLE_CLICK_THRESHOLD_IN_MS;
+
+      if (event.altKey || isDoubleClick) {
+        event.preventDefault();
+        event.stopPropagation();
+        lastChipClickTimestampRef.current = null;
+        navigate(AppPath.RecordShowPage, {
+          objectNameSingular,
+          objectRecordId: recordId,
+        });
+        return;
+      }
+
+      lastChipClickTimestampRef.current = now;
+    };
+
+    wrapperElement.addEventListener('click', handleClickCapture, true);
+
+    return () => {
+      wrapperElement.removeEventListener('click', handleClickCapture, true);
+    };
+  }, [navigate, objectNameSingular, recordId]);
 
   return (
     <FieldContext.Provider
@@ -120,7 +134,7 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
         triggerEvent,
       }}
     >
-      <div style={{ display: 'contents' }} onClickCapture={handleLabelClickCapture}>
+      <div ref={wrapperRef} style={{ display: 'contents' }}>
         {children}
       </div>
     </FieldContext.Provider>
