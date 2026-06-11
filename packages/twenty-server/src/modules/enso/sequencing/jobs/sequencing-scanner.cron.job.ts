@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { isDefined } from 'twenty-shared/utils';
 import { WorkspaceActivationStatus } from 'twenty-shared/workspace';
-import { IsNull, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 
 import { SentryCronMonitor } from 'src/engine/core-modules/cron/sentry-cron-monitor.decorator';
 import { ExceptionHandlerService } from 'src/engine/core-modules/exception-handler/exception-handler.service';
@@ -50,11 +50,15 @@ export class SequencingScannerCronJob {
     const workspaces = await this.workspaceRepository.find({
       where: { activationStatus: WorkspaceActivationStatus.ACTIVE },
     });
+    this.logger.log(`scanner: ${workspaces.length} active workspace(s)`);
 
     for (const workspace of workspaces) {
       try {
         await this.scanWorkspace(workspace.id);
       } catch (error) {
+        this.logger.error(
+          `scan failed for workspace ${workspace.id}: ${(error as Error).message}`,
+        );
         this.exceptionHandlerService.captureExceptions([error as Error]);
       }
     }
@@ -83,9 +87,13 @@ export class SequencingScannerCronJob {
           { shouldBypassPermissionChecks: true },
         );
 
-      const openRuns = await runRepository.find({
-        where: { endReason: IsNull() },
-      });
+      // TwentyORM doesn't reliably support TypeORM operators (IsNull) in where —
+      // fetch and filter in JS (run volume is low).
+      const allRuns = await runRepository.find();
+      const openRuns = allRuns.filter((run) => !isDefined(run.endReason));
+      this.logger.log(
+        `scanner: workspace ${workspaceId} — ${openRuns.length} open run(s)`,
+      );
       const now = Date.now();
 
       for (const run of openRuns) {
@@ -120,17 +128,21 @@ export class SequencingScannerCronJob {
         const enrolledAt = run.enrolledAt ?? run.createdAt;
         const elapsedMs = now - new Date(enrolledAt).getTime();
 
+        const runTasks = await taskRepository.find({
+          where: { sequenceRunId: run.id },
+        });
+
         // Due follow-up tasks (idempotent: skip if the step's task already exists).
         for (const followUp of SOCIAL_LEAD_CLAIMED_FOLLOWUPS) {
           if (elapsedMs < followUp.afterMs) {
             continue;
           }
 
-          const existingTask = await taskRepository.findOne({
-            where: { sequenceRunId: run.id, stepKey: followUp.stepKey },
-          });
+          const alreadyCreated = runTasks.some(
+            (task) => task.stepKey === followUp.stepKey,
+          );
 
-          if (!isDefined(existingTask)) {
+          if (!alreadyCreated) {
             await taskRepository.save({
               title: `Follow-up - ${opportunity.name ?? 'lead'}`,
               channel: 'SOCIAL',
