@@ -46,6 +46,12 @@ export const SEQUENCE_PIPELINE_STATE_ACTIVE = 'ACTIVE';
 // Fallback variant tag when a sequence row has no variant set.
 export const DEFAULT_VARIANT = 'v1';
 
+// Forward-only enrollment cutoff (go-live). The scanner sweeps ALL Lead-Claimed
+// deals, so without this it would back-enroll deals claimed long before the
+// engine existed. opportunity.updatedAt ≈ claim time for a freshly-claimed deal;
+// pre-existing deals were last touched well before go-live, so they're skipped.
+export const ENROLLMENT_CUTOFF_ISO = '2026-06-11T18:00:00.000Z';
+
 // Manager follow-up touches after the day-0 first touch.
 // stepKey must match what analytics/the step funnel group on.
 export const SOCIAL_LEAD_CLAIMED_FOLLOWUPS: readonly {
