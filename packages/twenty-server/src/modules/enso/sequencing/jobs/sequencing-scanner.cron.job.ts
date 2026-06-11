@@ -14,13 +14,17 @@ import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.ent
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
+  CHANNEL_SOCIAL,
+  CHANNELS_WITH_LIVE_SEQUENCE,
   CLOSED_LOST_STAGE,
   CLOSED_STAGES,
   CONNECTED_STAGE,
+  INBOUND_KIND_TO_CHANNEL,
   INBOUND_SOCIAL_MESSAGE_KIND,
   LEAD_CLAIMED_STAGE,
   SEQUENCE_RUN_END_REASON_ADVANCED,
   SEQUENCE_RUN_END_REASON_CLOSED,
+  SEQUENCE_RUN_END_REASON_SUPERSEDED,
   SEQUENCING_SCANNER_CRON_PATTERN,
   SOCIAL_FIRST_CONTACT_CHANNEL,
   SOCIAL_LEAD_CLAIMED_CLOSE_AFTER_STALL_MS,
@@ -180,6 +184,22 @@ export class SequencingScannerCronJob {
           continue;
         }
 
+        // Channel gating: only social has a live sequence today. Derive the
+        // deal's origin channel from its earliest inbound activity; for any
+        // other channel, end the run (no cadence) until that sequence exists.
+        const channel = this.resolveDealChannel(inboundActivities);
+
+        if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
+          await runRepository.update(run.id, {
+            endReason: SEQUENCE_RUN_END_REASON_SUPERSEDED,
+            endedAt: new Date(),
+          });
+          this.logger.log(
+            `scanner: run ${run.id} superseded — no live sequence for channel ${channel} (opportunity ${opportunity.id})`,
+          );
+          continue;
+        }
+
         const runTasks = await taskRepository.find({
           where: { sequenceRunId: run.id },
         });
@@ -197,7 +217,7 @@ export class SequencingScannerCronJob {
           if (!alreadyCreated) {
             await taskRepository.save({
               title: `Follow-up - ${opportunity.name ?? 'lead'}`,
-              channel: 'SOCIAL',
+              channel,
               stepKey: followUp.stepKey,
               isAutoCreated: true,
               sequenceRunId: run.id,
@@ -233,5 +253,28 @@ export class SequencingScannerCronJob {
         }
       }
     }, systemAuthContext);
+  }
+
+  // Map a deal's earliest inbound activity to its origin channel; default to
+  // social when there's no recognizable inbound origin (e.g. manual deals).
+  private resolveDealChannel(inboundActivities: { kind?: string; occurredAt?: Date | string; createdAt?: Date | string }[]): string {
+    const sortedByOccurrence = [...inboundActivities]
+      .filter((activity) => isDefined(activity.kind))
+      .sort((a, b) => {
+        const aTime = new Date(a.occurredAt ?? a.createdAt ?? 0).getTime();
+        const bTime = new Date(b.occurredAt ?? b.createdAt ?? 0).getTime();
+
+        return aTime - bTime;
+      });
+
+    for (const activity of sortedByOccurrence) {
+      const channel = INBOUND_KIND_TO_CHANNEL[activity.kind as string];
+
+      if (isDefined(channel)) {
+        return channel;
+      }
+    }
+
+    return CHANNEL_SOCIAL;
   }
 }

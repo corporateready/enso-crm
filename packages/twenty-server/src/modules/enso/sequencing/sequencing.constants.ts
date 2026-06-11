@@ -18,6 +18,22 @@ export const UNREACHABLE_LOST_REASON = 'UNREACHABLE';
 export const INBOUND_SOCIAL_MESSAGE_KIND = 'SOCIAL_MESSAGE';
 export const SOCIAL_FIRST_CONTACT_CHANNEL = 'SOCIAL';
 
+// Origin-channel detection. firstContactChannel is null on deals at claim time
+// (intake doesn't set it), so a deal's channel is derived from its earliest
+// inbound activity kind. Deals with no/unknown origin default to social.
+export const CHANNEL_SOCIAL = 'SOCIAL';
+export const INBOUND_KIND_TO_CHANNEL: Readonly<Record<string, string>> = {
+  SOCIAL_MESSAGE: 'SOCIAL',
+  INCOMING_CALL: 'CALL',
+  FORM_SUBMISSION: 'FORM',
+  LEAD_AD: 'FORM',
+};
+
+// Only social has a live sequence today; runs enrolled for any other origin
+// channel are ended (SUPERSEDED) rather than driven through the social cadence.
+export const CHANNELS_WITH_LIVE_SEQUENCE: readonly string[] = [CHANNEL_SOCIAL];
+export const SEQUENCE_RUN_END_REASON_SUPERSEDED = 'SUPERSEDED';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Manager follow-up touches after the day-0 first touch (created by the workflow).
