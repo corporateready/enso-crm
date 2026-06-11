@@ -26,6 +26,7 @@ export const SOCIAL_LEAD_CLAIMED_FOLLOWUPS: readonly {
 export const SOCIAL_LEAD_CLAIMED_STALL_AFTER_MS = 3 * DAY_MS;
 export const SOCIAL_LEAD_CLAIMED_CLOSE_AFTER_STALL_MS = 7 * DAY_MS;
 
-// End reasons written on the sequence run.
-export const SEQUENCE_RUN_END_REASON_ADVANCED = 'advanced';
-export const SEQUENCE_RUN_END_REASON_CLOSED = 'closed';
+// End reasons written on the sequence run. Must match the `endReason` SELECT
+// option values (uppercase enum) created on the sequenceRun object.
+export const SEQUENCE_RUN_END_REASON_ADVANCED = 'ADVANCED';
+export const SEQUENCE_RUN_END_REASON_CLOSED = 'CLOSED';
