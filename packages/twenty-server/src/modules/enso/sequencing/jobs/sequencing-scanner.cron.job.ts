@@ -123,18 +123,34 @@ export class SequencingScannerCronJob {
       // variant can be picked by weight and the channel gated up front).
       // TwentyORM doesn't reliably support TypeORM operators (IsNull) in where —
       // fetch and filter in JS (run volume is low).
-      const allRuns = await runRepository.find();
+      const findLabeled = async <T>(
+        label: string,
+        run: () => Promise<T>,
+      ): Promise<T> => {
+        try {
+          return await run();
+        } catch (error) {
+          this.logger.error(
+            `scanner find failed [${label}]: code=${(error as { code?: string }).code} ${(error as Error).message}`,
+          );
+          throw error;
+        }
+      };
+
+      const allRuns = await findLabeled('runs', () => runRepository.find());
       const openRunOpportunityIds = new Set(
         allRuns
           .filter((run) => !isDefined(run.endReason))
           .map((run) => run.opportunityId),
       );
-      const activeSequences = (await sequenceRepository.find()).filter(
-        (sequence) => sequence.isActive === true,
-      );
+      const activeSequences = (
+        await findLabeled('sequences', () => sequenceRepository.find())
+      ).filter((sequence) => sequence.isActive === true);
       // TwentyORM `where` rejects equality on SELECT columns ("Data validation
       // error") just like it rejects operators — fetch and filter stage in JS.
-      const allOpportunities = await opportunityRepository.find();
+      const allOpportunities = await findLabeled('opportunities', () =>
+        opportunityRepository.find(),
+      );
       const leadClaimedOpportunities = allOpportunities.filter(
         (opportunity) => opportunity.stage === LEAD_CLAIMED_STAGE,
       );
