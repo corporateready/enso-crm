@@ -716,6 +716,24 @@ export class ConfigVariables {
   CLICKHOUSE_URL: string;
 
   @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.ANALYTICS_CONFIG,
+    description:
+      'PostHog project API key for enso product analytics (e.g. routing-availability flips). Empty disables capture.',
+    type: ConfigVariableType.STRING,
+    isSensitive: true,
+  })
+  @IsOptional()
+  ENSO_POSTHOG_API_KEY = '';
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.ANALYTICS_CONFIG,
+    description: 'PostHog ingestion host for enso product analytics',
+    type: ConfigVariableType.STRING,
+  })
+  @IsOptional()
+  ENSO_POSTHOG_HOST = 'https://eu.i.posthog.com';
+
+  @ConfigVariablesMetadata({
     group: ConfigVariablesGroup.LOGGING,
     description: 'Enable or disable telemetry logging',
     type: ConfigVariableType.BOOLEAN,
