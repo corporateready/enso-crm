@@ -132,9 +132,12 @@ export class SequencingScannerCronJob {
       const activeSequences = (await sequenceRepository.find()).filter(
         (sequence) => sequence.isActive === true,
       );
-      const leadClaimedOpportunities = await opportunityRepository.find({
-        where: { stage: LEAD_CLAIMED_STAGE },
-      });
+      // TwentyORM `where` rejects equality on SELECT columns ("Data validation
+      // error") just like it rejects operators — fetch and filter stage in JS.
+      const allOpportunities = await opportunityRepository.find();
+      const leadClaimedOpportunities = allOpportunities.filter(
+        (opportunity) => opportunity.stage === LEAD_CLAIMED_STAGE,
+      );
 
       let enrolledCount = 0;
 
