@@ -5,10 +5,18 @@
 export const SEQUENCING_SCANNER_CRON_PATTERN = '* * * * *';
 
 export const LEAD_CLAIMED_STAGE = 'LEAD_CLAIMED';
+export const CONNECTED_STAGE = 'CONNECTED';
 export const CLOSED_LOST_STAGE = 'CLOSED_LOST';
 export const CLOSED_STAGES: readonly string[] = ['CLOSED_WON', 'CLOSED_LOST'];
 export const STALLED_PIPELINE_STATE = 'STALLED';
 export const UNREACHABLE_LOST_REASON = 'UNREACHABLE';
+
+// Reply observer: an inbound social message after enrollment = two-way human
+// contact, so the deal advances Lead Claimed -> Connected and the run ends.
+// Native message tables are empty on this instance; all inbound lead activity
+// lives in the ENSO `inboundActivity` object, which carries opportunityId.
+export const INBOUND_SOCIAL_MESSAGE_KIND = 'SOCIAL_MESSAGE';
+export const SOCIAL_FIRST_CONTACT_CHANNEL = 'SOCIAL';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
