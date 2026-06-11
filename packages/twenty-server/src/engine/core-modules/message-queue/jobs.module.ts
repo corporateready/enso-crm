@@ -42,6 +42,7 @@ import { CompanyEnrichmentJobsModule } from 'src/modules/enso/company-enrichment
 import { CompanyMergeJobsModule } from 'src/modules/enso/company-merge/company-merge-jobs.module';
 import { LeadPipelineJobsModule } from 'src/modules/enso/lead-pipeline/lead-pipeline-jobs.module';
 import { PersonMergeJobsModule } from 'src/modules/enso/person-merge/person-merge-jobs.module';
+import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
 import { TimelineJobModule } from 'src/modules/timeline/jobs/timeline-job.module';
 import { TimelineActivityModule } from 'src/modules/timeline/timeline-activity.module';
@@ -85,6 +86,7 @@ import { WorkflowModule } from 'src/modules/workflow/workflow.module';
     EnterpriseModule,
     LeadPipelineJobsModule,
     PersonMergeJobsModule,
+    EnsoSequencingModule,
     CompanyEnrichmentJobsModule,
     CompanyMergeJobsModule,
   ],
