@@ -99,6 +99,12 @@ export class SequencingScannerCronJob {
           'inboundActivity',
           { shouldBypassPermissionChecks: true },
         );
+      const taskTargetRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'taskTarget',
+          { shouldBypassPermissionChecks: true },
+        );
 
       // TwentyORM doesn't reliably support TypeORM operators (IsNull) in where —
       // fetch and filter in JS (run volume is low).
@@ -141,6 +147,16 @@ export class SequencingScannerCronJob {
         const enrolledAt = run.enrolledAt ?? run.createdAt;
         const enrolledAtMs = new Date(enrolledAt).getTime();
         const elapsedMs = now - enrolledAtMs;
+
+        const runTasks = await taskRepository.find({
+          where: { sequenceRunId: run.id },
+        });
+
+        // Pin the run's tasks to the deal (and contact) so they show on the
+        // record Tasks tab. Workflows can't create join objects, so the scanner
+        // backfills taskTargets — idempotently, covering the first-touch task
+        // too. Done before the reply/gate branches so every path is covered.
+        await this.pinTasksToDeal(taskTargetRepository, runTasks, opportunity);
 
         // Reply observer: an inbound social message that landed AFTER enrollment
         // means the lead answered the manager -> two-way contact established.
@@ -200,11 +216,9 @@ export class SequencingScannerCronJob {
           continue;
         }
 
-        const runTasks = await taskRepository.find({
-          where: { sequenceRunId: run.id },
-        });
-
         // Due follow-up tasks (idempotent: skip if the step's task already exists).
+        const createdTasks = [];
+
         for (const followUp of SOCIAL_LEAD_CLAIMED_FOLLOWUPS) {
           if (elapsedMs < followUp.afterMs) {
             continue;
@@ -215,7 +229,7 @@ export class SequencingScannerCronJob {
           );
 
           if (!alreadyCreated) {
-            await taskRepository.save({
+            const createdTask = await taskRepository.save({
               title: `Follow-up - ${opportunity.name ?? 'lead'}`,
               channel,
               stepKey: followUp.stepKey,
@@ -223,8 +237,17 @@ export class SequencingScannerCronJob {
               sequenceRunId: run.id,
               assigneeId: opportunity.ownerId ?? null,
             });
+
+            createdTasks.push(createdTask);
           }
         }
+
+        // Pin freshly created follow-ups to the deal + contact.
+        await this.pinTasksToDeal(
+          taskTargetRepository,
+          createdTasks,
+          opportunity,
+        );
 
         // Stall once the cadence is exhausted.
         if (
@@ -253,6 +276,49 @@ export class SequencingScannerCronJob {
         }
       }
     }, systemAuthContext);
+  }
+
+  // Link tasks to their deal (and contact) via taskTarget join rows so they
+  // appear on the record Tasks tab. Idempotent: skips links that already exist.
+  private async pinTasksToDeal(
+    taskTargetRepository: any,
+    tasks: { id: string }[],
+    opportunity: { id: string; pointOfContactId?: string | null },
+  ): Promise<void> {
+    if (tasks.length === 0) {
+      return;
+    }
+
+    const existingDealTargets = await taskTargetRepository.find({
+      where: { targetOpportunityId: opportunity.id },
+    });
+    const dealLinkedTaskIds = new Set(
+      existingDealTargets.map((target: { taskId: string }) => target.taskId),
+    );
+
+    const personId = opportunity.pointOfContactId;
+    const existingPersonTargets = isDefined(personId)
+      ? await taskTargetRepository.find({ where: { targetPersonId: personId } })
+      : [];
+    const personLinkedTaskIds = new Set(
+      existingPersonTargets.map((target: { taskId: string }) => target.taskId),
+    );
+
+    for (const task of tasks) {
+      if (!dealLinkedTaskIds.has(task.id)) {
+        await taskTargetRepository.save({
+          taskId: task.id,
+          targetOpportunityId: opportunity.id,
+        });
+      }
+
+      if (isDefined(personId) && !personLinkedTaskIds.has(task.id)) {
+        await taskTargetRepository.save({
+          taskId: task.id,
+          targetPersonId: personId,
+        });
+      }
+    }
   }
 
   // Map a deal's earliest inbound activity to its origin channel; default to
