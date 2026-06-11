@@ -14,12 +14,12 @@ import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.ent
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
-  CHANNEL_SOCIAL,
   CHANNELS_WITH_LIVE_SEQUENCE,
   CLOSED_LOST_STAGE,
   CLOSED_STAGES,
   CONNECTED_STAGE,
   DEFAULT_VARIANT,
+  ENROLLMENT_CUTOFF_ISO,
   FIRST_TOUCH_STEP_KEY,
   FIRST_TOUCH_TITLE_PREFIX,
   INBOUND_KIND_TO_CHANNEL,
@@ -141,8 +141,20 @@ export class SequencingScannerCronJob {
 
       let enrolledCount = 0;
 
+      const enrollmentCutoffMs = new Date(ENROLLMENT_CUTOFF_ISO).getTime();
+
       for (const opportunity of leadClaimedOpportunities) {
         if (openRunOpportunityIds.has(opportunity.id)) {
+          continue;
+        }
+
+        // Forward-only: skip deals last touched before go-live so the scanner
+        // doesn't back-enroll historical Lead-Claimed deals (updatedAt ≈ claim
+        // time for a freshly-claimed deal).
+        if (
+          !isDefined(opportunity.updatedAt) ||
+          new Date(opportunity.updatedAt).getTime() < enrollmentCutoffMs
+        ) {
           continue;
         }
 
@@ -156,7 +168,9 @@ export class SequencingScannerCronJob {
           });
           const channel = this.resolveDealChannel(inboundActivities);
 
-          if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
+          // Enroll only on an explicit live-sequence origin (never default to
+          // social) — unknown/non-social origins are skipped.
+          if (!isDefined(channel) || !CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
             continue;
           }
 
@@ -302,7 +316,7 @@ export class SequencingScannerCronJob {
         // other channel, end the run (no cadence) until that sequence exists.
         const channel = this.resolveDealChannel(inboundActivities);
 
-        if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
+        if (!isDefined(channel) || !CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
           await runRepository.update(run.id, {
             endReason: SEQUENCE_RUN_END_REASON_SUPERSEDED,
             endedAt: new Date(),
@@ -473,9 +487,17 @@ export class SequencingScannerCronJob {
     return candidates[candidates.length - 1];
   }
 
-  // Map a deal's earliest inbound activity to its origin channel; default to
-  // social when there's no recognizable inbound origin (e.g. manual deals).
-  private resolveDealChannel(inboundActivities: { kind?: string; occurredAt?: Date | string; createdAt?: Date | string }[]): string {
+  // Map a deal's earliest inbound activity to its origin channel. Returns
+  // undefined when the origin can't be determined — enrollment requires an
+  // explicit channel and never defaults to social, so unknown-origin deals are
+  // skipped rather than dropped into the social cadence.
+  private resolveDealChannel(
+    inboundActivities: {
+      kind?: string;
+      occurredAt?: Date | string;
+      createdAt?: Date | string;
+    }[],
+  ): string | undefined {
     const sortedByOccurrence = [...inboundActivities]
       .filter((activity) => isDefined(activity.kind))
       .sort((a, b) => {
@@ -493,6 +515,6 @@ export class SequencingScannerCronJob {
       }
     }
 
-    return CHANNEL_SOCIAL;
+    return undefined;
   }
 }
