@@ -146,48 +146,63 @@ export class SequencingScannerCronJob {
           continue;
         }
 
-        const inboundActivities = await inboundActivityRepository.find({
-          where: { opportunityId: opportunity.id },
-        });
-        const channel = this.resolveDealChannel(inboundActivities);
+        // Enrollment is best-effort per deal: a failure on one opportunity
+        // must not abort the scan (cadence + other enrollments still run).
+        let step = 'inbound';
 
-        if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
-          continue;
+        try {
+          const inboundActivities = await inboundActivityRepository.find({
+            where: { opportunityId: opportunity.id },
+          });
+          const channel = this.resolveDealChannel(inboundActivities);
+
+          if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
+            continue;
+          }
+
+          const sequence = this.pickWeightedSequence(activeSequences, channel);
+
+          if (!isDefined(sequence)) {
+            continue;
+          }
+
+          const variant = sequence.variant ?? DEFAULT_VARIANT;
+
+          step = 'run.save';
+          const newRun = await runRepository.save({
+            opportunityId: opportunity.id,
+            sequenceId: sequence.id,
+            variant,
+            enrolledAt: new Date(),
+          });
+
+          step = 'task.save';
+          const firstTouchTask = await taskRepository.save({
+            title: `${FIRST_TOUCH_TITLE_PREFIX} - ${opportunity.name ?? 'lead'}`,
+            channel,
+            stepKey: FIRST_TOUCH_STEP_KEY,
+            isAutoCreated: true,
+            sequenceRunId: newRun.id,
+            variant,
+            assigneeId: opportunity.ownerId ?? null,
+          });
+
+          step = 'pin';
+          await this.pinTasksToDeal(
+            taskTargetRepository,
+            [firstTouchTask],
+            opportunity,
+          );
+          openRunOpportunityIds.add(opportunity.id);
+          enrolledCount += 1;
+          this.logger.log(
+            `scanner: enrolled opportunity ${opportunity.id} (channel ${channel}, variant ${variant})`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `scanner: enroll failed [opportunity ${opportunity.id}][step ${step}]: code=${(error as { code?: string }).code} ${(error as Error).message}`,
+          );
         }
-
-        const sequence = this.pickWeightedSequence(activeSequences, channel);
-
-        if (!isDefined(sequence)) {
-          continue;
-        }
-
-        const variant = sequence.variant ?? DEFAULT_VARIANT;
-        const newRun = await runRepository.save({
-          opportunityId: opportunity.id,
-          sequenceId: sequence.id,
-          variant,
-          enrolledAt: new Date(),
-        });
-        const firstTouchTask = await taskRepository.save({
-          title: `${FIRST_TOUCH_TITLE_PREFIX} - ${opportunity.name ?? 'lead'}`,
-          channel,
-          stepKey: FIRST_TOUCH_STEP_KEY,
-          isAutoCreated: true,
-          sequenceRunId: newRun.id,
-          variant,
-          assigneeId: opportunity.ownerId ?? null,
-        });
-
-        await this.pinTasksToDeal(
-          taskTargetRepository,
-          [firstTouchTask],
-          opportunity,
-        );
-        openRunOpportunityIds.add(opportunity.id);
-        enrolledCount += 1;
-        this.logger.log(
-          `scanner: enrolled opportunity ${opportunity.id} (channel ${channel}, variant ${variant})`,
-        );
       }
 
       // Re-fetch only if we enrolled, so the cadence pass sees the new runs.
