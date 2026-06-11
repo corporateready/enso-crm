@@ -16,10 +16,13 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import {
   CLOSED_LOST_STAGE,
   CLOSED_STAGES,
+  CONNECTED_STAGE,
+  INBOUND_SOCIAL_MESSAGE_KIND,
   LEAD_CLAIMED_STAGE,
   SEQUENCE_RUN_END_REASON_ADVANCED,
   SEQUENCE_RUN_END_REASON_CLOSED,
   SEQUENCING_SCANNER_CRON_PATTERN,
+  SOCIAL_FIRST_CONTACT_CHANNEL,
   SOCIAL_LEAD_CLAIMED_CLOSE_AFTER_STALL_MS,
   SOCIAL_LEAD_CLAIMED_FOLLOWUPS,
   SOCIAL_LEAD_CLAIMED_STALL_AFTER_MS,
@@ -86,6 +89,12 @@ export class SequencingScannerCronJob {
           'task',
           { shouldBypassPermissionChecks: true },
         );
+      const inboundActivityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'inboundActivity',
+          { shouldBypassPermissionChecks: true },
+        );
 
       // TwentyORM doesn't reliably support TypeORM operators (IsNull) in where —
       // fetch and filter in JS (run volume is low).
@@ -126,7 +135,50 @@ export class SequencingScannerCronJob {
         }
 
         const enrolledAt = run.enrolledAt ?? run.createdAt;
-        const elapsedMs = now - new Date(enrolledAt).getTime();
+        const enrolledAtMs = new Date(enrolledAt).getTime();
+        const elapsedMs = now - enrolledAtMs;
+
+        // Reply observer: an inbound social message that landed AFTER enrollment
+        // means the lead answered the manager -> two-way contact established.
+        // (The pre-claim first message predates enrollment, so it can't match.)
+        // Advance Lead Claimed -> Connected; the run ends as advanced.
+        const inboundActivities = await inboundActivityRepository.find({
+          where: { opportunityId: opportunity.id },
+        });
+        const hasReplyAfterEnrollment = inboundActivities.some((activity) => {
+          if (activity.kind !== INBOUND_SOCIAL_MESSAGE_KIND) {
+            return false;
+          }
+          const occurredAt = activity.occurredAt ?? activity.createdAt;
+
+          return (
+            isDefined(occurredAt) &&
+            new Date(occurredAt).getTime() > enrolledAtMs
+          );
+        });
+
+        if (hasReplyAfterEnrollment) {
+          await opportunityRepository.update(opportunity.id, {
+            stage: CONNECTED_STAGE,
+            ...(isDefined(opportunity.firstContactAt)
+              ? {}
+              : {
+                  firstContactAt: new Date(),
+                  firstContactChannel: SOCIAL_FIRST_CONTACT_CHANNEL,
+                }),
+          });
+          await runRepository.update(run.id, {
+            advanced: true,
+            advancedToStage: CONNECTED_STAGE,
+            advancedAt: new Date(),
+            endReason: SEQUENCE_RUN_END_REASON_ADVANCED,
+            endedAt: new Date(),
+          });
+          this.logger.log(
+            `scanner: run ${run.id} -> CONNECTED (inbound reply for opportunity ${opportunity.id})`,
+          );
+          continue;
+        }
 
         const runTasks = await taskRepository.find({
           where: { sequenceRunId: run.id },
