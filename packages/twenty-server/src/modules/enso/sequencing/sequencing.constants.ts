@@ -36,7 +36,17 @@ export const SEQUENCE_RUN_END_REASON_SUPERSEDED = 'SUPERSEDED';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Manager follow-up touches after the day-0 first touch (created by the workflow).
+// Enrollment (now owned by the scanner, not the workflow). The first touch is
+// the day-0 manager task created at enrollment; stepKey feeds the step funnel.
+export const FIRST_TOUCH_STEP_KEY = 'social.lead_claimed.msg1';
+export const FIRST_TOUCH_TITLE_PREFIX = 'First touch';
+
+// A sequence row's slot for the forward (non-reactivation) Lead Claimed path.
+export const SEQUENCE_PIPELINE_STATE_ACTIVE = 'ACTIVE';
+// Fallback variant tag when a sequence row has no variant set.
+export const DEFAULT_VARIANT = 'v1';
+
+// Manager follow-up touches after the day-0 first touch.
 // stepKey must match what analytics/the step funnel group on.
 export const SOCIAL_LEAD_CLAIMED_FOLLOWUPS: readonly {
   stepKey: string;

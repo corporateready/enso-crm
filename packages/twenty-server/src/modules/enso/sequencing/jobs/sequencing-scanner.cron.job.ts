@@ -19,9 +19,13 @@ import {
   CLOSED_LOST_STAGE,
   CLOSED_STAGES,
   CONNECTED_STAGE,
+  DEFAULT_VARIANT,
+  FIRST_TOUCH_STEP_KEY,
+  FIRST_TOUCH_TITLE_PREFIX,
   INBOUND_KIND_TO_CHANNEL,
   INBOUND_SOCIAL_MESSAGE_KIND,
   LEAD_CLAIMED_STAGE,
+  SEQUENCE_PIPELINE_STATE_ACTIVE,
   SEQUENCE_RUN_END_REASON_ADVANCED,
   SEQUENCE_RUN_END_REASON_CLOSED,
   SEQUENCE_RUN_END_REASON_SUPERSEDED,
@@ -105,15 +109,91 @@ export class SequencingScannerCronJob {
           'taskTarget',
           { shouldBypassPermissionChecks: true },
         );
+      const sequenceRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'sequence',
+          { shouldBypassPermissionChecks: true },
+        );
 
+      const now = Date.now();
+
+      // Enrollment pass: enroll newly-claimed social deals that have no open
+      // run yet (enrollment moved here from the first-touch workflow so the
+      // variant can be picked by weight and the channel gated up front).
       // TwentyORM doesn't reliably support TypeORM operators (IsNull) in where —
       // fetch and filter in JS (run volume is low).
       const allRuns = await runRepository.find();
-      const openRuns = allRuns.filter((run) => !isDefined(run.endReason));
-      this.logger.log(
-        `scanner: workspace ${workspaceId} — ${openRuns.length} open run(s)`,
+      const openRunOpportunityIds = new Set(
+        allRuns
+          .filter((run) => !isDefined(run.endReason))
+          .map((run) => run.opportunityId),
       );
-      const now = Date.now();
+      const activeSequences = (await sequenceRepository.find()).filter(
+        (sequence) => sequence.isActive === true,
+      );
+      const leadClaimedOpportunities = await opportunityRepository.find({
+        where: { stage: LEAD_CLAIMED_STAGE },
+      });
+
+      let enrolledCount = 0;
+
+      for (const opportunity of leadClaimedOpportunities) {
+        if (openRunOpportunityIds.has(opportunity.id)) {
+          continue;
+        }
+
+        const inboundActivities = await inboundActivityRepository.find({
+          where: { opportunityId: opportunity.id },
+        });
+        const channel = this.resolveDealChannel(inboundActivities);
+
+        if (!CHANNELS_WITH_LIVE_SEQUENCE.includes(channel)) {
+          continue;
+        }
+
+        const sequence = this.pickWeightedSequence(activeSequences, channel);
+
+        if (!isDefined(sequence)) {
+          continue;
+        }
+
+        const variant = sequence.variant ?? DEFAULT_VARIANT;
+        const newRun = await runRepository.save({
+          opportunityId: opportunity.id,
+          sequenceId: sequence.id,
+          variant,
+          enrolledAt: new Date(),
+        });
+        const firstTouchTask = await taskRepository.save({
+          title: `${FIRST_TOUCH_TITLE_PREFIX} - ${opportunity.name ?? 'lead'}`,
+          channel,
+          stepKey: FIRST_TOUCH_STEP_KEY,
+          isAutoCreated: true,
+          sequenceRunId: newRun.id,
+          sequenceId: sequence.id,
+          variant,
+          assigneeId: opportunity.ownerId ?? null,
+        });
+
+        await this.pinTasksToDeal(
+          taskTargetRepository,
+          [firstTouchTask],
+          opportunity,
+        );
+        openRunOpportunityIds.add(opportunity.id);
+        enrolledCount += 1;
+        this.logger.log(
+          `scanner: enrolled opportunity ${opportunity.id} (channel ${channel}, variant ${variant})`,
+        );
+      }
+
+      // Re-fetch only if we enrolled, so the cadence pass sees the new runs.
+      const runsForCadence = enrolledCount > 0 ? await runRepository.find() : allRuns;
+      const openRuns = runsForCadence.filter((run) => !isDefined(run.endReason));
+      this.logger.log(
+        `scanner: workspace ${workspaceId} — enrolled ${enrolledCount}, ${openRuns.length} open run(s)`,
+      );
 
       for (const run of openRuns) {
         const opportunity = await opportunityRepository.findOne({
@@ -235,6 +315,8 @@ export class SequencingScannerCronJob {
               stepKey: followUp.stepKey,
               isAutoCreated: true,
               sequenceRunId: run.id,
+              sequenceId: run.sequenceId,
+              variant: run.variant,
               assigneeId: opportunity.ownerId ?? null,
             });
 
@@ -319,6 +401,60 @@ export class SequencingScannerCronJob {
         });
       }
     }
+  }
+
+  // Weighted-random pick among active sequences for a deal's slot
+  // (channel x Lead Claimed x Active). Returns undefined if none match.
+  private pickWeightedSequence(
+    sequences: {
+      id: string;
+      variant?: string | null;
+      weight?: number | null;
+      channel?: string;
+      stage?: string;
+      pipelineState?: string;
+    }[],
+    channel: string,
+  ):
+    | {
+        id: string;
+        variant?: string | null;
+        weight?: number | null;
+      }
+    | undefined {
+    const candidates = sequences.filter(
+      (sequence) =>
+        sequence.channel === channel &&
+        sequence.stage === LEAD_CLAIMED_STAGE &&
+        sequence.pipelineState === SEQUENCE_PIPELINE_STATE_ACTIVE,
+    );
+
+    if (candidates.length === 0) {
+      return undefined;
+    }
+
+    const weightOf = (sequence: { weight?: number | null }): number =>
+      isDefined(sequence.weight) && sequence.weight > 0 ? sequence.weight : 0;
+    const totalWeight = candidates.reduce(
+      (sum, sequence) => sum + weightOf(sequence),
+      0,
+    );
+
+    if (totalWeight <= 0) {
+      return candidates[0];
+    }
+
+    let roll = Math.random() * totalWeight;
+
+    for (const sequence of candidates) {
+      roll -= weightOf(sequence);
+
+      if (roll < 0) {
+        return sequence;
+      }
+    }
+
+    return candidates[candidates.length - 1];
   }
 
   // Map a deal's earliest inbound activity to its origin channel; default to
