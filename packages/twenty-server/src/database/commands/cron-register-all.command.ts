@@ -18,6 +18,7 @@ import { CalendarEventListFetchCronCommand } from 'src/modules/calendar/calendar
 import { CalendarEventsImportCronCommand } from 'src/modules/calendar/calendar-event-import-manager/crons/commands/calendar-import.cron.command';
 import { CalendarOngoingStaleCronCommand } from 'src/modules/calendar/calendar-event-import-manager/crons/commands/calendar-ongoing-stale.cron.command';
 import { CalendarRelaunchFailedCalendarChannelsCronCommand } from 'src/modules/calendar/calendar-event-import-manager/crons/commands/calendar-relaunch-failed-calendar-channels.cron.command';
+import { SequencingScannerCronCommand } from 'src/modules/enso/sequencing/commands/sequencing-scanner.cron.command';
 import { MessagingMessageListFetchCronCommand } from 'src/modules/messaging/message-import-manager/crons/commands/messaging-message-list-fetch.cron.command';
 import { MessagingMessagesImportCronCommand } from 'src/modules/messaging/message-import-manager/crons/commands/messaging-messages-import.cron.command';
 import { MessagingOngoingStaleCronCommand } from 'src/modules/messaging/message-import-manager/crons/commands/messaging-ongoing-stale.cron.command';
@@ -62,6 +63,7 @@ export class CronRegisterAllCommand extends CommandRunner {
     private readonly marketplaceCatalogSyncCronCommand: MarketplaceCatalogSyncCronCommand,
     private readonly applicationVersionCheckCronCommand: ApplicationVersionCheckCronCommand,
     private readonly staleRegistrationCleanupCronCommand: StaleRegistrationCleanupCronCommand,
+    private readonly sequencingScannerCronCommand: SequencingScannerCronCommand,
   ) {
     super();
   }
@@ -165,6 +167,10 @@ export class CronRegisterAllCommand extends CommandRunner {
       {
         name: 'StaleRegistrationCleanup',
         command: this.staleRegistrationCleanupCronCommand,
+      },
+      {
+        name: 'EnsoSequencingScanner',
+        command: this.sequencingScannerCronCommand,
       },
     ];
 
