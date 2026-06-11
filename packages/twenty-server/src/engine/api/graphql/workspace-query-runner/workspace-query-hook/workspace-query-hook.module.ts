@@ -17,6 +17,7 @@ import { PersonProjectAssignmentQueryHookModule } from 'src/modules/enso/person-
 import { PersonProjectConsentQueryHookModule } from 'src/modules/enso/person-project-consent/person-project-consent-query-hook.module';
 import { PersonRelationshipQueryHookModule } from 'src/modules/enso/person-relationship/person-relationship-query-hook.module';
 import { ProjectRoutingMemberQueryHookModule } from 'src/modules/enso/project-routing-member/project-routing-member-query-hook.module';
+import { RoutingAvailabilityModule } from 'src/modules/enso/routing-availability/routing-availability.module';
 import { MessagingQueryHookModule } from 'src/modules/messaging/common/query-hooks/messaging-query-hook.module';
 import { NoteQueryHookModule } from 'src/modules/note/query-hooks/note-query-hook.module';
 import { TaskQueryHookModule } from 'src/modules/task/query-hooks/task-query-hook.module';
@@ -40,6 +41,7 @@ import { WorkspaceMemberQueryHookModule } from 'src/modules/workspace-member/que
     PersonProjectConsentQueryHookModule,
     PersonRelationshipQueryHookModule,
     ProjectRoutingMemberQueryHookModule,
+    RoutingAvailabilityModule,
     DiscoveryModule,
   ],
   providers: [
