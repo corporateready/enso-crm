@@ -22,10 +22,25 @@ export type MarketingSyncJobData =
       properties: Record<string, unknown>;
       timestamp: string;
       messageId: string;
+    }
+  | {
+      // deal_created: the listener only has the opportunity id; the worker job
+      // enriches it (first-deal flag, project brand) from the ORM before track.
+      kind: 'track_deal_created';
+      workspaceId: string;
+      userId: string;
+      opportunityId: string;
+      timestamp: string;
+      messageId: string;
     };
 
 // Track event names (Dittofeed journeys branch on these).
 export const MARKETING_EVENT_DEAL_STAGE_CHANGED = 'deal_stage_changed';
+// Fired when a deal is first created with a point of contact — the entry event
+// for the introductory journey. Carries isFirstDealForPerson + projectBrand,
+// computed worker-side at emit (see MarketingSyncJob), so the journey can gate
+// on "new prospect" and branch by brand.
+export const MARKETING_EVENT_DEAL_CREATED = 'deal_created';
 
 // inboundActivity.kind → Dittofeed track event. Drives lifecycle journeys
 // (form → intro drip) and the reply→drip-exit signal (inbound_message — a
