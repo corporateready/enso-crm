@@ -45,6 +45,12 @@ export class ManagerNotifyJob {
           managerId: data.managerId,
         });
         break;
+      case 'task_due':
+        await this.managerNotificationService.notifyTaskDue(authContext, {
+          taskId: data.taskId,
+          managerId: data.managerId,
+        });
+        break;
       case 'consent_changed':
         await this.managerNotificationService.notifyConsentChange(authContext, {
           personId: data.personId,

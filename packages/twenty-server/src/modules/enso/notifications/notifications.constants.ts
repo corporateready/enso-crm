@@ -24,8 +24,16 @@ export const NOTIFICATION_EVENTS = {
   DEAL_STATE_CHANGED: 'dealStateChanged',
   INBOUND_REENGAGED: 'inboundReengaged',
   TASK_ASSIGNED: 'taskAssigned',
+  TASK_DUE: 'taskDue',
   CONSENT_CHANGED: 'consentChanged',
 } as const;
+
+// Task-due scanner (Phase 2b): a per-minute cron sweeps tasks that have just
+// crossed their dueAt and notifies the assignee. A per-workspace watermark
+// (keyValuePair) makes it notify each task exactly once, resilient to missed
+// ticks; first run seeds the watermark to "now" so it never floods on deploy.
+export const TASK_DUE_SCANNER_CRON_PATTERN = '* * * * *';
+export const TASK_DUE_LAST_SCAN_KEY = 'TASK_DUE_LAST_SCAN_AT';
 
 export type NotificationEventKey =
   (typeof NOTIFICATION_EVENTS)[keyof typeof NOTIFICATION_EVENTS];

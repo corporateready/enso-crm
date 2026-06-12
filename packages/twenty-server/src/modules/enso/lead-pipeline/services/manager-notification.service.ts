@@ -417,6 +417,64 @@ export class ManagerNotificationService {
     );
   }
 
+  // A task assigned to this manager has reached its due time (cron scanner).
+  async notifyTaskDue(
+    authContext: WorkspaceAuthContext,
+    params: { taskId: string; managerId: string },
+  ): Promise<void> {
+    const workspaceId = authContext.workspace?.id;
+
+    if (!isDefined(workspaceId)) {
+      return;
+    }
+
+    const managerUserId = await this.loadManagerUserId(
+      workspaceId,
+      params.managerId,
+    );
+
+    if (
+      await this.isMuted(
+        workspaceId,
+        managerUserId,
+        NOTIFICATION_EVENTS.TASK_DUE,
+      )
+    ) {
+      return;
+    }
+
+    const webhookUrl = await this.resolveManagerWebhookUrl(
+      workspaceId,
+      managerUserId,
+    );
+
+    if (!isDefined(webhookUrl)) {
+      return;
+    }
+
+    const task = await this.loadTaskDetails(workspaceId, params.taskId);
+
+    const rows = [
+      task.title
+        ? { icon: 'DESCRIPTION', label: 'Task', text: task.title }
+        : undefined,
+      task.dueAt
+        ? { icon: 'CLOCK', label: 'Due', text: this.formatDate(task.dueAt) }
+        : undefined,
+    ].filter(isDefined);
+
+    await this.googleChatWebhookService.post(
+      webhookUrl,
+      this.buildDealCard({
+        title: '⏰ Task due now',
+        subtitle: 'ENSO CRM · Task',
+        rows,
+        recordUrl: this.recordUrl('task', params.taskId),
+        buttonText: 'Open task',
+      }),
+    );
+  }
+
   // Consent changed for a person on a project this manager is assigned to.
   async notifyConsentChange(
     authContext: WorkspaceAuthContext,
