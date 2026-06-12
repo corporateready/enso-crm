@@ -122,6 +122,39 @@ export class MarketingSyncListener {
     }
   }
 
+  // A new deal with a point of contact → deal_created (the introductory
+  // journey's entry event). pointOfContactId + projectId are set at creation by
+  // the intake (opportunity-resolution), so the person is always attributable
+  // here. The job enriches with isFirstDealForPerson + projectBrand.
+  @OnDatabaseBatchEvent('opportunity', DatabaseEventAction.CREATED)
+  async onOpportunityCreated(
+    payload: WorkspaceEventBatch<
+      ObjectRecordCreateEvent<OpportunityWorkspaceEntity>
+    >,
+  ): Promise<void> {
+    for (const event of payload.events) {
+      const opportunity = event.properties.after;
+
+      // No point of contact → no person to attribute the event to.
+      if (!isDefined(opportunity.pointOfContactId)) {
+        continue;
+      }
+
+      await this.messageQueueService.add<MarketingSyncJobData>(
+        MarketingSyncJob.name,
+        {
+          kind: 'track_deal_created',
+          workspaceId: payload.workspaceId,
+          userId: opportunity.pointOfContactId,
+          opportunityId: event.recordId,
+          timestamp: this.toIso(opportunity.createdAt),
+          // recordId is unique per deal → idempotent across job retries.
+          messageId: `track:deal_created:${event.recordId}`,
+        },
+      );
+    }
+  }
+
   // Lifecycle events: a new inboundActivity (form submit, social DM, call,
   // appointment) → track on the person. form_submitted starts the intro drip;
   // inbound_message is the reply→drip-exit signal. Fires on raw-ORM intake
