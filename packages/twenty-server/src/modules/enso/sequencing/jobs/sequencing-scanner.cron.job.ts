@@ -17,6 +17,7 @@ import {
   CHANNELS_WITH_LIVE_SEQUENCE,
   CLOSED_LOST_STAGE,
   CLOSED_STAGES,
+  CONNECT_OUTCOMES,
   CONNECTED_STAGE,
   DEFAULT_VARIANT,
   ENROLLMENT_CUTOFF_ISO,
@@ -25,6 +26,7 @@ import {
   INBOUND_KIND_TO_CHANNEL,
   INBOUND_SOCIAL_MESSAGE_KIND,
   LEAD_CLAIMED_STAGE,
+  OUTCOME_TO_LOST_REASON,
   SEQUENCE_PIPELINE_STATE_ACTIVE,
   SEQUENCE_RUN_END_REASON_ADVANCED,
   SEQUENCE_RUN_END_REASON_CLOSED,
@@ -35,6 +37,7 @@ import {
   SOCIAL_LEAD_CLAIMED_FOLLOWUPS,
   SOCIAL_LEAD_CLAIMED_STALL_AFTER_MS,
   STALLED_PIPELINE_STATE,
+  TASK_CHANNEL_TO_FIRST_CONTACT,
   UNREACHABLE_LOST_REASON,
 } from 'src/modules/enso/sequencing/sequencing.constants';
 
@@ -191,6 +194,10 @@ export class SequencingScannerCronJob {
           });
 
           step = 'task.save';
+          const firstTouchBody = this.stepBodyLines(
+            FIRST_TOUCH_STEP_KEY,
+            opportunity.name ?? 'the lead',
+          );
           const firstTouchTask = await taskRepository.save({
             title: `${FIRST_TOUCH_TITLE_PREFIX} - ${opportunity.name ?? 'lead'}`,
             channel,
@@ -199,6 +206,8 @@ export class SequencingScannerCronJob {
             sequenceRunId: newRun.id,
             variant,
             assigneeId: opportunity.ownerId ?? null,
+            dueAt: new Date(),
+            ...(firstTouchBody ? { bodyV2: this.richText(firstTouchBody) } : {}),
           });
 
           step = 'pin';
@@ -268,6 +277,56 @@ export class SequencingScannerCronJob {
         // backfills taskTargets — idempotently, covering the first-touch task
         // too. Done before the reply/gate branches so every path is covered.
         await this.pinTasksToDeal(taskTargetRepository, runTasks, opportunity);
+
+        // Outcome reaction: a manager-reported outcome on any of the run's tasks
+        // drives the deal — the backbone signal for inbound-blind channels. A
+        // disqualifying outcome closes the deal; a connect outcome advances it.
+        const closeTask = runTasks.find((task) =>
+          isDefined(OUTCOME_TO_LOST_REASON[task.outcome as string]),
+        );
+
+        if (isDefined(closeTask)) {
+          await opportunityRepository.update(opportunity.id, {
+            stage: CLOSED_LOST_STAGE,
+            lostReason: OUTCOME_TO_LOST_REASON[closeTask.outcome as string],
+          });
+          await runRepository.update(run.id, {
+            endReason: SEQUENCE_RUN_END_REASON_CLOSED,
+            endedAt: new Date(),
+          });
+          this.logger.log(
+            `scanner: run ${run.id} -> CLOSED_LOST via outcome ${closeTask.outcome} (opportunity ${opportunity.id})`,
+          );
+          continue;
+        }
+
+        const connectTask = runTasks.find((task) =>
+          CONNECT_OUTCOMES.includes(task.outcome),
+        );
+
+        if (isDefined(connectTask)) {
+          const firstContactChannel =
+            TASK_CHANNEL_TO_FIRST_CONTACT[connectTask.channel as string] ??
+            SOCIAL_FIRST_CONTACT_CHANNEL;
+
+          await opportunityRepository.update(opportunity.id, {
+            stage: CONNECTED_STAGE,
+            ...(isDefined(opportunity.firstContactAt)
+              ? {}
+              : { firstContactAt: new Date(), firstContactChannel }),
+          });
+          await runRepository.update(run.id, {
+            advanced: true,
+            advancedToStage: CONNECTED_STAGE,
+            advancedAt: new Date(),
+            endReason: SEQUENCE_RUN_END_REASON_ADVANCED,
+            endedAt: new Date(),
+          });
+          this.logger.log(
+            `scanner: run ${run.id} -> CONNECTED via outcome ${connectTask.outcome} (opportunity ${opportunity.id})`,
+          );
+          continue;
+        }
 
         // Reply observer: an inbound social message that landed AFTER enrollment
         // means the lead answered the manager -> two-way contact established.
@@ -340,6 +399,10 @@ export class SequencingScannerCronJob {
           );
 
           if (!alreadyCreated) {
+            const followUpBody = this.stepBodyLines(
+              followUp.stepKey,
+              opportunity.name ?? 'the lead',
+            );
             const createdTask = await taskRepository.save({
               title: `Follow-up - ${opportunity.name ?? 'lead'}`,
               channel,
@@ -348,6 +411,8 @@ export class SequencingScannerCronJob {
               sequenceRunId: run.id,
               variant: run.variant,
               assigneeId: opportunity.ownerId ?? null,
+              dueAt: new Date(enrolledAtMs + followUp.afterMs),
+              ...(followUpBody ? { bodyV2: this.richText(followUpBody) } : {}),
             });
 
             createdTasks.push(createdTask);
@@ -516,5 +581,48 @@ export class SequencingScannerCronJob {
     }
 
     return undefined;
+  }
+
+  // Step-specific guidance for an auto-created task — tells the manager what to do.
+  // Social copy for now; null for steps without canned guidance.
+  private stepBodyLines(stepKey: string, leadName: string): string[] | null {
+    switch (stepKey) {
+      case 'social.lead_claimed.msg1':
+        return [
+          `First contact with ${leadName}.`,
+          'They reached out on social — open with a warm, personal message that references what they asked about and invites a reply.',
+          'Goal: get a response so the deal can move to Connected.',
+        ];
+      case 'social.lead_claimed.followup_1d':
+        return [
+          `Follow-up #1 — ${leadName} hasn't replied to your first message.`,
+          'Send a short, friendly nudge that adds something (a detail, a question) rather than just "any update?".',
+        ];
+      case 'social.lead_claimed.followup_3d':
+        return [
+          `Final follow-up — 3rd and last touch. ${leadName} still hasn't answered.`,
+          'This is the last automated message. If there is no reply, the deal stalls and auto-closes as Unreachable after 7 days.',
+          'Make it count: a clear, low-friction ask that makes it easy to respond.',
+        ];
+      default:
+        return null;
+    }
+  }
+
+  // Build a Twenty RICH_TEXT (bodyV2) value from plain paragraph lines.
+  private richText(lines: string[]): { markdown: string; blocknote: string } {
+    const blocks = lines.map((text, index) => ({
+      id: `blk-${index}`,
+      type: 'paragraph',
+      props: {
+        textColor: 'default',
+        backgroundColor: 'default',
+        textAlignment: 'left',
+      },
+      content: [{ type: 'text', text, styles: {} }],
+      children: [],
+    }));
+
+    return { markdown: lines.join('\n\n'), blocknote: JSON.stringify(blocks) };
   }
 }

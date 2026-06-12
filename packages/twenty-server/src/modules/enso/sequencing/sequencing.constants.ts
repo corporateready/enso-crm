@@ -70,3 +70,30 @@ export const SOCIAL_LEAD_CLAIMED_CLOSE_AFTER_STALL_MS = 7 * DAY_MS;
 // option values (uppercase enum) created on the sequenceRun object.
 export const SEQUENCE_RUN_END_REASON_ADVANCED = 'ADVANCED';
 export const SEQUENCE_RUN_END_REASON_CLOSED = 'CLOSED';
+
+// Task outcome — the manager-reported result of a touch, the backbone signal for
+// inbound-blind channels (calls off-app, personal WhatsApp/SMS, corporate SMS).
+// v1 set; expected to be refined. Values must match the task.outcome SELECT options.
+export const OUTCOME_NO_ANSWER = 'NO_ANSWER';
+export const OUTCOME_REACHED = 'REACHED';
+export const OUTCOME_CALLBACK_REQUESTED = 'CALLBACK_REQUESTED';
+export const OUTCOME_NOT_INTERESTED = 'NOT_INTERESTED';
+export const OUTCOME_WRONG_NUMBER = 'WRONG_NUMBER';
+export const OUTCOME_BOUGHT_ELSEWHERE = 'BOUGHT_ELSEWHERE';
+
+// Outcomes that establish two-way contact -> advance the deal to Connected.
+export const CONNECT_OUTCOMES: readonly string[] = [
+  OUTCOME_REACHED,
+  OUTCOME_CALLBACK_REQUESTED,
+];
+// Outcomes that disqualify the deal -> Closed Lost with the mapped lostReason.
+export const OUTCOME_TO_LOST_REASON: Readonly<Record<string, string>> = {
+  [OUTCOME_NOT_INTERESTED]: 'NOT_INTERESTED',
+  [OUTCOME_WRONG_NUMBER]: 'WRONG_NUMBER',
+  [OUTCOME_BOUGHT_ELSEWHERE]: 'BOUGHT_ELSEWHERE',
+};
+// task.channel -> opportunity.firstContactChannel when connecting via an outcome.
+export const TASK_CHANNEL_TO_FIRST_CONTACT: Readonly<Record<string, string>> = {
+  SOCIAL: 'SOCIAL',
+  CALL: 'CALL',
+};
