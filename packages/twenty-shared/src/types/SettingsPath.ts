@@ -2,6 +2,7 @@ export enum SettingsPath {
   ProfilePage = 'profile',
   TwoFactorAuthenticationStrategyConfig = 'profile/two-factor-authentication/:twoFactorAuthenticationStrategy',
   Experience = 'experience',
+  Notifications = 'notifications',
   Accounts = 'accounts',
   NewAccount = 'accounts/new',
   AccountsConfiguration = 'accounts/configuration/:connectedAccountId',

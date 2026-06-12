@@ -304,6 +304,12 @@ const SettingsProfile = lazy(() =>
   })),
 );
 
+const SettingsNotifications = lazy(() =>
+  import('~/pages/settings/SettingsNotifications').then((module) => ({
+    default: module.SettingsNotifications,
+  })),
+);
+
 const SettingsTwoFactorAuthenticationMethod = lazy(() =>
   import('~/pages/settings/SettingsTwoFactorAuthenticationMethod').then(
     (module) => ({
@@ -587,6 +593,10 @@ export const SettingsRoutes = ({ isAdminPageEnabled }: SettingsRoutesProps) => (
         element={<SettingsTwoFactorAuthenticationMethod />}
       />
       <Route path={SettingsPath.Experience} element={<SettingsExperience />} />
+      <Route
+        path={SettingsPath.Notifications}
+        element={<SettingsNotifications />}
+      />
       <Route
         element={
           <SettingsProtectedRouteWrapper
