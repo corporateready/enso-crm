@@ -23,6 +23,38 @@ export type NotifyManagerAssignmentJobData = {
   autoClaimed: boolean;
 };
 
+// Phase 2 manager notifications. Server-side listeners detect the change and
+// enqueue one of these; the worker posts via ManagerNotificationService (which
+// applies the per-event toggle + resolves the manager's personal webhook).
+export type ManagerNotifyJobData =
+  | {
+      workspaceId: string;
+      kind: 'lost_reassigned';
+      opportunityId: string;
+      managerId: string;
+    }
+  | {
+      workspaceId: string;
+      kind: 'deal_state_changed';
+      opportunityId: string;
+      managerId: string;
+      transition: 'stalled' | 'deferred' | 'active' | 'stage';
+      newStage?: string;
+    }
+  | {
+      workspaceId: string;
+      kind: 'task_assigned';
+      taskId: string;
+      managerId: string;
+    }
+  | {
+      workspaceId: string;
+      kind: 'consent_changed';
+      personId: string;
+      projectId: string;
+      managerId: string;
+    };
+
 export type ClaimCheckJobData = {
   workspaceId: string;
   opportunityId: string;

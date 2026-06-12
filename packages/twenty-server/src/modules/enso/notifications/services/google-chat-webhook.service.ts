@@ -10,6 +10,8 @@ import {
   GOOGLE_CHAT_WEBHOOK_HOST,
   GOOGLE_CHAT_WEBHOOK_URL_KEY,
   GOOGLE_CHAT_WEBHOOK_URL_MASK,
+  NOTIFICATION_PREFERENCES_KEY,
+  type NotificationEventKey,
 } from 'src/modules/enso/notifications/notifications.constants';
 
 type UserWorkspaceScope = { userId: string; workspaceId: string };
@@ -146,6 +148,67 @@ export class GoogleChatWebhookService {
 
       return false;
     }
+  }
+
+  // Per-event toggles (JSON map in keyValuePair). Opt-OUT: a missing key = ON.
+  async getPreferences({
+    userId,
+    workspaceId,
+  }: UserWorkspaceScope): Promise<Record<string, boolean>> {
+    const rows = await this.keyValuePairService.get({
+      type: KeyValuePairType.USER_VARIABLE,
+      userId,
+      workspaceId,
+      key: NOTIFICATION_PREFERENCES_KEY,
+    });
+
+    const raw = rows?.[0]?.value;
+
+    return isDefined(raw) && typeof raw === 'object'
+      ? (raw as Record<string, boolean>)
+      : {};
+  }
+
+  async setPreference({
+    userId,
+    workspaceId,
+    event,
+    enabled,
+  }: UserWorkspaceScope & {
+    event: NotificationEventKey;
+    enabled: boolean;
+  }): Promise<Record<string, boolean>> {
+    const preferences = await this.getPreferences({ userId, workspaceId });
+    const next = { ...preferences, [event]: enabled };
+
+    await this.keyValuePairService.set({
+      userId,
+      workspaceId,
+      key: NOTIFICATION_PREFERENCES_KEY,
+      value: next,
+      type: KeyValuePairType.USER_VARIABLE,
+    });
+
+    return next;
+  }
+
+  // Default ON — only false when the manager has explicitly muted the event.
+  async shouldNotify({
+    userId,
+    workspaceId,
+    event,
+  }: {
+    userId: string | undefined;
+    workspaceId: string;
+    event: NotificationEventKey;
+  }): Promise<boolean> {
+    if (!isDefined(userId)) {
+      return true;
+    }
+
+    const preferences = await this.getPreferences({ userId, workspaceId });
+
+    return preferences[event] !== false;
   }
 
   private async getStoredValue({
