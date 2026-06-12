@@ -3,6 +3,8 @@ title: External notifications (Novu)
 description: Prospect-facing email + SMS + drip cadences. Triggered from Twenty events.
 ---
 
+> **⚠️ SUPERSEDED (2026-06-12).** The engine choice here (Novu) is dead. The marketing-engagement engine is now **Dittofeed** — see [`docs/marketing-engine-dittofeed.md`](../../../docs/marketing-engine-dittofeed.md). Novu is notification infra, not a marketing tool; wrapping it in a segment/CDP/analytics layer re-created the problems Customer.io already solved. This page is retained only for the subscriber/event-mapping examples, which carry over to Dittofeed's `identify`/`track` contracts.
+
 # External notifications · Novu
 
 Prospect-facing notification delivery. **Twenty owns audience + behavior data.** Novu owns multichannel delivery + templates + provider routing.

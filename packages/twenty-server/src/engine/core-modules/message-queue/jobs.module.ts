@@ -41,6 +41,8 @@ import { AutoCompaniesAndContactsCreationJobModule } from 'src/modules/contact-c
 import { CompanyEnrichmentJobsModule } from 'src/modules/enso/company-enrichment/company-enrichment-jobs.module';
 import { CompanyMergeJobsModule } from 'src/modules/enso/company-merge/company-merge-jobs.module';
 import { LeadPipelineJobsModule } from 'src/modules/enso/lead-pipeline/lead-pipeline-jobs.module';
+import { MarketingSyncJobsModule } from 'src/modules/enso/marketing-sync/jobs/marketing-sync-jobs.module';
+import { MarketingSyncModule } from 'src/modules/enso/marketing-sync/marketing-sync.module';
 import { PersonMergeJobsModule } from 'src/modules/enso/person-merge/person-merge-jobs.module';
 import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
@@ -89,6 +91,8 @@ import { WorkflowModule } from 'src/modules/workflow/workflow.module';
     EnsoSequencingModule,
     CompanyEnrichmentJobsModule,
     CompanyMergeJobsModule,
+    MarketingSyncModule,
+    MarketingSyncJobsModule,
   ],
   providers: [
     CleanSuspendedWorkspacesJob,
