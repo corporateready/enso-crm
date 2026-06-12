@@ -2,6 +2,8 @@
 
 Status: **working design**, converged with user 2026-06-12. This is the reference for building the marketing-engagement engine that replaces Customer.io. **Supersedes** the Novu plan in `content/docs/integrations/external-notifications.md` (kept only for the subscriber/event-mapping examples — the engine choice there is dead).
 
+> **Scope update (2026-06-13).** **Descoped — deleted from the task list:** connection **(2) PostHog → Dittofeed** and connection **(5) dlt → BigQuery**. **Deferred — do later, not this increment:** **consent mirroring** (connection (4)'s subscription-group enforcement + unsubscribe-revoke). Permission-based sending stays the *eventual* basis; we just don't wire consent → Dittofeed yet. **Meta audiences live *inside* Dittofeed** (not a separate connection). Near-term focus: (a) the CRM→Dittofeed feed (live) and (b) **marketing-journey visibility in the CRM** — the new section below, the current build target.
+
 ## The decision (one paragraph)
 
 Replace Customer.io with **self-hosted Dittofeed** (OSS, MIT, TypeScript — the like-for-like OSS Customer.io). **Not Novu.** Novu is notification *infrastructure*, not a marketing tool; every attempt to bolt a segment/CDP/analytics layer around it re-creates — piecemeal and worse — the things Customer.io already bundled (and re-introduces developer-gated segments, disconnected audience sync, and OLAP-as-operational latency). Dittofeed is the operational marketing engine; the **CRM stays the identity authority and primary event feed**; **PostHog** is a behavioral feed; **BigQuery** is the analytical convergence point (joint with revenue). Marketers operate Dittofeed directly.
@@ -127,16 +129,90 @@ Meta Custom Audience sync becomes a **step inside the journey** (add/remove memb
 
 **Independent engines, shared substrate.** Sales sequencing (`enso/sequencing`, live) creates *manager tasks* for claimed deals; marketing (Dittofeed) sends *automated messages* to segments. They share `person` / consent / the UUID. Coordination = **suppression**: marketing should not blast a contact in an active sales cadence (and the journey exits on the same reply that advances the sales deal). No unification — the shapes are too different and the live sequencing engine must not be destabilized.
 
+## Marketing-journey visibility in the CRM (spec — 2026-06-13, for review)
+
+**Goal.** On a Person (and optionally an Opportunity), a sales manager sees: which marketing journeys the person **has been in** and **is in now**, **at what step**, the messages they've **already received** (with delivered/opened/clicked), and — phase 2 — **when the next messages are due**. The "a brand-new person has never been in any journey" fact falls out for free (no enrollment rows yet).
+
+### What Dittofeed actually gives us (verified against its docs, 2026-06-13)
+
+| Need | Dittofeed mechanism | |
+|---|---|---|
+| Push state out as it happens | **Webhook-channel Message node** — a journey step that POSTs arbitrary JSON to a URL (the same channel we use for sms.md) | ✅ |
+| Read current segment membership | `POST /api/admin/users` (filter by `userIds`) → `segments[]`, `properties`, `subscriptions` | ✅ |
+| Read message history per person | `GET /api/admin/deliveries?userId=` → channel, `journeyId`, `templateId`, status, `sentAt` | ✅ |
+| Live journey position / current step | — | ❌ no API |
+| Scheduled / upcoming sends | — | ❌ no API |
+
+Journey node types are fixed: **Entry, Message, Wait-For, Delay, Exit, Segment-Split** — there is *no* add-to-segment node and *no* dedicated webhook node (the Webhook is a **message channel**). The two ❌ are the crux: **Dittofeed will not answer "in step 2 of ARTIMA intro," so the CRM must record journey position itself.** We capture milestones as they happen (push) and, for phase 2, compute upcoming sends from the cadence *we* author.
+
+### Mechanism — push, not poll
+
+Each journey carries **Webhook-channel Message nodes** at its milestones (right after Entry; after each email; right before Exit). Each POSTs, per user, to a new CRM endpoint:
+
+```
+POST {CRM}/rest/enso/marketing/journey-callback
+x-enso-marketing-secret: <DITTOFEED_CALLBACK_SECRET>
+{ "workspaceId": "<enso ws id>", "userId": "<person UUID>",
+  "journey": "ARTIMA_INTRO", "step": "email_2_sent",
+  "status": "ACTIVE", "occurredAt": "2026-06-13T..." }
+```
+
+`userId` is already the CRM person UUID (connection-(1) invariant) — no resolution, no merge risk.
+
+### CRM side — three pieces
+
+1. **New object `marketingEnrollment`** (provisioned by an *idempotent metadata script*, same pattern as `packages/twenty-server/scripts/provision-opportunity-client-type.mjs` and the company-enrichment fields):
+   - `person` (relation), `journey` (TEXT key), `status` (SELECT: `ACTIVE`/`FINISHED`/`EXITED`), `currentStep` (TEXT), `enteredAt` + `lastEventAt` (DATE_TIME), `dittofeedJourneyId` (TEXT — correlates to the deliveries API), phase-2 `nextExpectedAt` (DATE_TIME).
+   - Upserted on (`person`, `journey`); the row **is** the per-person journey state, and is the CRM-visible enrollment guard.
+
+2. **New public callback endpoint** `@Controller('rest/enso/marketing')` → `@Post('journey-callback')`.
+   - **⚠ New pattern flag:** every existing enso controller (e.g. `ChatwootController`) is `JwtAuthGuard`-protected (logged-in user, workspace derived from the JWT). This one is **machine-to-machine with no JWT** — so it is guarded by a **constant-time shared-secret header** (`DITTOFEED_CALLBACK_SECRET`) and takes `workspaceId` **in the body** (no auth context to derive it from). Reject on bad secret / unknown workspace / unknown person.
+   - Validates → upserts `marketingEnrollment` via the workspace ORM → writes a timeline sentence.
+
+3. **Timeline surface (free, immediate):** the callback also writes an `enso-event.marketing_*` row via `buildEnsoTimelineInserts` ("Entered ARTIMA intro sequence — by ENSO CRM", "Received intro email 2 of 3", "Completed ARTIMA intro"). Reuses the existing green-sentence renderer (`ENSO_EVENT_ACTIVITY_NAME_PREFIX`) → managers see journey activity on the person/opportunity timeline with **zero frontend work**, before the full widget exists.
+
+### Manager widget (twenty-front Person tab) — the "sales/marketing cloud" view
+
+- **Journeys been-in / in-now** from `marketingEnrollment` rows (status + current step + entered date), expandable per journey.
+- **Messages received** via a CRM **proxy** endpoint → `GET /api/admin/deliveries?userId=` (channel, template, delivered/opened/clicked, sentAt). **Proxied server-side** — the Dittofeed Admin API key never reaches the browser (same containment as the Chatwoot controller proxying the account token).
+- **Phase 2 — upcoming + timing:** mirror each journey's cadence in the CRM (we author the journeys, so `email1 → +2d → email2 → +3d → email3` is known) and compute `nextExpectedAt` from `currentStep + enteredAt`. This is explicitly **not** a Dittofeed query (none exists); ship it once a journey's cadence is stable.
+
+### Enrollment idempotency
+
+Dittofeed de-dups journey entry natively; an entry **Segment-Split** ("first `deal_created` AND not already enrolled") is belt-and-suspenders. The `ACTIVE` `marketingEnrollment` row is the CRM-visible guard. **No CRM→Dittofeed polling is needed** for the guard.
+
+### New config (secrets set by the user — never the agent)
+
+- `DITTOFEED_ADMIN_API_URL` + `DITTOFEED_ADMIN_API_KEY` — server-side, for the deliveries/users proxy (the **Admin API**, distinct from the public Write Key already set for connection (1)).
+- `DITTOFEED_CALLBACK_SECRET` — shared secret for the inbound journey-callback.
+- `ENSO_MARKETING_WORKSPACE_ID` — to resolve the workspace in the unauthenticated callback (or carry it in the body).
+
+### Effort split
+
+- **Tier A (proves the loop):** `marketingEnrollment` object (metadata script) + callback endpoint + timeline rows + per-journey Webhook-channel nodes. Backend + a bit of manual journey wiring.
+- **Tier B (the widget):** twenty-front Person tab + the deliveries proxy.
+- **Phase 2:** the cadence mirror for upcoming-send timing.
+
+### Resolved (2026-06-13)
+
+1. **Both** — `marketingEnrollment` object (structured/queryable state + the widget) **and** timeline green-sentences (instant readability).
+2. **Per-step callbacks.** Crucial point on *why* this isn't redundant with "knowing position": **there is no API to query position — the per-step webhook callback is the only way we learn it.** Dittofeed pushes "reached step X" as it happens; the stored `currentStep` **is** our knowledge of where the person is. Enter/exit-only → we'd know "in/done" but not which email; per-step → "email 2 of 3, sent yesterday." A Webhook-channel Message node is dropped after each meaningful step (each email / wait completion / branch).
+3. **Consent mirroring = deferred (do later), not descoped.** Permission-based sending stays the eventual basis; the subscription-group enforcement + unsubscribe→`personProjectConsent` revoke loop is built in a later increment, not this one.
+
 ## Build steps (phased)
 
 1. **Deploy Dittofeed Lite on Railway — ✅ DONE 2026-06-12.** Official `dittofeed` template into new project **enso-marketing** (`f5f87f92-1e10-4491-a61d-0d2d897923ee`, personal workspace). 4 services SUCCESS: Dittofeed `dittofeed-lite:v0.22.0`, Postgres, ClickHouse, Temporal. Dashboard live at **https://dittofeed-production-4624.up.railway.app/dashboard** (single-tenant; admin login = `PASSWORD` service var). Template auto-generated `PASSWORD`/`SECRET_KEY` and wired DB/ClickHouse/Temporal. Blob storage enabled (`ENABLE_BLOB_STORAGE=true` + `BLOB_STORAGE_*`) → Railway bucket **dittofeed-blob** (region ams/EU-West) for attachments + view-in-browser (inline images via URL until Dittofeed ships image hosting). `BOOTSTRAP=false` after first boot. `SESSION_COOKIE_SECURE=true` set (fixes the single-tenant insecure-cookie warning, since the Railway domain is TLS). **Data residency: all-EU confirmed** — all 4 services in `europe-west4-drams3a` (Netherlands), bucket in Amsterdam (ams). Duplicate project cleaned up. Remaining watch: Next.js `standalone`/`newNextLinkBehavior` warnings are cosmetic (baked into lite image). Ops gotcha: Railway API returned transport timeouts on mutations that still landed server-side — always verify-after-each-write; WebFetch also caches pages 15 min, so verify dashboard state via curl/browser not WebFetch.
 2. **Sender setup — 🟡 IN PROGRESS 2026-06-12.** Resend ("ENSO Development" account) connected to Dittofeed: created Sending-access API key "Dittofeed Marketing" (all-domains), pasted into Dittofeed Settings → Email channel, set **Resend as default provider**, default From `Oleg <oleg@notifications.enso.ro>`. **Test send to `dvasiliev@enso.ro` = Delivered** (verified in Resend Emails log) — full chain Dittofeed→Resend→inbox proven. Interim: using the already-verified **`notifications.enso.ro`** subdomain. **Later:** add root domains `enso.ro`/`artima.md`/`ioanaradu.md` in Resend → brand-matched personal From (`oleg@enso.ro` etc.). **Webhook configured:** Resend webhook → `https://dittofeed-production-4624.up.railway.app/api/public/webhooks/resend`, **Enabled**, 6 events (sent/delivered/opened/clicked/bounced/complained); signing secret pasted into Dittofeed Settings → Resend → Webhook Key by user. ⚠️ **Event flow NOT yet positively verified** — Dittofeed *test-message* sends don't create tracked Delivery records and Resend's webhook event log didn't surface in-UI during setup, so the webhook→Dittofeed leg (incl. signing-secret correctness) will self-confirm on the **first real journey/broadcast send** (Delivery status should advance Sent→Delivered/Opened). Verify then. Note: Resend's quota is *transactional* volume and Dittofeed sends via the transactional API, so marketing counts against it — if volume grows materially, Amazon SES (~$0.10/1k, supported by Dittofeed) is ~10× cheaper and a swappable provider. Credentials (API key, webhook secret, dashboard password) entered by the user — agent never handles them.
 3. **`enso/marketing-sync` module — 🟡 IN PROGRESS 2026-06-12.** Increment 1 written (CRM→Dittofeed, `userId` = person UUID): event-bus listener (`@OnDatabaseBatchEvent`, fires on GraphQL *and* raw-ORM writes) → enqueues `ensoMarketingSyncQueue` → worker job → `DittofeedClientService` (`POST /api/public/apps/{identify,track}`, `Authorization: Basic <DITTOFEED_WRITE_KEY>`). Covered: **person.created/updated → identify** (curated trait set: name/email/phone-E164/city/jobTitle/companyId/createdAt; update re-syncs only when a trait field changes), **opportunity stage change → track `deal_stage_changed`** {from,to,amount}. Files under `packages/twenty-server/src/modules/enso/marketing-sync/`; wired into `modules.module.ts` (server) + `jobs.module.ts` (worker); `ensoMarketingSyncQueue` added to enum; `'dittofeed-sync'` added to `OutboundRequestSource`. Config via `process.env.DITTOFEED_API_URL` + `DITTOFEED_WRITE_KEY` (Dittofeed Public Write Key) on the enso-crm server+worker. Idempotency via messageId (`identify:<uuid>:<updatedAt>` / `track:deal_stage_changed:<oppId>:<updatedAt>`). **Validation = Railway build/deploy** (cold worktree, no local CI). Increment 2 TODO: `inboundActivity.created` → track form_submitted/inbound_message/appointment (+ reply→drip-exit), consent mirroring → subscription groups, PostHog→Dittofeed.
-4. **Consent mirror + enforcement + unsubscribe feedback** — subscription groups; unsubscribe → `personProjectConsent` revoke.
-5. **First journey** — Artima intro drip, Event-Entry on `form_submitted`, consent-gated, exits on `reply_received`.
-6. **PostHog → Dittofeed forwarding** — Destinations to `track`, UUID-keyed; build first behavioral segment in Dittofeed.
-7. **`dlt` Dittofeed → BigQuery** — engagement export + Lightdash models joined to revenue.
-8. **Meta audience step** — repoint the n8n Customer.io→FB job to the Dittofeed segment / journey step.
+4. **Marketing-journey visibility in the CRM (section above).**
+   - **Tier A — 🟡 CODE WRITTEN 2026-06-13.** `packages/twenty-server/src/modules/enso/marketing-sync/`: `dtos/journey-callback.input.ts`, `services/marketing-journey-callback.service.ts` (upsert `marketingEnrollment` + green-sentence timeline on person *and* source opportunity), `controllers/marketing.controller.ts` (`POST /rest/enso/marketing/journey-callback`, public via `PublicEndpointGuard`, shared-secret `x-enso-marketing-secret` constant-time compare), `marketing-callback.module.ts` (server-only, wired into `modules.module.ts`). Provisioning script `scripts/provision-marketing-enrollment.mjs`. **Pending runtime (user):** (a) run the provision script with `TWENTY_API_KEY` → creates the object; (b) redeploy so the ORM cache picks it up; (c) set `DITTOFEED_CALLBACK_SECRET` on twenty-server; (d) wire per-step Webhook-channel Message nodes into a journey (step 5).
+   - **Tier B (next):** twenty-front record tab (Person **and** Opportunity — the opp tab shows enrollments for every related person) + a server-side deliveries proxy.
+   - **Phase 2:** cadence-mirror for upcoming-send timing.
+5. **First journey** — Artima intro drip, Event-Entry on `deal_created` (first-deal-for-person), exits on `reply_received`. Pairs with step 4 (wire the per-step callbacks into this journey).
+6. **Consent mirror + enforcement + unsubscribe feedback** — subscription groups; unsubscribe → `personProjectConsent` revoke. **Deferred (2026-06-13) — later, not this increment.**
+7. **Meta audience step** — *inside* Dittofeed (a journey step add/remove); repoint the n8n Customer.io→FB job to the Dittofeed segment if a journey step proves limiting.
+8. ~~PostHog → Dittofeed forwarding~~ — **descoped 2026-06-13.**
+9. ~~`dlt` Dittofeed → BigQuery~~ — **descoped 2026-06-13.**
 
 ## Decisions (resolved 2026-06-12)
 
