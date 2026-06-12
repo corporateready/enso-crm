@@ -137,8 +137,11 @@ export class ManagerNotificationService {
     }
 
     const rows = [
+      details.dealName
+        ? { icon: 'DESCRIPTION', label: 'Deal', text: details.dealName }
+        : undefined,
       details.projectName
-        ? { icon: 'DESCRIPTION', label: 'Project', text: details.projectName }
+        ? { icon: 'STORE', label: 'Project', text: details.projectName }
         : undefined,
       details.who
         ? { icon: 'PERSON', label: 'Contact', text: details.who }
@@ -499,13 +502,17 @@ export class ManagerNotificationService {
   }
 
   private dealRows(details: {
+    dealName?: string;
     projectName?: string;
     who?: string;
     source?: string;
   }): Array<{ icon: string; label: string; text: string }> {
     return [
+      details.dealName
+        ? { icon: 'DESCRIPTION', label: 'Deal', text: details.dealName }
+        : undefined,
       details.projectName
-        ? { icon: 'DESCRIPTION', label: 'Project', text: details.projectName }
+        ? { icon: 'STORE', label: 'Project', text: details.projectName }
         : undefined,
       details.who
         ? { icon: 'PERSON', label: 'Contact', text: details.who }
@@ -664,6 +671,7 @@ export class ManagerNotificationService {
     opportunityId: string,
     managerId: string,
   ): Promise<{
+    dealName?: string;
     managerName?: string;
     managerUserId?: string;
     projectName?: string;
@@ -739,6 +747,7 @@ export class ManagerNotificationService {
         }
 
         return {
+          dealName: opportunity?.name ?? undefined,
           managerName: managerName || undefined,
           managerUserId: manager?.userId ?? undefined,
           projectName,
