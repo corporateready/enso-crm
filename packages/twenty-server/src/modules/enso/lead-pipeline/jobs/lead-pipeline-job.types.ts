@@ -49,6 +49,12 @@ export type ManagerNotifyJobData =
     }
   | {
       workspaceId: string;
+      kind: 'task_due';
+      taskId: string;
+      managerId: string;
+    }
+  | {
+      workspaceId: string;
       kind: 'consent_changed';
       personId: string;
       projectId: string;
