@@ -157,7 +157,7 @@ export class ManagerNotificationService {
         : {
             icon: 'CLOCK',
             label: 'Claim window',
-            text: `${params.claimWindowMinutes} min — unclaimed leads reroute to the next manager`,
+            text: `${params.claimWindowMinutes} min — unclaimed deals reroute to the next manager`,
           },
     ].filter(isDefined);
 
@@ -165,8 +165,8 @@ export class ManagerNotificationService {
       webhookUrl,
       this.buildDealCard({
         title: params.autoClaimed
-          ? '🔔 New lead assigned to you — your returning client'
-          : `🎯 New lead routed — claim within ${params.claimWindowMinutes} min`,
+          ? '🔔 New deal assigned to you — your returning client'
+          : `🎯 New deal routed — claim within ${params.claimWindowMinutes} min`,
         subtitle: 'ENSO CRM · Routing',
         rows,
         recordUrl: this.recordUrl('opportunity', params.opportunityId),
@@ -246,7 +246,7 @@ export class ManagerNotificationService {
     await this.googleChatWebhookService.post(
       webhookUrl,
       this.buildDealCard({
-        title: '🔁 Lead re-engaged — your client messaged again',
+        title: '🔁 Deal re-engaged — your client messaged again',
         subtitle: 'ENSO CRM · Inbound',
         rows: this.dealRows(details),
         recordUrl: this.recordUrl('opportunity', params.opportunityId),
@@ -294,7 +294,7 @@ export class ManagerNotificationService {
     await this.googleChatWebhookService.post(
       webhookUrl,
       this.buildDealCard({
-        title: '🔁 Lead reassigned away from you',
+        title: '🔁 Deal reassigned away from you',
         subtitle: 'ENSO CRM · Routing',
         rows: this.dealRows(details),
         recordUrl: this.recordUrl('opportunity', params.opportunityId),

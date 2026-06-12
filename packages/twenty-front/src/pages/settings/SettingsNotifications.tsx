@@ -16,8 +16,8 @@ import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 // Mirror of the server's NOTIFICATION_EVENTS keys.
 const NOTIFICATION_EVENT_LABELS: { event: string; label: string }[] = [
-  { event: 'leadAssigned', label: 'Lead routed to me' },
-  { event: 'leadLost', label: 'Lead reassigned away from me' },
+  { event: 'leadAssigned', label: 'Deal routed to me' },
+  { event: 'leadLost', label: 'Deal reassigned away from me' },
   { event: 'dealStateChanged', label: 'Deal stage or state changed' },
   { event: 'inboundReengaged', label: 'Reply on my open deal' },
   { event: 'taskAssigned', label: 'Task assigned to me' },
@@ -141,7 +141,7 @@ export const SettingsNotifications = () => {
         <Section>
           <H2Title
             title={t`Google Chat`}
-            description={t`Get your personal CRM alerts (leads routed to you, replies, tasks) in a private Google Chat space.`}
+            description={t`Get your personal CRM alerts (deals routed to you, replies, tasks) in a private Google Chat space.`}
           />
           <StyledInstructions>
             <li>
