@@ -49,8 +49,10 @@ export class DittofeedClientService {
 
   // Dittofeed Basic auth = base64("<keyId>:<keySecret>"). Encode the raw pair
   // (contains ':'); pass an already-encoded value through (base64 has no ':').
+  // Tolerate common env-paste mistakes: surrounding whitespace/newlines and an
+  // accidental "Basic " prefix copied from a curl example.
   private get authorizationHeader(): string {
-    const key = this.writeKey ?? '';
+    const key = (this.writeKey ?? '').trim().replace(/^Basic\s+/i, '');
     const encoded = key.includes(':')
       ? Buffer.from(key).toString('base64')
       : key;
