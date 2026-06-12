@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
 
 import { ChatwootModule } from 'src/modules/enso/chatwoot/chatwoot.module';
-import { ConsentChangeListener } from 'src/modules/enso/lead-pipeline/listeners/consent-change.listener';
-import { OpportunityChangeListener } from 'src/modules/enso/lead-pipeline/listeners/opportunity-change.listener';
-import { TaskAssignmentListener } from 'src/modules/enso/lead-pipeline/listeners/task-assignment.listener';
 import { InboundActivityCreateOnePostQueryHook } from 'src/modules/enso/lead-pipeline/query-hooks/inbound-activity-create-one.post-query-hook';
 import { OpportunityUpdateOnePostQueryHook } from 'src/modules/enso/lead-pipeline/query-hooks/opportunity-update-one.post-query-hook';
 import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services/opportunity-claim.service';
@@ -25,10 +22,6 @@ import { PersonProjectAssignmentNameService } from 'src/modules/enso/person-proj
     OpportunityClaimService,
     // Reused (stateless) to label sticky assignments created on claim.
     PersonProjectAssignmentNameService,
-    // Phase 2 notification listeners: detect the change, enqueue a notify job.
-    OpportunityChangeListener,
-    TaskAssignmentListener,
-    ConsentChangeListener,
   ],
 })
 export class LeadPipelineModule {}
