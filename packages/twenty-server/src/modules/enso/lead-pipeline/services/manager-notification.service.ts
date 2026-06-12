@@ -146,6 +146,9 @@ export class ManagerNotificationService {
       details.who
         ? { icon: 'PERSON', label: 'Contact', text: details.who }
         : undefined,
+      details.phone
+        ? { icon: 'PHONE', label: 'Phone', text: details.phone }
+        : undefined,
       isDefined(details.m2)
         ? { icon: 'MAP_PIN', label: 'Area', text: `${details.m2} m²` }
         : undefined,
@@ -400,6 +403,12 @@ export class ManagerNotificationService {
       task.title
         ? { icon: 'DESCRIPTION', label: 'Task', text: task.title }
         : undefined,
+      task.dealName
+        ? { icon: 'STORE', label: 'Deal', text: task.dealName }
+        : undefined,
+      task.contactName
+        ? { icon: 'PERSON', label: 'Contact', text: task.contactName }
+        : undefined,
       task.dueAt
         ? { icon: 'CLOCK', label: 'Due', text: this.formatDate(task.dueAt) }
         : undefined,
@@ -457,6 +466,12 @@ export class ManagerNotificationService {
     const rows = [
       task.title
         ? { icon: 'DESCRIPTION', label: 'Task', text: task.title }
+        : undefined,
+      task.dealName
+        ? { icon: 'STORE', label: 'Deal', text: task.dealName }
+        : undefined,
+      task.contactName
+        ? { icon: 'PERSON', label: 'Contact', text: task.contactName }
         : undefined,
       task.dueAt
         ? { icon: 'CLOCK', label: 'Due', text: this.formatDate(task.dueAt) }
@@ -563,6 +578,7 @@ export class ManagerNotificationService {
     dealName?: string;
     projectName?: string;
     who?: string;
+    phone?: string;
     source?: string;
   }): Array<{ icon: string; label: string; text: string }> {
     return [
@@ -574,6 +590,9 @@ export class ManagerNotificationService {
         : undefined,
       details.who
         ? { icon: 'PERSON', label: 'Contact', text: details.who }
+        : undefined,
+      details.phone
+        ? { icon: 'PHONE', label: 'Phone', text: details.phone }
         : undefined,
       details.source
         ? { icon: 'STAR', label: 'Source', text: details.source }
@@ -658,7 +677,12 @@ export class ManagerNotificationService {
   private async loadTaskDetails(
     workspaceId: string,
     taskId: string,
-  ): Promise<{ title?: string; dueAt?: Date | string }> {
+  ): Promise<{
+    title?: string;
+    dueAt?: Date | string;
+    contactName?: string;
+    dealName?: string;
+  }> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -672,9 +696,67 @@ export class ManagerNotificationService {
 
         const task = await taskRepository.findOne({ where: { id: taskId } });
 
+        // Tasks link to records polymorphically via taskTarget — surface the
+        // related contact + deal so the manager knows what the task is about.
+        const taskTargetRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'taskTarget',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const targets = await taskTargetRepository.find({ where: { taskId } });
+
+        let contactName: string | undefined;
+        const personTarget = targets.find(
+          (target: { targetPersonId?: string }) =>
+            isDefined(target.targetPersonId),
+        );
+
+        if (isDefined(personTarget?.targetPersonId)) {
+          const personRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'person',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const person = await personRepository.findOne({
+            where: { id: personTarget.targetPersonId },
+          });
+
+          const fullName =
+            `${person?.name?.firstName ?? ''} ${person?.name?.lastName ?? ''}`.trim();
+
+          contactName = fullName || undefined;
+        }
+
+        let dealName: string | undefined;
+        const opportunityTarget = targets.find(
+          (target: { targetOpportunityId?: string }) =>
+            isDefined(target.targetOpportunityId),
+        );
+
+        if (isDefined(opportunityTarget?.targetOpportunityId)) {
+          const opportunityRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'opportunity',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const opportunity = await opportunityRepository.findOne({
+            where: { id: opportunityTarget.targetOpportunityId },
+          });
+
+          dealName = opportunity?.name ?? undefined;
+        }
+
         return {
           title: task?.title ?? undefined,
           dueAt: task?.dueAt ?? undefined,
+          contactName,
+          dealName,
         };
       },
       systemAuthContext,
@@ -734,6 +816,7 @@ export class ManagerNotificationService {
     managerUserId?: string;
     projectName?: string;
     who?: string;
+    phone?: string;
     m2?: number;
     source?: string;
   }> {
@@ -785,6 +868,7 @@ export class ManagerNotificationService {
         }
 
         let who: string | undefined;
+        let phone: string | undefined;
 
         if (isDefined(opportunity?.pointOfContactId)) {
           const personRepository =
@@ -801,7 +885,8 @@ export class ManagerNotificationService {
           const fullName =
             `${person?.name?.firstName ?? ''} ${person?.name?.lastName ?? ''}`.trim();
 
-          who = person?.phones?.primaryPhoneNumber ?? (fullName || undefined);
+          who = fullName || undefined;
+          phone = person?.phones?.primaryPhoneNumber ?? undefined;
         }
 
         return {
@@ -810,6 +895,7 @@ export class ManagerNotificationService {
           managerUserId: manager?.userId ?? undefined,
           projectName,
           who,
+          phone,
           m2: opportunity?.m2Min ?? undefined,
           source: opportunity?.source ?? undefined,
         };
