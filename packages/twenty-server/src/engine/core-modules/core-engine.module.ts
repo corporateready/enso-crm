@@ -75,6 +75,7 @@ import { WorkspaceEventEmitterModule } from 'src/engine/workspace-event-emitter/
 import { ChannelSyncModule } from 'src/modules/connected-account/channel-sync/channel-sync.module';
 import { DashboardModule } from 'src/modules/dashboard/dashboard.module';
 import { SendEmailModule } from 'src/modules/messaging/message-outbound-manager/send-email.module';
+import { NotificationSettingsModule } from 'src/modules/enso/notifications/notification-settings.module';
 import { AuditModule } from './audit/audit.module';
 import { ClientConfigModule } from './client-config/client-config.module';
 import { EventLogsModule } from './event-logs/event-logs.module';
@@ -129,6 +130,7 @@ import { FileModule } from './file/file.module';
     ImapSmtpCaldavModule,
     ChannelSyncModule,
     SendEmailModule,
+    NotificationSettingsModule,
     FileStorageModule.forRoot(),
     LoggerModule.forRootAsync({
       useFactory: loggerModuleFactory,

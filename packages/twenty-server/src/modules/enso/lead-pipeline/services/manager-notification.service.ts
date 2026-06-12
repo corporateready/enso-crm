@@ -1,24 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import axios from 'axios';
 import { isDefined } from 'twenty-shared/utils';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { GoogleChatWebhookService } from 'src/modules/enso/notifications/services/google-chat-webhook.service';
 
-// Manager notification via Google Chat webhook (in-app / Knock comes later).
-// Webhook URLs are read from env (best-effort: a missing webhook or a failed
-// post must never fail routing). Two channels:
-//   ENSO_ROUTING_CHAT_WEBHOOK_URL — per-assignment "you have N minutes" notices
-//   ENSO_OPS_CHAT_WEBHOOK_URL      — escalation / no-candidate alerts (falls
-//                                    back to the routing webhook if unset)
+// Manager notification via Google Chat.
+//
+// Per-manager events (assignment, re-engagement) go to the assigned manager's
+// PERSONAL webhook (their private space, set in Settings → Notifications) so the
+// shared space isn't flooded. If a manager hasn't configured one yet we fall
+// back to the shared routing webhook so nothing is silently dropped.
+//   ENSO_ROUTING_CHAT_WEBHOOK_URL — fallback for per-manager events
+//   ENSO_OPS_CHAT_WEBHOOK_URL      — escalation / no-candidate alerts (ops space;
+//                                    falls back to the routing webhook if unset)
+// All posts are best-effort: a missing/failed webhook must never fail routing.
 @Injectable()
 export class ManagerNotificationService {
   private readonly logger = new Logger(ManagerNotificationService.name);
 
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+    private readonly googleChatWebhookService: GoogleChatWebhookService,
   ) {}
 
   private get routingWebhookUrl(): string | undefined {
@@ -33,16 +38,35 @@ export class ManagerNotificationService {
     );
   }
 
-  private recordUrl(workspaceId: string, opportunityId: string): string {
+  private recordUrl(opportunityId: string): string | undefined {
     const base = (
       process.env.ENSO_CRM_APP_URL ||
       process.env.FRONTEND_URL ||
       ''
     ).replace(/\/$/, '');
 
-    return base
-      ? `${base}/object/opportunity/${opportunityId}`
-      : `opportunity ${opportunityId}`;
+    return base ? `${base}/object/opportunity/${opportunityId}` : undefined;
+  }
+
+  // The assigned manager's personal space, falling back to the shared routing
+  // webhook for managers who haven't set one up yet.
+  private async resolveManagerWebhookUrl(
+    workspaceId: string,
+    managerUserId: string | undefined,
+  ): Promise<string | undefined> {
+    if (isDefined(managerUserId)) {
+      const personalWebhookUrl =
+        await this.googleChatWebhookService.getWebhookUrl({
+          userId: managerUserId,
+          workspaceId,
+        });
+
+      if (isDefined(personalWebhookUrl)) {
+        return personalWebhookUrl;
+      }
+    }
+
+    return this.routingWebhookUrl;
   }
 
   // Post the "claim within N minutes" notice for a freshly-assigned deal.
@@ -55,14 +79,9 @@ export class ManagerNotificationService {
       claimWindowMinutes: number;
     },
   ): Promise<void> {
-    const webhookUrl = this.routingWebhookUrl;
     const workspaceId = authContext.workspace?.id;
 
-    if (!isDefined(webhookUrl) || !isDefined(workspaceId)) {
-      this.logger.warn(
-        'No routing webhook configured — skipping notification.',
-      );
-
+    if (!isDefined(workspaceId)) {
       return;
     }
 
@@ -72,21 +91,51 @@ export class ManagerNotificationService {
       params.managerId,
     );
 
-    const headline = params.autoClaimed
-      ? `🔔 *New lead assigned to you* — your returning client`
-      : `🔔 *New lead routed* — claim within ${params.claimWindowMinutes} min`;
+    const webhookUrl = await this.resolveManagerWebhookUrl(
+      workspaceId,
+      details.managerUserId,
+    );
 
-    const lines = [
-      headline,
-      details.managerName ? `Manager: ${details.managerName}` : undefined,
-      details.projectName ? `Project: ${details.projectName}` : undefined,
-      details.who ? `Contact: ${details.who}` : undefined,
-      details.m2 ? `Area: ${details.m2} m²` : undefined,
-      details.source ? `Source: ${details.source}` : undefined,
-      this.recordUrl(workspaceId, params.opportunityId),
-    ].filter(Boolean);
+    if (!isDefined(webhookUrl)) {
+      this.logger.warn('No webhook configured — skipping assignment notice.');
 
-    await this.post(webhookUrl, lines.join('\n'));
+      return;
+    }
+
+    const rows = [
+      details.projectName
+        ? { icon: 'DESCRIPTION', label: 'Project', text: details.projectName }
+        : undefined,
+      details.who
+        ? { icon: 'PERSON', label: 'Contact', text: details.who }
+        : undefined,
+      isDefined(details.m2)
+        ? { icon: 'MAP_PIN', label: 'Area', text: `${details.m2} m²` }
+        : undefined,
+      details.source
+        ? { icon: 'STAR', label: 'Source', text: details.source }
+        : undefined,
+      params.autoClaimed
+        ? undefined
+        : {
+            icon: 'CLOCK',
+            label: 'Claim window',
+            text: `${params.claimWindowMinutes} min — unclaimed leads reroute to the next manager`,
+          },
+    ].filter(isDefined);
+
+    await this.googleChatWebhookService.post(
+      webhookUrl,
+      this.buildDealCard({
+        title: params.autoClaimed
+          ? '🔔 New lead assigned to you — your returning client'
+          : `🎯 New lead routed — claim within ${params.claimWindowMinutes} min`,
+        subtitle: 'ENSO CRM · Routing',
+        rows,
+        recordUrl: this.recordUrl(params.opportunityId),
+        buttonText: params.autoClaimed ? 'Open in CRM' : 'Open to claim',
+      }),
+    );
   }
 
   // Ops alert when an opportunity can't be routed (no candidates / max attempts).
@@ -103,29 +152,28 @@ export class ManagerNotificationService {
       return;
     }
 
+    const recordUrl = this.recordUrl(params.opportunityId);
+
     const lines = [
       `⚠️ *Routing escalation* — ${params.reason}`,
       isDefined(params.attempts) ? `Attempts: ${params.attempts}` : undefined,
-      this.recordUrl(workspaceId, params.opportunityId),
-    ].filter(Boolean);
+      recordUrl,
+    ].filter(isDefined);
 
-    await this.post(webhookUrl, lines.join('\n'));
+    await this.googleChatWebhookService.post(webhookUrl, {
+      text: lines.join('\n'),
+    });
   }
 
   // Ping the current owner when a claimed deal's contact re-engages (a new
-  // inbound activity attached to the open deal). Best-effort, routing webhook.
+  // inbound activity attached to the open deal).
   async notifyReengagement(
     authContext: WorkspaceAuthContext,
     params: { opportunityId: string; managerId: string },
   ): Promise<void> {
-    const webhookUrl = this.routingWebhookUrl;
     const workspaceId = authContext.workspace?.id;
 
-    if (!isDefined(webhookUrl) || !isDefined(workspaceId)) {
-      this.logger.warn(
-        'No routing webhook configured — skipping re-engagement notification.',
-      );
-
+    if (!isDefined(workspaceId)) {
       return;
     }
 
@@ -135,16 +183,84 @@ export class ManagerNotificationService {
       params.managerId,
     );
 
-    const lines = [
-      `🔁 *Lead re-engaged* — your client messaged again`,
-      details.managerName ? `Manager: ${details.managerName}` : undefined,
-      details.projectName ? `Project: ${details.projectName}` : undefined,
-      details.who ? `Contact: ${details.who}` : undefined,
-      details.source ? `Source: ${details.source}` : undefined,
-      this.recordUrl(workspaceId, params.opportunityId),
-    ].filter(Boolean);
+    const webhookUrl = await this.resolveManagerWebhookUrl(
+      workspaceId,
+      details.managerUserId,
+    );
 
-    await this.post(webhookUrl, lines.join('\n'));
+    if (!isDefined(webhookUrl)) {
+      this.logger.warn(
+        'No webhook configured — skipping re-engagement notice.',
+      );
+
+      return;
+    }
+
+    const rows = [
+      details.projectName
+        ? { icon: 'DESCRIPTION', label: 'Project', text: details.projectName }
+        : undefined,
+      details.who
+        ? { icon: 'PERSON', label: 'Contact', text: details.who }
+        : undefined,
+      details.source
+        ? { icon: 'STAR', label: 'Source', text: details.source }
+        : undefined,
+    ].filter(isDefined);
+
+    await this.googleChatWebhookService.post(
+      webhookUrl,
+      this.buildDealCard({
+        title: '🔁 Lead re-engaged — your client messaged again',
+        subtitle: 'ENSO CRM · Inbound',
+        rows,
+        recordUrl: this.recordUrl(params.opportunityId),
+        buttonText: 'Open conversation',
+      }),
+    );
+  }
+
+  // Build a Google Chat card for a deal: a row per detail + an Open button when
+  // a record URL is available.
+  private buildDealCard(params: {
+    title: string;
+    subtitle: string;
+    rows: Array<{ icon: string; label: string; text: string }>;
+    recordUrl: string | undefined;
+    buttonText: string;
+  }): Record<string, unknown> {
+    const widgets: Record<string, unknown>[] = params.rows.map((row) => ({
+      decoratedText: {
+        startIcon: { knownIcon: row.icon },
+        topLabel: row.label,
+        text: row.text,
+      },
+    }));
+
+    if (isDefined(params.recordUrl)) {
+      widgets.push({
+        buttonList: {
+          buttons: [
+            {
+              text: params.buttonText,
+              onClick: { openLink: { url: params.recordUrl } },
+            },
+          ],
+        },
+      });
+    }
+
+    return {
+      cardsV2: [
+        {
+          cardId: 'enso-deal',
+          card: {
+            header: { title: params.title, subtitle: params.subtitle },
+            sections: [{ widgets }],
+          },
+        },
+      ],
+    };
   }
 
   private async loadDealDetails(
@@ -153,6 +269,7 @@ export class ManagerNotificationService {
     managerId: string,
   ): Promise<{
     managerName?: string;
+    managerUserId?: string;
     projectName?: string;
     who?: string;
     m2?: number;
@@ -227,6 +344,7 @@ export class ManagerNotificationService {
 
         return {
           managerName: managerName || undefined,
+          managerUserId: manager?.userId ?? undefined,
           projectName,
           who,
           m2: opportunity?.m2Min ?? undefined,
@@ -235,20 +353,5 @@ export class ManagerNotificationService {
       },
       systemAuthContext,
     );
-  }
-
-  private async post(webhookUrl: string, text: string): Promise<void> {
-    try {
-      await axios.post(
-        webhookUrl,
-        { text },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 10_000 },
-      );
-    } catch (error) {
-      // Notification is best-effort — never fail routing because Chat is down.
-      this.logger.error(
-        `Google Chat notification failed: ${(error as Error).message}`,
-      );
-    }
   }
 }

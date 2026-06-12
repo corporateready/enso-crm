@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { GoogleChatWebhookModule } from 'src/modules/enso/notifications/google-chat-webhook.module';
 import { ClaimCheckJob } from 'src/modules/enso/lead-pipeline/jobs/claim-check.job';
 import { NotifyManagerAssignmentJob } from 'src/modules/enso/lead-pipeline/jobs/notify-manager-assignment.job';
 import { ResolveOpportunityFromActivityJob } from 'src/modules/enso/lead-pipeline/jobs/resolve-opportunity-from-activity.job';
@@ -20,6 +21,7 @@ import { PersonProjectConsentNameService } from 'src/modules/enso/person-project
 // the message-queue explorer discovers @Processor classes. The server-side POST
 // hooks live in LeadPipelineModule.
 @Module({
+  imports: [GoogleChatWebhookModule],
   providers: [
     OpportunityNameService,
     OpportunityResolutionService,
