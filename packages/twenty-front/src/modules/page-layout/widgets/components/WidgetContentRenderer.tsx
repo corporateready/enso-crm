@@ -11,6 +11,7 @@ import { GraphWidgetRenderer } from '@/page-layout/widgets/graph/components/Grap
 import { IframeWidget } from '@/page-layout/widgets/iframe/components/IframeWidget';
 import { NoteWidget } from '@/page-layout/widgets/notes/components/NoteWidget';
 import { StandaloneRichTextWidgetRenderer } from '@/page-layout/widgets/standalone-rich-text/components/StandaloneRichTextWidgetRenderer';
+import { TaskActionsWidget } from '@/page-layout/widgets/task-actions/components/TaskActionsWidget';
 import { TaskWidget } from '@/page-layout/widgets/tasks/components/TaskWidget';
 import { TimelineWidget } from '@/page-layout/widgets/timeline/components/TimelineWidget';
 import { WorkflowRunWidget } from '@/page-layout/widgets/workflow/components/WorkflowRunWidget';
@@ -44,6 +45,9 @@ export const WidgetContentRenderer = ({
 
     case WidgetType.TASKS:
       return <TaskWidget widget={widget} />;
+
+    case WidgetType.TASK_ACTIONS:
+      return <TaskActionsWidget widget={widget} />;
 
     case WidgetType.NOTES:
       return <NoteWidget widget={widget} />;
