@@ -10,9 +10,19 @@ import { styled } from '@linaria/react';
 import { SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
 import { H2Title, IconCheck } from 'twenty-ui/display';
-import { Button } from 'twenty-ui/input';
+import { Button, Toggle } from 'twenty-ui/input';
 import { Section } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+
+// Mirror of the server's NOTIFICATION_EVENTS keys.
+const NOTIFICATION_EVENT_LABELS: { event: string; label: string }[] = [
+  { event: 'leadAssigned', label: 'Lead routed to me' },
+  { event: 'leadLost', label: 'Lead reassigned away from me' },
+  { event: 'dealStateChanged', label: 'Deal stage or state changed' },
+  { event: 'inboundReengaged', label: 'Reply on my open deal' },
+  { event: 'taskAssigned', label: 'Task assigned to me' },
+  { event: 'consentChanged', label: 'Consent changed for my contact' },
+];
 
 const StyledInstructions = styled.ol`
   color: ${themeCssVariables.font.color.secondary};
@@ -37,6 +47,18 @@ const StyledStatus = styled.div`
   margin-bottom: ${themeCssVariables.spacing[2]};
 `;
 
+const StyledEventRow = styled.div`
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: ${themeCssVariables.spacing[2]} 0;
+`;
+
+const StyledEventLabel = styled.span`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+`;
+
 export const SettingsNotifications = () => {
   const { t } = useLingui();
 
@@ -48,6 +70,8 @@ export const SettingsNotifications = () => {
     saveWebhookUrl,
     removeWebhookUrl,
     sendTest,
+    preferences,
+    setPreference,
   } = useGoogleChatNotificationSettings();
 
   const { enqueueSuccessSnackBar, enqueueErrorSnackBar } = useSnackBar();
@@ -55,6 +79,18 @@ export const SettingsNotifications = () => {
   const [webhookUrl, setWebhookUrl] = useState('');
 
   const isConfigured = settings?.isConfigured ?? false;
+
+  const isEventEnabled = (event: string) =>
+    preferences.find((preference) => preference.event === event)?.enabled ??
+    true;
+
+  const handleTogglePreference = async (event: string, enabled: boolean) => {
+    try {
+      await setPreference(event, enabled);
+    } catch {
+      enqueueErrorSnackBar({ message: t`Could not update preference` });
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -162,6 +198,21 @@ export const SettingsNotifications = () => {
               />
             )}
           </StyledButtonRow>
+        </Section>
+        <Section>
+          <H2Title
+            title={t`Events`}
+            description={t`Choose which CRM events notify you. Everything is on by default.`}
+          />
+          {NOTIFICATION_EVENT_LABELS.map(({ event, label }) => (
+            <StyledEventRow key={event}>
+              <StyledEventLabel>{label}</StyledEventLabel>
+              <Toggle
+                value={isEventEnabled(event)}
+                onChange={(value) => handleTogglePreference(event, value)}
+              />
+            </StyledEventRow>
+          ))}
         </Section>
       </SettingsPageContainer>
     </SubMenuTopBarContainer>

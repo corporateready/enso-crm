@@ -10,3 +10,25 @@ export const GOOGLE_CHAT_WEBHOOK_URL_MASK = '••••••••••';
 // Incoming webhooks only ever live on this host; reject anything else so a
 // stored URL can't be pointed at an internal/arbitrary endpoint.
 export const GOOGLE_CHAT_WEBHOOK_HOST = 'chat.googleapis.com';
+
+// Per-manager, per-event on/off toggles, stored as a JSON map in keyValuePair
+// (USER_VARIABLE, per userId+workspaceId). A missing key means ON — events are
+// opt-OUT, so a manager receives everything until they mute something.
+export const NOTIFICATION_PREFERENCES_KEY = 'NOTIFICATION_PREFERENCES';
+
+// Event keys for the toggles. String literals (not an enum) so they flow through
+// GraphQL and the keyValuePair JSON untouched. Keep in sync with the front list.
+export const NOTIFICATION_EVENTS = {
+  LEAD_ASSIGNED: 'leadAssigned',
+  LEAD_LOST: 'leadLost',
+  DEAL_STATE_CHANGED: 'dealStateChanged',
+  INBOUND_REENGAGED: 'inboundReengaged',
+  TASK_ASSIGNED: 'taskAssigned',
+  CONSENT_CHANGED: 'consentChanged',
+} as const;
+
+export type NotificationEventKey =
+  (typeof NOTIFICATION_EVENTS)[keyof typeof NOTIFICATION_EVENTS];
+
+export const NOTIFICATION_EVENT_KEYS: NotificationEventKey[] =
+  Object.values(NOTIFICATION_EVENTS);
