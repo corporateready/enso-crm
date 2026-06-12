@@ -15,6 +15,8 @@ import { MessageQueueService } from 'src/engine/core-modules/message-queue/servi
 import { MarketingSyncJob } from 'src/modules/enso/marketing-sync/jobs/marketing-sync.job';
 import {
   buildPersonTraits,
+  INBOUND_ACTIVITY_EVENT_BY_KIND,
+  type InboundActivityRecord,
   MARKETING_EVENT_DEAL_STAGE_CHANGED,
   type MarketingSyncJobData,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
@@ -115,6 +117,54 @@ export class MarketingSyncListener {
           },
           timestamp,
           messageId: `track:deal_stage_changed:${event.recordId}:${timestamp}`,
+        },
+      );
+    }
+  }
+
+  // Lifecycle events: a new inboundActivity (form submit, social DM, call,
+  // appointment) → track on the person. form_submitted starts the intro drip;
+  // inbound_message is the reply→drip-exit signal. Fires on raw-ORM intake
+  // writes too (the ORM emits the event), so the intake pipeline is covered.
+  @OnDatabaseBatchEvent('inboundActivity', DatabaseEventAction.CREATED)
+  async onInboundActivityCreated(
+    payload: WorkspaceEventBatch<
+      ObjectRecordCreateEvent<InboundActivityRecord>
+    >,
+  ): Promise<void> {
+    for (const event of payload.events) {
+      const activity = event.properties.after;
+
+      // Need a resolved person and a mapped kind to attribute the event.
+      if (!isDefined(activity.personId) || !isDefined(activity.kind)) {
+        continue;
+      }
+
+      const eventName = INBOUND_ACTIVITY_EVENT_BY_KIND[activity.kind];
+
+      if (!isDefined(eventName)) {
+        continue;
+      }
+
+      const timestamp = this.toIso(activity.occurredAt ?? activity.createdAt);
+
+      await this.messageQueueService.add<MarketingSyncJobData>(
+        MarketingSyncJob.name,
+        {
+          kind: 'track',
+          workspaceId: payload.workspaceId,
+          userId: activity.personId,
+          event: eventName,
+          properties: {
+            inboundActivityId: event.recordId,
+            inboundKind: activity.kind,
+            source: activity.source,
+            opportunityId: activity.opportunityId,
+            projectId: activity.projectId,
+          },
+          timestamp,
+          // recordId is unique per activity → idempotent across job retries.
+          messageId: `track:inbound:${event.recordId}`,
         },
       );
     }
