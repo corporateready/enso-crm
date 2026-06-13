@@ -1,20 +1,30 @@
 import { Logger } from '@nestjs/common';
 
+import { isDefined } from 'twenty-shared/utils';
+
 import { Process } from 'src/engine/core-modules/message-queue/decorators/process.decorator';
 import { Processor } from 'src/engine/core-modules/message-queue/decorators/processor.decorator';
 import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queue.constants';
-import { type MarketingSyncJobData } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
+import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import {
+  MARKETING_EVENT_DEAL_CREATED,
+  type MarketingSyncJobData,
+} from 'src/modules/enso/marketing-sync/marketing-sync.constants';
 import { DittofeedClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-client.service';
 
 // Worker-side executor: takes a prepared identify/track payload (built by the
 // listener) and pushes it to Dittofeed. Kept thin so BullMQ retries handle a
-// transient Dittofeed/Resend outage; the client throws on HTTP failure.
+// transient Dittofeed/Resend outage; the client throws on HTTP failure. The
+// one exception is deal_created, which needs ORM reads (first-deal count +
+// project brand) — done here, off the worker's DB connection.
 @Processor(MessageQueue.ensoMarketingSyncQueue)
 export class MarketingSyncJob {
   private readonly logger = new Logger(MarketingSyncJob.name);
 
   constructor(
     private readonly dittofeedClientService: DittofeedClientService,
+    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
   @Process(MarketingSyncJob.name)
@@ -29,6 +39,24 @@ export class MarketingSyncJob {
       return;
     }
 
+    if (data.kind === 'track_deal_created') {
+      const properties = await this.buildDealCreatedProperties(
+        data.workspaceId,
+        data.opportunityId,
+        data.userId,
+      );
+
+      await this.dittofeedClientService.track(data.workspaceId, {
+        userId: data.userId,
+        event: MARKETING_EVENT_DEAL_CREATED,
+        properties,
+        timestamp: data.timestamp,
+        messageId: data.messageId,
+      });
+
+      return;
+    }
+
     await this.dittofeedClientService.track(data.workspaceId, {
       userId: data.userId,
       event: data.event,
@@ -36,5 +64,63 @@ export class MarketingSyncJob {
       timestamp: data.timestamp,
       messageId: data.messageId,
     });
+  }
+
+  // Enrich a deal_created event from the ORM: the deal's project + amount,
+  // whether this is the person's first deal, and the project brand (which
+  // intro to send). Brand is read defensively — null if the project object has
+  // no `brand` field provisioned yet.
+  private async buildDealCreatedProperties(
+    workspaceId: string,
+    opportunityId: string,
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const opportunityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'opportunity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const opportunity = await opportunityRepository.findOne({
+        where: { id: opportunityId },
+      });
+
+      const projectId = opportunity?.projectId ?? null;
+      const amount = opportunity?.amount ?? null;
+
+      // The just-created deal is already persisted, so a count of 1 means it's
+      // the person's first.
+      const totalForPerson = await opportunityRepository.count({
+        where: { pointOfContactId: userId },
+      });
+      const isFirstDealForPerson = totalForPerson <= 1;
+
+      let projectBrand: string | null = null;
+
+      if (isDefined(projectId)) {
+        const projectRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'project',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const project = await projectRepository.findOne({
+          where: { id: projectId },
+        });
+
+        projectBrand = project?.brand ?? null;
+      }
+
+      return {
+        opportunityId,
+        projectId,
+        projectBrand,
+        amount,
+        isFirstDealForPerson,
+      };
+    }, buildSystemAuthContext(workspaceId));
   }
 }

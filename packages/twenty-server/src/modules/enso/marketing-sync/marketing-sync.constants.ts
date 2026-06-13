@@ -22,10 +22,49 @@ export type MarketingSyncJobData =
       properties: Record<string, unknown>;
       timestamp: string;
       messageId: string;
+    }
+  | {
+      // deal_created: the listener only has the opportunity id; the worker job
+      // enriches it (first-deal flag, project brand) from the ORM before track.
+      kind: 'track_deal_created';
+      workspaceId: string;
+      userId: string;
+      opportunityId: string;
+      timestamp: string;
+      messageId: string;
     };
 
 // Track event names (Dittofeed journeys branch on these).
 export const MARKETING_EVENT_DEAL_STAGE_CHANGED = 'deal_stage_changed';
+// Fired when a deal is first created with a point of contact — the entry event
+// for the introductory journey. Carries isFirstDealForPerson + projectBrand,
+// computed worker-side at emit (see MarketingSyncJob), so the journey can gate
+// on "new prospect" and branch by brand.
+export const MARKETING_EVENT_DEAL_CREATED = 'deal_created';
+
+// inboundActivity.kind → Dittofeed track event. Drives lifecycle journeys
+// (form → intro drip) and the reply→drip-exit signal (inbound_message — a
+// journey's engagement-exit node listens for it). Kinds match the enso
+// inboundActivity SELECT values (see sequencing INBOUND_KIND_TO_CHANNEL).
+export const INBOUND_ACTIVITY_EVENT_BY_KIND: Readonly<Record<string, string>> = {
+  FORM_SUBMISSION: 'form_submitted',
+  LEAD_AD: 'form_submitted',
+  SOCIAL_MESSAGE: 'inbound_message',
+  INCOMING_CALL: 'call_received',
+  APPOINTMENT_BOOKED: 'appointment_booked',
+};
+
+// Minimal shape of the enso inboundActivity custom object (no generated entity
+// for custom objects, so we type the event payload by hand).
+export type InboundActivityRecord = {
+  kind: string | null;
+  personId: string | null;
+  opportunityId: string | null;
+  projectId: string | null;
+  source: string | null;
+  occurredAt: string | null;
+  createdAt: string | null;
+};
 
 // Compose an E.164 number from Twenty's PHONES composite. Returns undefined
 // when there's no number. callingCode may or may not carry a leading '+'.

@@ -6,9 +6,9 @@ import { SecureHttpClientService } from 'src/engine/core-modules/secure-http-cli
 
 // Thin client over Dittofeed's Segment-compatible ingestion API.
 // Endpoints: POST {base}/api/public/apps/identify and /track.
-// Auth: Authorization: Basic <writeKey> — DITTOFEED_WRITE_KEY is the
-// "Public Write Key" from Dittofeed → Settings → Authentication, used
-// verbatim (Dittofeed exposes it already base64-encoded for Basic auth).
+// Auth: Authorization: Basic base64("<keyId>:<keySecret>"). DITTOFEED_WRITE_KEY
+// may be set either as the raw "<keyId>:<keySecret>" pair (we base64-encode it)
+// or already base64-encoded (used verbatim — a base64 string never contains ':').
 // Config is read from process.env, consistent with the other enso modules
 // (chatwoot, company-enrichment). When unconfigured the calls no-op so a
 // missing key never breaks the worker.
@@ -45,6 +45,19 @@ export class DittofeedClientService {
 
   get isConfigured(): boolean {
     return isNonEmptyString(this.baseUrl) && isNonEmptyString(this.writeKey);
+  }
+
+  // Dittofeed Basic auth = base64("<keyId>:<keySecret>"). Encode the raw pair
+  // (contains ':'); pass an already-encoded value through (base64 has no ':').
+  // Tolerate common env-paste mistakes: surrounding whitespace/newlines and an
+  // accidental "Basic " prefix copied from a curl example.
+  private get authorizationHeader(): string {
+    const key = (this.writeKey ?? '').trim().replace(/^Basic\s+/i, '');
+    const encoded = key.includes(':')
+      ? Buffer.from(key).toString('base64')
+      : key;
+
+    return `Basic ${encoded}`;
   }
 
   async identify(workspaceId: string, payload: IdentifyPayload): Promise<void> {
@@ -86,7 +99,7 @@ export class DittofeedClientService {
     // Throws on failure so the enqueuing BullMQ job retries.
     await client.post(`${this.baseUrl}/api/public/apps/${endpoint}`, body, {
       headers: {
-        Authorization: `Basic ${this.writeKey}`,
+        Authorization: this.authorizationHeader,
         'Content-Type': 'application/json',
       },
     });
