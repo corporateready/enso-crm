@@ -2,8 +2,10 @@ import { styled } from '@linaria/react';
 import { useState } from 'react';
 
 import { isDefined } from 'twenty-shared/utils';
+import { Tag } from 'twenty-ui/components';
 import {
   IconBrandWhatsapp,
+  IconClock,
   IconDeviceMobile,
   IconExternalLink,
   IconPhone,
@@ -26,7 +28,8 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 const StyledContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${themeCssVariables.spacing[3]};
+  gap: ${themeCssVariables.spacing[4]};
+  max-width: 460px;
   padding: ${themeCssVariables.spacing[3]};
   width: 100%;
 `;
@@ -48,11 +51,6 @@ const StyledRow = styled.div`
   gap: ${themeCssVariables.spacing[2]};
 `;
 
-const StyledStatus = styled.div`
-  color: ${themeCssVariables.font.color.secondary};
-  font-size: ${themeCssVariables.font.size.sm};
-`;
-
 const StyledTextArea = styled.textarea`
   background: ${themeCssVariables.background.transparent.lighter};
   border: 1px solid ${themeCssVariables.border.color.medium};
@@ -60,7 +58,7 @@ const StyledTextArea = styled.textarea`
   color: ${themeCssVariables.font.color.primary};
   font-family: inherit;
   font-size: ${themeCssVariables.font.size.md};
-  min-height: 52px;
+  min-height: 56px;
   padding: ${themeCssVariables.spacing[2]};
   resize: vertical;
   width: 100%;
@@ -88,16 +86,17 @@ type LinkContext = {
 type ActionConfig = {
   label: string;
   Icon: IconComponent;
-  variant: 'primary' | 'secondary';
   soon?: boolean;
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
 type ChannelSurface = {
-  actions: ActionConfig[];
+  onSystem: ActionConfig[];
+  offSystem: ActionConfig[];
+  onSystemLabel?: string;
+  offSystemLabel?: string;
   outcomes: string[];
-  observed?: boolean;
-  showNotes: boolean;
+  waitingStatus?: string;
   dealDispositionNote?: boolean;
 };
 
@@ -131,40 +130,42 @@ const CALL_OUTCOMES = [
 ];
 const MESSAGE_OUTCOMES = ['REACHED', 'NO_ANSWER'];
 
+const telHref = (context: LinkContext) =>
+  isDefined(context.phoneE164) ? `tel:${context.phoneE164}` : undefined;
+
 const getChannelSurface = (
   channel: string | null | undefined,
 ): ChannelSurface => {
   switch (channel) {
     case 'CALL':
       return {
-        actions: [
-          { label: 'Call from web', Icon: IconWorld, variant: 'primary', soon: true },
-          { label: 'Request callback', Icon: IconPhone, variant: 'primary', soon: true },
+        onSystemLabel: 'On system · contact, duration & recording captured',
+        onSystem: [
+          { label: 'Call from web', Icon: IconWorld, soon: true },
+          { label: 'Request callback', Icon: IconPhone, soon: true },
+        ],
+        offSystemLabel: 'Off system · you dial, then log it',
+        offSystem: [
           {
             label: 'Call manually',
             Icon: IconDeviceMobile,
-            variant: 'secondary',
-            buildHref: (context) =>
-              isDefined(context.phoneE164) ? `tel:${context.phoneE164}` : undefined,
+            buildHref: telHref,
           },
         ],
         outcomes: CALL_OUTCOMES,
-        showNotes: true,
         dealDispositionNote: true,
       };
     case 'WHATSAPP':
       return {
-        actions: [
-          {
-            label: 'Open corporate chat',
-            Icon: IconBrandWhatsapp,
-            variant: 'primary',
-            soon: true,
-          },
+        onSystemLabel: 'On system · corporate number, two-way & observed',
+        onSystem: [
+          { label: 'Open corporate chat', Icon: IconBrandWhatsapp, soon: true },
+        ],
+        offSystemLabel: 'Off system · personal phone, log it',
+        offSystem: [
           {
             label: 'Open on phone',
             Icon: IconDeviceMobile,
-            variant: 'secondary',
             buildHref: (context) =>
               isDefined(context.phoneDigits)
                 ? `https://wa.me/${context.phoneDigits}`
@@ -172,43 +173,43 @@ const getChannelSurface = (
           },
         ],
         outcomes: MESSAGE_OUTCOMES,
-        observed: true,
-        showNotes: true,
+        waitingStatus: 'Waiting for reply',
       };
     case 'SMS':
       return {
-        actions: [
-          { label: 'Send corporate SMS', Icon: IconSend, variant: 'primary', soon: true },
+        onSystemLabel: 'On system · gateway, delivery captured (one-way)',
+        onSystem: [{ label: 'Send corporate SMS', Icon: IconSend, soon: true }],
+        offSystemLabel: 'Off system · sent from your phone, log it',
+        offSystem: [
           {
             label: 'Send manually',
             Icon: IconDeviceMobile,
-            variant: 'secondary',
             buildHref: (context) =>
-              isDefined(context.phoneE164) ? `sms:${context.phoneE164}` : undefined,
+              isDefined(context.phoneE164)
+                ? `sms:${context.phoneE164}`
+                : undefined,
           },
         ],
         outcomes: MESSAGE_OUTCOMES,
-        showNotes: true,
       };
     case 'SOCIAL':
       return {
-        actions: [
+        onSystem: [
           {
             label: 'Open conversation',
             Icon: IconExternalLink,
-            variant: 'primary',
             buildHref: (context) => context.socialUrl,
           },
         ],
+        offSystem: [],
         outcomes: MESSAGE_OUTCOMES,
-        observed: true,
-        showNotes: true,
+        waitingStatus: 'Waiting for reply',
       };
     default:
       return {
-        actions: [],
+        onSystem: [],
+        offSystem: [],
         outcomes: MESSAGE_OUTCOMES,
-        showNotes: true,
       };
   }
 };
@@ -222,7 +223,8 @@ const buildLinkContext = (person: PersonForLinks | undefined): LinkContext => {
     : undefined;
   const digits = isDefined(e164) ? e164.replace(/\D/g, '') : undefined;
   const socialUrl =
-    person?.instagramLink?.primaryLinkUrl ?? person?.facebookLink?.primaryLinkUrl;
+    person?.instagramLink?.primaryLinkUrl ??
+    person?.facebookLink?.primaryLinkUrl;
 
   return {
     phoneE164: e164,
@@ -259,7 +261,11 @@ export const TaskActionsWidget = ({
   const { records: taskTargets } = useFindManyRecords({
     objectNameSingular: 'taskTarget',
     filter: { taskId: { eq: taskId } },
-    recordGqlFields: { id: true, targetOpportunityId: true, targetPersonId: true },
+    recordGqlFields: {
+      id: true,
+      targetOpportunityId: true,
+      targetPersonId: true,
+    },
     skip: !isDefined(taskId),
   });
 
@@ -322,62 +328,72 @@ export const TaskActionsWidget = ({
     }
   };
 
+  const renderAction = (action: ActionConfig, isPrimary: boolean) => {
+    const href = action.buildHref?.(linkContext);
+    const isDeepLink = isDefined(action.buildHref);
+    const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
+
+    return (
+      <Button
+        key={action.label}
+        title={action.label}
+        Icon={action.Icon}
+        variant={isPrimary ? 'primary' : 'secondary'}
+        accent={isPrimary ? 'blue' : 'default'}
+        soon={action.soon}
+        disabled={isDisabled}
+        onClick={isDeepLink ? () => handleOpen(href) : undefined}
+      />
+    );
+  };
+
   return (
     <StyledContainer>
-      {surface.actions.length > 0 && (
+      {surface.onSystem.length > 0 && (
         <StyledSection>
-          <StyledRow>
-            {surface.actions.map((action) => {
-              const href = action.buildHref?.(linkContext);
-              const isDeepLink = isDefined(action.buildHref);
-              const isDisabled =
-                action.soon === true || (isDeepLink && !isDefined(href));
-
-              return (
-                <Button
-                  key={action.label}
-                  title={action.label}
-                  Icon={action.Icon}
-                  variant={action.variant}
-                  soon={action.soon}
-                  disabled={isDisabled}
-                  onClick={isDeepLink ? () => handleOpen(href) : undefined}
-                />
-              );
-            })}
-          </StyledRow>
-          {surface.observed === true && (
-            <StyledStatus>
-              Waiting for reply — a reply advances the deal to Connected
-              automatically.
-            </StyledStatus>
+          {isDefined(surface.onSystemLabel) && (
+            <StyledSectionLabel>{surface.onSystemLabel}</StyledSectionLabel>
           )}
-        </StyledSection>
-      )}
-
-      {surface.showNotes && (
-        <StyledSection>
-          <StyledSectionLabel>
-            Log what happened on this touch
-          </StyledSectionLabel>
-          <StyledTextArea
-            placeholder="Notes (what you said, what they wanted)…"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-          />
           <StyledRow>
-            {surface.outcomes.map((outcome) => (
-              <Button
-                key={outcome}
-                title={OUTCOME_LABELS[outcome] ?? outcome}
-                variant="secondary"
-                disabled={isSaving}
-                onClick={() => handleLog(outcome)}
-              />
-            ))}
+            {surface.onSystem.map((action) => renderAction(action, true))}
           </StyledRow>
         </StyledSection>
       )}
+
+      {surface.offSystem.length > 0 && (
+        <StyledSection>
+          {isDefined(surface.offSystemLabel) && (
+            <StyledSectionLabel>{surface.offSystemLabel}</StyledSectionLabel>
+          )}
+          <StyledRow>
+            {surface.offSystem.map((action) => renderAction(action, false))}
+          </StyledRow>
+        </StyledSection>
+      )}
+
+      {isDefined(surface.waitingStatus) && (
+        <Tag color="orange" text={surface.waitingStatus} Icon={IconClock} />
+      )}
+
+      <StyledSection>
+        <StyledSectionLabel>Log what happened on this touch</StyledSectionLabel>
+        <StyledTextArea
+          placeholder="Notes (what you said, what they wanted)…"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+        <StyledRow>
+          {surface.outcomes.map((outcome) => (
+            <Button
+              key={outcome}
+              title={OUTCOME_LABELS[outcome] ?? outcome}
+              variant="secondary"
+              disabled={isSaving}
+              onClick={() => handleLog(outcome)}
+            />
+          ))}
+        </StyledRow>
+      </StyledSection>
 
       {surface.dealDispositionNote === true && (
         <StyledFootnote>
