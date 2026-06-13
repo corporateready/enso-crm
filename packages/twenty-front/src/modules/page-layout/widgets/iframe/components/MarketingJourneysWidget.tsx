@@ -2,6 +2,7 @@ import { useLingui } from '@lingui/react/macro';
 import { styled } from '@linaria/react';
 import { useEffect, useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
+import { useIcons } from 'twenty-ui/display';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { REST_API_BASE_URL } from '@/apollo/constant/rest-api-base-url';
@@ -10,9 +11,10 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 
 // ENSO — manager-facing marketing-journey view on a Person (or Opportunity, via
-// its point of contact). One collapsible card per journey: the full authored
-// step sequence (done / current / upcoming), with live delivery status overlaid
-// on the emails that already went out. Read-only.
+// its point of contact). One collapsible card per journey showing the full
+// authored action sequence — each action iconed by type (journey/segment/
+// audience enter-exit, email, sms) and coloured by state (done / current /
+// upcoming) and, for messages, by live delivery status. Read-only.
 export const ENSO_MARKETING_JOURNEYS_MARKER = '__enso_marketing_journeys';
 
 type Delivery = {
@@ -23,7 +25,8 @@ type Delivery = {
   journeyId: string | null;
 };
 
-// Dittofeed email statuses → friendly label + colour state.
+// Dittofeed email statuses → friendly label + state (good=engaged, ok=neutral,
+// bad=problem).
 const STATUS_META: Record<string, { label: string; state: string }> = {
   DFEmailDelivered: { label: 'Delivered', state: 'ok' },
   DFEmailOpened: { label: 'Opened', state: 'good' },
@@ -34,29 +37,89 @@ const STATUS_META: Record<string, { label: string; state: string }> = {
   DFEmailMarkedSpam: { label: 'Marked spam', state: 'bad' },
 };
 
-// We author the journeys, so we know each step sequence + the email subjects —
-// which lets us show steps that haven't happened yet ("upcoming") and name the
-// emails. `email: true` steps are matched, in order, to the user's deliveries.
-// `dittofeedJourneyId` attributes deliveries to the right journey when a person
-// is in several. Unknown journeys fall back to just the current step.
-type JourneyStep = { key: string; label: string; email?: boolean };
+// Action kinds — drive the icon + colour so lifecycle steps read differently
+// from messages. Covers the full vocabulary: journey/segment/audience enter &
+// exit, email, sms.
+type StepKind =
+  | 'journey-enter'
+  | 'journey-complete'
+  | 'journey-exit'
+  | 'segment-enter'
+  | 'segment-exit'
+  | 'audience-enter'
+  | 'audience-exit'
+  | 'email'
+  | 'sms';
+
+const KIND_ICON: Record<StepKind, string> = {
+  'journey-enter': 'IconRoute',
+  'journey-complete': 'IconCircleCheck',
+  'journey-exit': 'IconLogout',
+  'segment-enter': 'IconUsersGroup',
+  'segment-exit': 'IconUsersMinus',
+  'audience-enter': 'IconTargetArrow',
+  'audience-exit': 'IconTargetOff',
+  email: 'IconMail',
+  sms: 'IconMessage',
+};
+
+const isMessageKind = (kind: StepKind) => kind === 'email' || kind === 'sms';
+
+type JourneyStep = { key: string; label: string; kind: StepKind };
 const JOURNEY_DEFINITIONS: Record<
   string,
-  { label: string; dittofeedJourneyId?: string; steps: JourneyStep[] }
+  { label: string; dittofeedJourneyId: string; steps: JourneyStep[] }
 > = {
   ENSO_ESTATE_INTRO: {
     label: 'ENSO Estate · Intro',
     dittofeedJourneyId: 'c1e85ea4-5f4d-4b5b-aecd-ccd247cae95e',
     steps: [
-      { key: 'entered', label: 'Entered journey' },
-      { key: 'email_1_sent', label: 'Welcome to ENSO', email: true },
+      { key: 'entered', label: 'Entered journey', kind: 'journey-enter' },
+      { key: 'email_1_sent', label: 'Welcome to ENSO', kind: 'email' },
       {
         key: 'email_2_sent',
         label: 'What makes an ENSO home different',
-        email: true,
+        kind: 'email',
       },
-      { key: 'email_3_sent', label: 'Want to see it in person?', email: true },
-      { key: 'finished', label: 'Completed' },
+      { key: 'email_3_sent', label: 'Want to see it in person?', kind: 'email' },
+      { key: 'finished', label: 'Completed', kind: 'journey-complete' },
+    ],
+  },
+  // Demo journeys (different states) — showcase the icon vocabulary.
+  ARTIMA_NURTURE: {
+    label: 'ARTIMA · Nurture',
+    dittofeedJourneyId: 'demo-artima-nurture',
+    steps: [
+      { key: 'entered', label: 'Entered journey', kind: 'journey-enter' },
+      {
+        key: 'segment_added',
+        label: 'Added to "Warm leads" segment',
+        kind: 'segment-enter',
+      },
+      { key: 'email_1_sent', label: 'ARTIMA welcome', kind: 'email' },
+      { key: 'email_2_sent', label: 'Lifestyle brochure', kind: 'email' },
+      {
+        key: 'audience_added',
+        label: 'Added to Meta retargeting',
+        kind: 'audience-enter',
+      },
+      { key: 'email_3_sent', label: 'Book a private tour', kind: 'email' },
+      { key: 'finished', label: 'Completed', kind: 'journey-complete' },
+    ],
+  },
+  NEWTON_REENGAGE: {
+    label: 'NEWTON · Re-engage',
+    dittofeedJourneyId: 'demo-newton-reengage',
+    steps: [
+      { key: 'entered', label: 'Entered journey', kind: 'journey-enter' },
+      { key: 'email_1_sent', label: 'We miss you', kind: 'email' },
+      { key: 'sms_1_sent', label: 'SMS nudge', kind: 'sms' },
+      {
+        key: 'segment_removed',
+        label: 'Removed from "Active" segment',
+        kind: 'segment-exit',
+      },
+      { key: 'exited', label: 'Exited — replied', kind: 'journey-exit' },
     ],
   },
 };
@@ -144,7 +207,6 @@ const StyledJourneyName = styled.span`
   white-space: nowrap;
 `;
 
-// $state: active (blue) | finished (green) | exited (muted)
 const StyledBadge = styled.span<{ $state: string }>`
   color: ${({ $state }) =>
     $state === 'finished'
@@ -178,25 +240,10 @@ const StyledStepLeft = styled.div`
   min-width: 0;
 `;
 
-// $state: done (green dot) | current (blue dot) | upcoming (hollow/muted)
-const StyledDot = styled.span<{ $state: string }>`
-  background: ${({ $state }) =>
-    $state === 'done'
-      ? themeCssVariables.color.green
-      : $state === 'current'
-        ? themeCssVariables.color.blue
-        : 'transparent'};
-  border: 1px solid
-    ${({ $state }) =>
-      $state === 'done'
-        ? themeCssVariables.color.green
-        : $state === 'current'
-          ? themeCssVariables.color.blue
-          : themeCssVariables.border.color.strong};
-  border-radius: 50%;
+const StyledIconWrap = styled.span`
+  align-items: center;
+  display: flex;
   flex: 0 0 auto;
-  height: 8px;
-  width: 8px;
 `;
 
 const StyledStepLabel = styled.span<{ $upcoming: boolean }>`
@@ -210,7 +257,6 @@ const StyledStepLabel = styled.span<{ $upcoming: boolean }>`
   white-space: nowrap;
 `;
 
-// $state: good (green) | ok (secondary) | bad (danger) | upcoming (tertiary)
 const StyledStepMeta = styled.span<{ $state: string }>`
   color: ${({ $state }) =>
     $state === 'good'
@@ -227,8 +273,31 @@ const StyledStepMeta = styled.span<{ $state: string }>`
 const statusBadgeState = (status: unknown): string =>
   status === 'FINISHED' ? 'finished' : status === 'EXITED' ? 'exited' : 'active';
 
+// Icon colour: upcoming muted; current blue; done → green for healthy messages,
+// danger for bounced, muted for "exit" actions, and accent colours that set
+// lifecycle/segment/audience apart from the green message steps.
+const iconColor = (
+  kind: StepKind,
+  stepState: string,
+  deliveryState: string | null,
+): string => {
+  if (stepState === 'upcoming') return themeCssVariables.font.color.tertiary;
+  if (stepState === 'current') return themeCssVariables.color.blue;
+
+  if (isMessageKind(kind)) {
+    return deliveryState === 'bad'
+      ? themeCssVariables.font.color.danger
+      : themeCssVariables.color.green;
+  }
+  if (kind.endsWith('-exit')) return themeCssVariables.font.color.tertiary;
+  if (kind === 'segment-enter') return themeCssVariables.color.purple;
+  if (kind === 'audience-enter') return themeCssVariables.color.orange;
+  return themeCssVariables.color.blue; // journey-enter / journey-complete
+};
+
 export const MarketingJourneysWidget = () => {
   const { t } = useLingui();
+  const { getIcon } = useIcons();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
 
   const recordId = targetRecordIdentifier?.id;
@@ -286,7 +355,6 @@ export const MarketingJourneysWidget = () => {
     };
   }, [personId]);
 
-  // Collapse finished/exited journeys by default; keep active ones open.
   useEffect(() => {
     setCollapsed(
       new Set(
@@ -341,8 +409,6 @@ export const MarketingJourneysWidget = () => {
         const status = enrollment.status as string;
         const isOpen = !collapsed.has(id);
 
-        // Deliveries for THIS journey, oldest first — matched in order to the
-        // journey's email steps.
         const journeyDeliveries = deliveries
           .filter(
             (delivery) =>
@@ -352,15 +418,20 @@ export const MarketingJourneysWidget = () => {
           .slice()
           .sort((a, b) => (a.sentAt ?? '').localeCompare(b.sentAt ?? ''));
 
-        const steps = definition?.steps ?? [
-          { key: enrollment.currentStep as string, label: t`Current step` },
+        const steps: JourneyStep[] = definition?.steps ?? [
+          {
+            key: (enrollment.currentStep as string) ?? 'current',
+            label: t`Current step`,
+            kind: 'journey-enter',
+          },
         ];
         const currentIndex = steps.findIndex(
           (step) => step.key === enrollment.currentStep,
         );
         const isFinished = status === 'FINISHED';
+        const isExited = status === 'EXITED';
 
-        let emailCursor = 0;
+        let messageCursor = 0;
 
         return (
           <StyledCard key={id}>
@@ -379,32 +450,37 @@ export const MarketingJourneysWidget = () => {
             {isOpen && (
               <StyledSteps>
                 {steps.map((step, index) => {
-                  const stepState = isFinished
-                    ? 'done'
-                    : index < currentIndex
+                  const stepState =
+                    isFinished || index < currentIndex
                       ? 'done'
-                      : index === currentIndex
-                        ? 'current'
-                        : 'upcoming';
+                      : isExited && index === currentIndex
+                        ? 'done'
+                        : index === currentIndex
+                          ? 'current'
+                          : 'upcoming';
                   const isUpcoming = stepState === 'upcoming';
 
-                  // Attach a delivery to each email step, in order.
-                  const delivery = step.email
-                    ? journeyDeliveries[emailCursor++]
+                  const delivery = isMessageKind(step.kind)
+                    ? journeyDeliveries[messageCursor++]
                     : undefined;
+                  const deliveryMeta = isDefined(delivery)
+                    ? (STATUS_META[delivery.status] ?? {
+                        label: delivery.status,
+                        state: 'ok',
+                      })
+                    : null;
 
                   let meta = { text: '', state: 'ok' };
                   if (isUpcoming) {
                     meta = { text: t`Upcoming`, state: 'upcoming' };
-                  } else if (isDefined(delivery)) {
-                    const sm = STATUS_META[delivery.status] ?? {
-                      label: delivery.status,
-                      state: 'ok',
-                    };
-                    const date = formatDate(delivery.sentAt);
+                  } else if (isDefined(deliveryMeta)) {
+                    const date = formatDate(delivery?.sentAt);
                     meta = {
-                      text: date !== '' ? `${sm.label} · ${date}` : sm.label,
-                      state: sm.state,
+                      text:
+                        date !== ''
+                          ? `${deliveryMeta.label} · ${date}`
+                          : deliveryMeta.label,
+                      state: deliveryMeta.state,
                     };
                   } else if (stepState === 'current') {
                     meta = { text: t`In progress`, state: 'ok' };
@@ -412,10 +488,19 @@ export const MarketingJourneysWidget = () => {
                     meta = { text: t`Done`, state: 'ok' };
                   }
 
+                  const StepIcon = getIcon(KIND_ICON[step.kind]);
+                  const color = iconColor(
+                    step.kind,
+                    stepState,
+                    deliveryMeta?.state ?? null,
+                  );
+
                   return (
                     <StyledStepRow key={step.key}>
                       <StyledStepLeft>
-                        <StyledDot $state={stepState} />
+                        <StyledIconWrap>
+                          <StepIcon size={16} color={color} stroke={2} />
+                        </StyledIconWrap>
                         <StyledStepLabel $upcoming={isUpcoming}>
                           {step.label}
                         </StyledStepLabel>
