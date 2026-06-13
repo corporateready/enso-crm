@@ -166,6 +166,38 @@ outline with a device icon and reveal the manual log.
   no reply to observe).
 - **Off system · log it:** `[Send manually]` + a notes field.
 
+## Off-system handling (outside devices)
+
+The pragmatic first cut for telephony/SMS/WhatsApp: the rep acts on **their own
+phone**, the CRM launches the right app and captures their report. (On-system —
+corporate phone + corporate WhatsApp — comes later; see below.) The CRM can't *do*
+or *observe* the touch, so its job is launch + capture.
+
+- **Surface is the phone.** Deep-links only work on the device making the touch, so
+  the off-system path is mobile-first: open the task on the phone → Actions tab → tap.
+- **Call (off-system) = plain dialer + a CRM timer.** Tap `Call manually` →
+  `tel:+E164` opens the default dialer **and** a CRM-side timer starts. The rep makes
+  the call, returns, hits **Stop** → the elapsed time is captured as the touch
+  `durationS` (the plain GSM call is otherwise invisible to us), then they pick the
+  disposition. This is how we get a duration without telephony integration.
+- **WhatsApp (off-system)** → `https://wa.me/<digits>?text=<message>` opens WhatsApp
+  with the message pre-filled (personalised greeting for now; full templates later).
+- **SMS (off-system)** → `sms:+E164` opens Messages (body pre-fill is unreliable
+  cross-platform → pair with a copy affordance later).
+- **Report = the only signal.** After the touch the rep logs the reachability outcome
+  (+ notes); for off-system there is no recording / delivery receipt / reply
+  detection, so their report is authoritative.
+
+### Corporate (on-system) vs off-system — the call split
+- **Off-system** = plain dialer (`tel:`) + manual timer + manual disposition. Untracked
+  except the manually-timed duration. Built first.
+- **Corporate (on-system)** = a separate `Call from corporate phone` action that
+  deep-links into the PBX app — **Zadarma (RO) / Moldcell via Zapier (MD)** — where the
+  call is recorded and synced back. Tracked both ways. Later pass (needs the
+  integration, not just the deep-link).
+- **Corporate WhatsApp** stays its own on-system mode (tracked both ways); the
+  off-system `Open on phone` path is the personal-device fallback.
+
 ## What every completed touch produces
 
 Regardless of widget, completing a touch writes:

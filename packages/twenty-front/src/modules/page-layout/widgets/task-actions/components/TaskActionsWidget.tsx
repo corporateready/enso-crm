@@ -1,5 +1,5 @@
 import { styled } from '@linaria/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { isDefined } from 'twenty-shared/utils';
 import { Tag } from 'twenty-ui/components';
@@ -46,6 +46,7 @@ const StyledSectionLabel = styled.div`
 `;
 
 const StyledRow = styled.div`
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: ${themeCssVariables.spacing[2]};
@@ -75,18 +76,22 @@ const StyledFootnote = styled.div`
 // of a touch, and anything done off our infrastructure. On-system actions that need
 // telephony / messaging integrations are shown as `soon`. Off-system actions are
 // native deep-links built from the linked person's phone / social profile.
+// A plain off-system call can't report its duration, so "Call manually" starts a
+// CRM-side timer the manager stops on return — that timed duration is logged.
 // See docs/logging-architecture.md.
 
 type LinkContext = {
   phoneE164?: string;
   phoneDigits?: string;
   socialUrl?: string;
+  greeting?: string;
 };
 
 type ActionConfig = {
   label: string;
   Icon: IconComponent;
   soon?: boolean;
+  startsTimer?: boolean;
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
@@ -101,6 +106,7 @@ type ChannelSurface = {
 };
 
 type PersonForLinks = {
+  name?: { firstName?: string } | null;
   phones?: {
     primaryPhoneNumber?: string;
     primaryPhoneCallingCode?: string;
@@ -133,6 +139,13 @@ const MESSAGE_OUTCOMES = ['REACHED', 'NO_ANSWER'];
 const telHref = (context: LinkContext) =>
   isDefined(context.phoneE164) ? `tel:${context.phoneE164}` : undefined;
 
+const formatDuration = (totalSeconds: number) => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 const getChannelSurface = (
   channel: string | null | undefined,
 ): ChannelSurface => {
@@ -144,11 +157,12 @@ const getChannelSurface = (
           { label: 'Call from web', Icon: IconWorld, soon: true },
           { label: 'Request callback', Icon: IconPhone, soon: true },
         ],
-        offSystemLabel: 'Off system · you dial, then log it',
+        offSystemLabel: 'Off system · you dial, we time it, then log it',
         offSystem: [
           {
             label: 'Call manually',
             Icon: IconDeviceMobile,
+            startsTimer: true,
             buildHref: telHref,
           },
         ],
@@ -168,7 +182,11 @@ const getChannelSurface = (
             Icon: IconDeviceMobile,
             buildHref: (context) =>
               isDefined(context.phoneDigits)
-                ? `https://wa.me/${context.phoneDigits}`
+                ? `https://wa.me/${context.phoneDigits}${
+                    isDefined(context.greeting)
+                      ? `?text=${encodeURIComponent(context.greeting)}`
+                      : ''
+                  }`
                 : undefined,
           },
         ],
@@ -225,11 +243,13 @@ const buildLinkContext = (person: PersonForLinks | undefined): LinkContext => {
   const socialUrl =
     person?.instagramLink?.primaryLinkUrl ??
     person?.facebookLink?.primaryLinkUrl;
+  const firstName = person?.name?.firstName ?? '';
 
   return {
     phoneE164: e164,
     phoneDigits: digits,
     socialUrl: isDefined(socialUrl) && socialUrl !== '' ? socialUrl : undefined,
+    greeting: firstName !== '' ? `Hi ${firstName}, ` : undefined,
   };
 };
 
@@ -284,14 +304,51 @@ export const TaskActionsWidget = ({
 
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // Manual call timer: a plain off-system call reports no duration, so we time it
+  // CRM-side from "Call manually" until the manager hits Stop.
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callDurationS, setCallDurationS] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  const isTiming = isDefined(callStartedAt) && !isDefined(callDurationS);
+
+  useEffect(() => {
+    if (!isTiming) {
+      return;
+    }
+    const intervalId = setInterval(() => setNow(Date.now()), 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isTiming]);
 
   const channel = (task?.channel as string | null | undefined) ?? null;
   const surface = getChannelSurface(channel);
   const linkContext = buildLinkContext(person as PersonForLinks | undefined);
 
+  const elapsedSeconds = isDefined(callDurationS)
+    ? callDurationS
+    : isDefined(callStartedAt)
+      ? Math.floor((now - callStartedAt) / 1000)
+      : 0;
+
   const handleOpen = (href: string | undefined) => {
     if (isDefined(href)) {
       window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleStartCall = (href: string | undefined) => {
+    handleOpen(href);
+    setCallDurationS(null);
+    setCallStartedAt(Date.now());
+    setNow(Date.now());
+  };
+
+  const handleStopCall = () => {
+    if (isDefined(callStartedAt)) {
+      setCallDurationS(
+        Math.max(1, Math.floor((Date.now() - callStartedAt) / 1000)),
+      );
     }
   };
 
@@ -309,6 +366,7 @@ export const TaskActionsWidget = ({
         body: notes,
         occurredAt: new Date().toISOString(),
         taskId,
+        ...(isDefined(callDurationS) ? { durationS: callDurationS } : {}),
         ...(isDefined(opportunityId) ? { opportunityId } : {}),
         ...(isDefined(personId) ? { personId } : {}),
         ...(isDefined(currentWorkspaceMember?.id)
@@ -323,6 +381,8 @@ export const TaskActionsWidget = ({
       });
 
       setNotes('');
+      setCallStartedAt(null);
+      setCallDurationS(null);
     } finally {
       setIsSaving(false);
     }
@@ -333,6 +393,13 @@ export const TaskActionsWidget = ({
     const isDeepLink = isDefined(action.buildHref);
     const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
 
+    const onClick =
+      action.startsTimer === true
+        ? () => handleStartCall(href)
+        : isDeepLink
+          ? () => handleOpen(href)
+          : undefined;
+
     return (
       <Button
         key={action.label}
@@ -342,10 +409,12 @@ export const TaskActionsWidget = ({
         accent={isPrimary ? 'blue' : 'default'}
         soon={action.soon}
         disabled={isDisabled}
-        onClick={isDeepLink ? () => handleOpen(href) : undefined}
+        onClick={onClick}
       />
     );
   };
+
+  const hasTimer = isDefined(callStartedAt) || isDefined(callDurationS);
 
   return (
     <StyledContainer>
@@ -369,6 +438,29 @@ export const TaskActionsWidget = ({
             {surface.offSystem.map((action) => renderAction(action, false))}
           </StyledRow>
         </StyledSection>
+      )}
+
+      {hasTimer && (
+        <StyledRow>
+          {isTiming ? (
+            <>
+              <Tag
+                color="blue"
+                text={`On call · ${formatDuration(elapsedSeconds)}`}
+                Icon={IconClock}
+              />
+              <Button
+                title="Stop"
+                variant="secondary"
+                onClick={handleStopCall}
+              />
+            </>
+          ) : (
+            <StyledSectionLabel>
+              {`Call timed at ${formatDuration(elapsedSeconds)} — pick the outcome to log it.`}
+            </StyledSectionLabel>
+          )}
+        </StyledRow>
       )}
 
       {isDefined(surface.waitingStatus) && (
