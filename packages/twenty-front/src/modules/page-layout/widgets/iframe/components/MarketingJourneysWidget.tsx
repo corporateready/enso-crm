@@ -263,9 +263,11 @@ const StyledStepMeta = styled.span<{ $state: string }>`
       ? themeCssVariables.color.green
       : $state === 'bad'
         ? themeCssVariables.font.color.danger
-        : $state === 'upcoming'
-          ? themeCssVariables.font.color.tertiary
-          : themeCssVariables.font.color.secondary};
+        : $state === 'next'
+          ? themeCssVariables.color.blue
+          : $state === 'upcoming'
+            ? themeCssVariables.font.color.tertiary
+            : themeCssVariables.font.color.secondary};
   flex: 0 0 auto;
   font-size: ${themeCssVariables.font.size.xs};
 `;
@@ -282,7 +284,7 @@ const iconColor = (
   deliveryState: string | null,
 ): string => {
   if (stepState === 'upcoming') return themeCssVariables.font.color.tertiary;
-  if (stepState === 'current') return themeCssVariables.color.blue;
+  if (stepState === 'next') return themeCssVariables.color.blue;
 
   if (isMessageKind(kind)) {
     return deliveryState === 'bad'
@@ -450,14 +452,16 @@ export const MarketingJourneysWidget = () => {
             {isOpen && (
               <StyledSteps>
                 {steps.map((step, index) => {
+                  // currentStep = the last action that HAPPENED, so it (and
+                  // everything before) is Done; the very next step is "Next",
+                  // the rest "Upcoming". A finished journey is all Done; an
+                  // exited one shows nothing after the exit as Next.
                   const stepState =
-                    isFinished || index < currentIndex
+                    isFinished || index <= currentIndex
                       ? 'done'
-                      : isExited && index === currentIndex
-                        ? 'done'
-                        : index === currentIndex
-                          ? 'current'
-                          : 'upcoming';
+                      : !isExited && index === currentIndex + 1
+                        ? 'next'
+                        : 'upcoming';
                   const isUpcoming = stepState === 'upcoming';
 
                   const delivery = isMessageKind(step.kind)
@@ -471,8 +475,10 @@ export const MarketingJourneysWidget = () => {
                     : null;
 
                   let meta = { text: '', state: 'ok' };
-                  if (isUpcoming) {
+                  if (stepState === 'upcoming') {
                     meta = { text: t`Upcoming`, state: 'upcoming' };
+                  } else if (stepState === 'next') {
+                    meta = { text: t`Next`, state: 'next' };
                   } else if (isDefined(deliveryMeta)) {
                     const date = formatDate(delivery?.sentAt);
                     meta = {
@@ -482,8 +488,6 @@ export const MarketingJourneysWidget = () => {
                           : deliveryMeta.label,
                       state: deliveryMeta.state,
                     };
-                  } else if (stepState === 'current') {
-                    meta = { text: t`In progress`, state: 'ok' };
                   } else {
                     meta = { text: t`Done`, state: 'ok' };
                   }
