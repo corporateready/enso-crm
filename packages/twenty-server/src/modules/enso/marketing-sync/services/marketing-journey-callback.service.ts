@@ -4,6 +4,7 @@ import { isDefined } from 'twenty-shared/utils';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
   type JourneyCallbackInput,
   type MarketingEnrollmentStatus,
@@ -68,7 +69,15 @@ export class MarketingJourneyCallbackService {
       if (existing) {
         await enrollmentRepository.update(
           { id: existing.id },
-          { status, currentStep: step, lastEventAt: happenedAt, ...optional },
+          {
+            status,
+            currentStep: step,
+            lastEventAt: happenedAt,
+            // Raw updates bypass the resolver that fills the updatedBy ACTOR
+            // (updatedByName is NOT NULL).
+            updatedBy: SYSTEM_ACTOR,
+            ...optional,
+          },
         );
       } else {
         await enrollmentRepository.insert({
@@ -79,6 +88,10 @@ export class MarketingJourneyCallbackService {
           currentStep: step,
           enteredAt: happenedAt,
           lastEventAt: happenedAt,
+          // Raw inserts bypass the resolver that fills createdBy/updatedBy
+          // ACTORs (createdByName / updatedByName are NOT NULL on custom objects).
+          createdBy: SYSTEM_ACTOR,
+          updatedBy: SYSTEM_ACTOR,
           ...optional,
         });
       }
