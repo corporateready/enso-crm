@@ -21,19 +21,23 @@ import {
 } from 'src/modules/enso/marketing-sync/dtos/journey-callback.input';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
 
-// Public (no-JWT) receiver for Dittofeed journey callbacks — the only inbound
-// machine endpoint in the enso modules, so it does NOT use the JwtAuthGuard the
-// other enso controllers do. It is authenticated by a shared secret in the
+// Public (no-JWT) receiver for Dittofeed journey callbacks. It must live OUTSIDE
+// the `/rest/*` namespace — that namespace is owned by the authenticated REST
+// API catch-all (rest-api-core, JwtAuthGuard), which would intercept the route
+// and reject it with "Missing authentication token" regardless of our guards.
+// So we follow the public-webhook convention (billing → webhooks/stripe,
+// messaging → webhooks/messaging/ses): a root @Controller() + a webhooks/* path,
+// public via PublicEndpointGuard, authenticated by a shared secret in the
 // `x-enso-marketing-secret` header (constant-time compare against
-// DITTOFEED_CALLBACK_SECRET); the workspace is taken from the body since there
-// is no auth context. Reachable at POST /rest/enso/marketing/journey-callback.
-@Controller('rest/enso/marketing')
+// DITTOFEED_CALLBACK_SECRET). The workspace is taken from the body since there
+// is no auth context. Reachable at POST /webhooks/enso/journey-callback.
+@Controller()
 export class MarketingController {
   constructor(
     private readonly callbackService: MarketingJourneyCallbackService,
   ) {}
 
-  @Post('journey-callback')
+  @Post('webhooks/enso/journey-callback')
   @HttpCode(200)
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
   async journeyCallback(
