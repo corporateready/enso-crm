@@ -36,10 +36,10 @@ export type MarketingSyncJobData =
 
 // Track event names (Dittofeed journeys branch on these).
 export const MARKETING_EVENT_DEAL_STAGE_CHANGED = 'deal_stage_changed';
-// Fired when a deal is first created with a point of contact — the entry event
-// for the introductory journey. Carries isFirstDealForPerson + projectBrand,
-// computed worker-side at emit (see MarketingSyncJob), so the journey can gate
-// on "new prospect" and branch by brand.
+// Fired when a deal is first created with a point of contact — the source
+// event behind the per-development entry segments. Carries isFirstDealForPerson
+// + projectName/projectCode, computed worker-side at emit (see MarketingSyncJob),
+// so a segment like "New Artima Leads" can scope a journey to one development.
 export const MARKETING_EVENT_DEAL_CREATED = 'deal_created';
 
 // inboundActivity.kind → Dittofeed track event. Drives lifecycle journeys

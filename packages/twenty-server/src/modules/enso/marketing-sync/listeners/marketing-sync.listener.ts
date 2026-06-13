@@ -125,7 +125,7 @@ export class MarketingSyncListener {
   // A new deal with a point of contact → deal_created (the introductory
   // journey's entry event). pointOfContactId + projectId are set at creation by
   // the intake (opportunity-resolution), so the person is always attributable
-  // here. The job enriches with isFirstDealForPerson + projectBrand.
+  // here. The job enriches with isFirstDealForPerson + projectName/projectCode.
   @OnDatabaseBatchEvent('opportunity', DatabaseEventAction.CREATED)
   async onOpportunityCreated(
     payload: WorkspaceEventBatch<
