@@ -12,6 +12,10 @@ import {
   ENSO_PERSON_CONSENT_HISTORY_MARKER,
   PersonConsentHistory,
 } from '@/page-layout/widgets/iframe/components/PersonConsentHistory';
+import {
+  ENSO_MARKETING_JOURNEYS_MARKER,
+  MarketingJourneysWidget,
+} from '@/page-layout/widgets/iframe/components/MarketingJourneysWidget';
 import { PageLayoutWidgetNoDataDisplay } from '@/page-layout/widgets/components/PageLayoutWidgetNoDataDisplay';
 import { WidgetSkeletonLoader } from '@/page-layout/widgets/components/WidgetSkeletonLoader';
 import { styled } from '@linaria/react';
@@ -101,6 +105,12 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
   // ENSO sentinel — manager consent card on the Person record.
   if (isDefined(url) && url.includes(ENSO_PERSON_CONSENT_MARKER)) {
     return <PersonConsentCard />;
+  }
+
+  // ENSO sentinel — marketing-journey view (journeys + messages) on Person /
+  // Opportunity records.
+  if (isDefined(url) && url.includes(ENSO_MARKETING_JOURNEYS_MARKER)) {
+    return <MarketingJourneysWidget />;
   }
 
   const handleIframeLoad = () => {
