@@ -375,11 +375,13 @@ export const TaskActionsWidget = ({
   };
 
   const handleStartCall = (href: string | undefined, loggedVia: string) => {
+    // Open the dialer FIRST: window.open as the last statement of the handler
+    // shifts focus and interrupts React's state flush, so the timer never starts.
+    handleOpen(href);
     setPendingLoggedVia(loggedVia);
     setCallDurationS(null);
     setCallStartedAt(Date.now());
     setNow(Date.now());
-    handleOpen(href);
   };
 
   const handleStopCall = () => {
