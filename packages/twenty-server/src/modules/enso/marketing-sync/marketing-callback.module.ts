@@ -9,7 +9,9 @@ import { MarketingReadController } from 'src/modules/enso/marketing-sync/control
 import { DittofeedAdminClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-admin-client.service';
 import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
+import { MarketingMetaService } from 'src/modules/enso/marketing-sync/services/marketing-meta.service';
 import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
+import { MetaAudienceClientService } from 'src/modules/enso/marketing-sync/services/meta-audience-client.service';
 import { SmsMdClientService } from 'src/modules/enso/marketing-sync/services/sms-md-client.service';
 
 // SERVER-only marketing HTTP surface (imported by modules.module.ts only):
@@ -32,6 +34,8 @@ import { SmsMdClientService } from 'src/modules/enso/marketing-sync/services/sms
     MarketingConsentRevokeService,
     MarketingSmsService,
     SmsMdClientService,
+    MarketingMetaService,
+    MetaAudienceClientService,
     DittofeedAdminClientService,
   ],
 })

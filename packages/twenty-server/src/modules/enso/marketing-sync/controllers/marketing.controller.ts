@@ -25,8 +25,10 @@ import {
   isMarketingEnrollmentStatus,
   type JourneyCallbackInput,
 } from 'src/modules/enso/marketing-sync/dtos/journey-callback.input';
+import { type MetaAudienceInput } from 'src/modules/enso/marketing-sync/dtos/meta-audience.input';
 import { type SendSmsInput } from 'src/modules/enso/marketing-sync/dtos/send-sms.input';
 import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
+import { MarketingMetaService } from 'src/modules/enso/marketing-sync/services/marketing-meta.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
 import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
 
@@ -46,6 +48,7 @@ export class MarketingController {
     private readonly callbackService: MarketingJourneyCallbackService,
     private readonly consentRevokeService: MarketingConsentRevokeService,
     private readonly smsService: MarketingSmsService,
+    private readonly metaService: MarketingMetaService,
   ) {}
 
   @Post('webhooks/enso/journey-callback')
@@ -95,6 +98,24 @@ export class MarketingController {
     this.assertValidSmsBody(body);
 
     await this.smsService.send(body);
+
+    return { ok: true };
+  }
+
+  // Meta Custom Audience step: a Dittofeed Webhook node (consent-gated via its
+  // subscription group) relays the person here; the CRM hashes email/phone and
+  // adds them to the audience. Same shared-secret auth.
+  @Post('webhooks/enso/meta-audience')
+  @HttpCode(200)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async metaAudience(
+    @Headers('x-enso-marketing-secret') secret: string | undefined,
+    @Body() body: MetaAudienceInput,
+  ): Promise<{ ok: true }> {
+    this.assertSecret(secret);
+    this.assertValidMetaBody(body);
+
+    await this.metaService.addToAudience(body);
 
     return { ok: true };
   }
@@ -156,6 +177,17 @@ export class MarketingController {
       !isNonEmptyString(body?.message)
     ) {
       throw new BadRequestException('workspaceId, to and message are required');
+    }
+  }
+
+  private assertValidMetaBody(body: MetaAudienceInput): void {
+    if (
+      !isNonEmptyString(body?.workspaceId) ||
+      (!isNonEmptyString(body?.email) && !isNonEmptyString(body?.phone))
+    ) {
+      throw new BadRequestException(
+        'workspaceId and at least one of email/phone are required',
+      );
     }
   }
 }
