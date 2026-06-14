@@ -164,6 +164,7 @@ const getChannelSurface = (
             label: 'Call manually',
             Icon: IconDeviceMobile,
             startsTimer: true,
+            loggedVia: 'MANUAL_LOG',
             buildHref: telHref,
           },
         ],
@@ -348,9 +349,9 @@ export const TaskActionsWidget = ({
     channel === 'CALL' && hasRecordingGsm
       ? [
           {
+            // Recorded two-way → no manual timer; duration comes from the recording.
             label: 'Call from corporate GSM',
             Icon: IconDeviceMobile,
-            startsTimer: true,
             loggedVia: 'CORPORATE_GSM',
             buildHref: telHref,
           },
@@ -364,24 +365,42 @@ export const TaskActionsWidget = ({
       ? Math.floor((now - callStartedAt) / 1000)
       : 0;
 
+  // Hand off to the OS via a native anchor click. window.open(tel:) closes the
+  // page on mobile and trips the desktop popup blocker; a tel:/sms: anchor with
+  // no target invokes the dialer/Messages without navigating away, and web links
+  // (wa.me / social) open in a new tab.
   const handleOpen = (href: string | undefined) => {
     if (!isDefined(href)) {
       return;
     }
-    // Open in a separate context so the deep-link hand-off never freezes this
-    // page: on mobile the dialer/app opens; on desktop a blank tab is the only
-    // (harmless) cost. (Navigating the current tab to tel: hangs desktop.)
-    window.open(href, '_blank', 'noopener,noreferrer');
+    const anchor = document.createElement('a');
+
+    anchor.href = href;
+    anchor.rel = 'noopener noreferrer';
+
+    if (!href.startsWith('tel:') && !href.startsWith('sms:')) {
+      anchor.target = '_blank';
+    }
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
   };
 
-  const handleStartCall = (href: string | undefined, loggedVia: string) => {
-    // Open the dialer FIRST: window.open as the last statement of the handler
-    // shifts focus and interrupts React's state flush, so the timer never starts.
-    handleOpen(href);
-    setPendingLoggedVia(loggedVia);
-    setCallDurationS(null);
-    setCallStartedAt(Date.now());
-    setNow(Date.now());
+  // One handler for every action button: open the deep-link, tag how the touch
+  // is being logged, and (only for the plain off-system call) start the timer.
+  // Corporate GSM does NOT time — its duration comes from the recording.
+  const handleActionClick = (action: ActionConfig) => {
+    handleOpen(action.buildHref?.(linkContext));
+
+    if (isDefined(action.loggedVia)) {
+      setPendingLoggedVia(action.loggedVia);
+    }
+
+    if (action.startsTimer === true) {
+      setCallDurationS(null);
+      setCallStartedAt(Date.now());
+      setNow(Date.now());
+    }
   };
 
   const handleStopCall = () => {
@@ -434,12 +453,7 @@ export const TaskActionsWidget = ({
     const isDeepLink = isDefined(action.buildHref);
     const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
 
-    const onClick =
-      action.startsTimer === true
-        ? () => handleStartCall(href, action.loggedVia ?? 'MANUAL_LOG')
-        : isDeepLink
-          ? () => handleOpen(href)
-          : undefined;
+    const onClick = isDeepLink ? () => handleActionClick(action) : undefined;
 
     return (
       <Button
