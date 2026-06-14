@@ -13,7 +13,7 @@ import { SecureHttpClientService } from 'src/engine/core-modules/secure-http-cli
 //   GET {base}/v1/send?token=<key>&from=<alias>&to=<E.164>&message=<text>[&time=]
 //   Auth = apiKey `token` in the QUERY (security scheme), 201 {"message":"Added to queue"}.
 // Config from process.env: SMS_MD_API_URL (default https://api.sms.md/v1/send),
-// SMS_MD_API_KEY, SMS_MD_SENDER (default ARTIMA.MD — operator-approved alias).
+// SMS_MD_API_KEY, SMS_MD_SENDER (default ARTIMA — operator-approved alias).
 // When unconfigured the call no-ops so a missing key never breaks the worker.
 
 type SendSmsParams = {
@@ -41,7 +41,9 @@ export class SmsMdClientService {
   }
 
   private get sender(): string {
-    return process.env.SMS_MD_SENDER || 'ARTIMA.MD';
+    // The operator-approved alias on the account is "ARTIMA" (not "ARTIMA.MD" —
+    // see partner.sms.md → Senders). Override per deployment via SMS_MD_SENDER.
+    return process.env.SMS_MD_SENDER || 'ARTIMA';
   }
 
   get isConfigured(): boolean {
