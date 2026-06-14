@@ -104,11 +104,13 @@ export type PersonProjectConsentRecord = {
 // development's marketing. Per-project × channel (user's choice): an unsubscribe
 // revokes only that project+channel. Add a project here once its groups exist in
 // Dittofeed; projects absent from the map are simply not mirrored.
-//   ENSO Estate (code ENS2502) — created via the Dittofeed Admin API.
+//   The live pilot is IOANA RADU (ENS1901) — see the entry below.
 export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
   Record<string, Partial<Record<ConsentChannel, string>>>
 > = {
-  '2b0b2f11-bdae-4f30-8289-7565522123e5': {
+  // IOANA RADU (ENS1901) — the live pilot. Groups were created for the earlier
+  // ENSO Estate pilot then renamed "IOANA RADU · …" (ids unchanged).
+  'd8f29e3b-7955-4795-b1a6-f3bfd3b4602e': {
     email: 'b8fea92b-c85e-47f3-805c-0a038a84210d',
     sms: '2d9dfa15-6b65-4d3e-b7b2-ef0d93cc8b82',
   },
