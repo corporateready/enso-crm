@@ -11,6 +11,7 @@ import {
   MARKETING_EVENT_DEAL_CREATED,
   type MarketingSyncJobData,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
+import { DittofeedAdminClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-admin-client.service';
 import { DittofeedClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-client.service';
 
 // Worker-side executor: takes a prepared identify/track payload (built by the
@@ -24,6 +25,7 @@ export class MarketingSyncJob {
 
   constructor(
     private readonly dittofeedClientService: DittofeedClientService,
+    private readonly dittofeedAdminClientService: DittofeedAdminClientService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
@@ -35,6 +37,16 @@ export class MarketingSyncJob {
         traits: data.traits,
         messageId: data.messageId,
       });
+
+      return;
+    }
+
+    if (data.kind === 'sync_consent') {
+      await this.dittofeedAdminClientService.setSubscriptionAssignments(
+        data.workspaceId,
+        data.userId,
+        data.changes,
+      );
 
       return;
     }
@@ -67,9 +79,9 @@ export class MarketingSyncJob {
   }
 
   // Enrich a deal_created event from the ORM: the deal's project + amount,
-  // whether this is the person's first deal, and the project brand (which
-  // intro to send). Brand is read defensively — null if the project object has
-  // no `brand` field provisioned yet.
+  // whether this is the person's first deal, and the project's name + code.
+  // projectName/projectCode are what Dittofeed segments key on to scope a
+  // journey to one development (e.g. "New Artima Leads" = projectCode ENS2301).
   private async buildDealCreatedProperties(
     workspaceId: string,
     opportunityId: string,
@@ -97,7 +109,8 @@ export class MarketingSyncJob {
       });
       const isFirstDealForPerson = totalForPerson <= 1;
 
-      let projectBrand: string | null = null;
+      let projectName: string | null = null;
+      let projectCode: string | null = null;
 
       if (isDefined(projectId)) {
         const projectRepository =
@@ -111,13 +124,15 @@ export class MarketingSyncJob {
           where: { id: projectId },
         });
 
-        projectBrand = project?.brand ?? null;
+        projectName = project?.name ?? null;
+        projectCode = project?.code ?? null;
       }
 
       return {
         opportunityId,
         projectId,
-        projectBrand,
+        projectName,
+        projectCode,
         amount,
         isFirstDealForPerson,
       };
