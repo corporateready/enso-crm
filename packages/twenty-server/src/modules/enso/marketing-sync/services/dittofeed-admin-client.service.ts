@@ -100,4 +100,35 @@ export class DittofeedAdminClientService {
       return [];
     }
   }
+
+  // Mirror CRM consent → Dittofeed subscription state for one user.
+  // `changes` = {subscriptionGroupId: isSubscribed}. Throws on failure so the
+  // enqueuing BullMQ job retries (unlike the read above, which swallows).
+  async setSubscriptionAssignments(
+    workspaceId: string,
+    userId: string,
+    changes: Record<string, boolean>,
+  ): Promise<void> {
+    if (
+      !this.isConfigured ||
+      !isNonEmptyString(userId) ||
+      Object.keys(changes).length === 0
+    ) {
+      return;
+    }
+
+    const client = this.secureHttpClientService.getHttpClient(
+      { timeout: 10_000, retries: 2 },
+      { workspaceId, source: 'dittofeed-admin' },
+    );
+
+    await client.put(
+      `${this.baseUrl}/api/admin/subscription-groups/assignments`,
+      {
+        workspaceId: this.dittofeedWorkspaceId,
+        userUpdates: [{ userId, changes }],
+      },
+      { headers: { Authorization: `Bearer ${this.adminKey}` } },
+    );
+  }
 }

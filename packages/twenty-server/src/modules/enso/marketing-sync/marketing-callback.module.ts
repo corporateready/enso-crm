@@ -7,6 +7,7 @@ import { WorkspaceCacheStorageModule } from 'src/engine/workspace-cache-storage/
 import { MarketingController } from 'src/modules/enso/marketing-sync/controllers/marketing.controller';
 import { MarketingReadController } from 'src/modules/enso/marketing-sync/controllers/marketing-read.controller';
 import { DittofeedAdminClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-admin-client.service';
+import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
 
 // SERVER-only marketing HTTP surface (imported by modules.module.ts only):
@@ -24,6 +25,10 @@ import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync
     PermissionsModule,
   ],
   controllers: [MarketingController, MarketingReadController],
-  providers: [MarketingJourneyCallbackService, DittofeedAdminClientService],
+  providers: [
+    MarketingJourneyCallbackService,
+    MarketingConsentRevokeService,
+    DittofeedAdminClientService,
+  ],
 })
 export class MarketingCallbackModule {}

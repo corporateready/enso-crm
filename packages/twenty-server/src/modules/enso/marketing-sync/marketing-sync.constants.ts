@@ -32,14 +32,25 @@ export type MarketingSyncJobData =
       opportunityId: string;
       timestamp: string;
       messageId: string;
+    }
+  | {
+      // Consent mirror: CRM personProjectConsent → Dittofeed subscription state,
+      // so a person the CRM marks opted-out is suppressed at send. `changes` is
+      // Dittofeed's {subscriptionGroupId: isSubscribed} map, pre-resolved by the
+      // listener from PROJECT_SUBSCRIPTION_GROUPS.
+      kind: 'sync_consent';
+      workspaceId: string;
+      userId: string;
+      changes: Record<string, boolean>;
+      messageId: string;
     };
 
 // Track event names (Dittofeed journeys branch on these).
 export const MARKETING_EVENT_DEAL_STAGE_CHANGED = 'deal_stage_changed';
-// Fired when a deal is first created with a point of contact — the entry event
-// for the introductory journey. Carries isFirstDealForPerson + projectBrand,
-// computed worker-side at emit (see MarketingSyncJob), so the journey can gate
-// on "new prospect" and branch by brand.
+// Fired when a deal is first created with a point of contact — the source
+// event behind the per-development entry segments. Carries isFirstDealForPerson
+// + projectName/projectCode, computed worker-side at emit (see MarketingSyncJob),
+// so a segment like "New Artima Leads" can scope a journey to one development.
 export const MARKETING_EVENT_DEAL_CREATED = 'deal_created';
 
 // inboundActivity.kind → Dittofeed track event. Drives lifecycle journeys
@@ -64,6 +75,72 @@ export type InboundActivityRecord = {
   source: string | null;
   occurredAt: string | null;
   createdAt: string | null;
+};
+
+// The four marketing-consent channels on personProjectConsent. The per-channel
+// boolean field is `${channel}MarketingConsent`.
+export const CONSENT_CHANNELS = ['email', 'sms', 'whatsapp', 'call'] as const;
+type ConsentChannel = (typeof CONSENT_CHANNELS)[number];
+
+// personProjectConsent boolean fields a consent change re-syncs on (a row edit
+// that touches none of these — e.g. just `name` — must not re-push).
+export const CONSENT_CONSENT_FIELDS: ReadonlySet<string> = new Set(
+  CONSENT_CHANNELS.map((channel) => `${channel}MarketingConsent`),
+);
+
+// Minimal shape of the enso personProjectConsent custom object event payload.
+export type PersonProjectConsentRecord = {
+  id: string;
+  personId: string | null;
+  projectId: string | null;
+  emailMarketingConsent: boolean | null;
+  smsMarketingConsent: boolean | null;
+  whatsappMarketingConsent: boolean | null;
+  callMarketingConsent: boolean | null;
+  updatedAt: string | null;
+};
+
+// CRM project (id) → the Dittofeed subscription groups that scope that
+// development's marketing. Per-project × channel (user's choice): an unsubscribe
+// revokes only that project+channel. Add a project here once its groups exist in
+// Dittofeed; projects absent from the map are simply not mirrored.
+//   ENSO Estate (code ENS2502) — created via the Dittofeed Admin API.
+export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
+  Record<string, Partial<Record<ConsentChannel, string>>>
+> = {
+  '2b0b2f11-bdae-4f30-8289-7565522123e5': {
+    email: 'b8fea92b-c85e-47f3-805c-0a038a84210d',
+    sms: '2d9dfa15-6b65-4d3e-b7b2-ef0d93cc8b82',
+  },
+};
+
+// Resolve a consent row to Dittofeed's {subscriptionGroupId: isSubscribed} map.
+// Empty when the project has no mapped groups (→ nothing to mirror). OptOut
+// groups: isSubscribed=false suppresses the person at send time.
+export const buildConsentSubscriptionChanges = (
+  projectId: string,
+  record: PersonProjectConsentRecord,
+): Record<string, boolean> => {
+  const groups = PROJECT_SUBSCRIPTION_GROUPS[projectId];
+
+  if (!isDefined(groups)) {
+    return {};
+  }
+
+  const changes: Record<string, boolean> = {};
+
+  for (const channel of CONSENT_CHANNELS) {
+    const subscriptionGroupId = groups[channel];
+
+    if (!isNonEmptyString(subscriptionGroupId)) {
+      continue;
+    }
+
+    changes[subscriptionGroupId] =
+      record[`${channel}MarketingConsent`] === true;
+  }
+
+  return changes;
 };
 
 // Compose an E.164 number from Twenty's PHONES composite. Returns undefined
