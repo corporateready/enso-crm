@@ -12,13 +12,20 @@ import {
 import { timingSafeEqual } from 'node:crypto';
 
 import { isNonEmptyString } from '@sniptt/guards';
+import { isDefined } from 'twenty-shared/utils';
 
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 import {
+  type ConsentUnsubscribeInput,
+  isConsentRevokeMethod,
+  isConsentUnsubscribeChannel,
+} from 'src/modules/enso/marketing-sync/dtos/consent-unsubscribe.input';
+import {
   isMarketingEnrollmentStatus,
   type JourneyCallbackInput,
 } from 'src/modules/enso/marketing-sync/dtos/journey-callback.input';
+import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
 
 // Public (no-JWT) receiver for Dittofeed journey callbacks. It must live OUTSIDE
@@ -35,6 +42,7 @@ import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync
 export class MarketingController {
   constructor(
     private readonly callbackService: MarketingJourneyCallbackService,
+    private readonly consentRevokeService: MarketingConsentRevokeService,
   ) {}
 
   @Post('webhooks/enso/journey-callback')
@@ -48,6 +56,24 @@ export class MarketingController {
     this.assertValidBody(body);
 
     await this.callbackService.recordEvent(body);
+
+    return { ok: true };
+  }
+
+  // Reverse consent mirror: a Dittofeed unsubscribe (entry into a subscription
+  // group's "unsubscribed" segment → Webhook node) revokes the matching CRM
+  // consent. Same shared-secret auth as the journey callback.
+  @Post('webhooks/enso/consent-unsubscribe')
+  @HttpCode(200)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async consentUnsubscribe(
+    @Headers('x-enso-marketing-secret') secret: string | undefined,
+    @Body() body: ConsentUnsubscribeInput,
+  ): Promise<{ ok: true }> {
+    this.assertSecret(secret);
+    this.assertValidUnsubscribeBody(body);
+
+    await this.consentRevokeService.revoke(body);
 
     return { ok: true };
   }
@@ -84,6 +110,20 @@ export class MarketingController {
     ) {
       throw new BadRequestException(
         'workspaceId, userId, journey, step and a valid status are required',
+      );
+    }
+  }
+
+  private assertValidUnsubscribeBody(body: ConsentUnsubscribeInput): void {
+    if (
+      !isNonEmptyString(body?.workspaceId) ||
+      !isNonEmptyString(body?.userId) ||
+      !isNonEmptyString(body?.projectId) ||
+      !isConsentUnsubscribeChannel(body?.channel) ||
+      (isDefined(body?.method) && !isConsentRevokeMethod(body.method))
+    ) {
+      throw new BadRequestException(
+        'workspaceId, userId, projectId and a valid channel are required',
       );
     }
   }

@@ -11,6 +11,7 @@ import {
   MARKETING_EVENT_DEAL_CREATED,
   type MarketingSyncJobData,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
+import { DittofeedAdminClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-admin-client.service';
 import { DittofeedClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-client.service';
 
 // Worker-side executor: takes a prepared identify/track payload (built by the
@@ -24,6 +25,7 @@ export class MarketingSyncJob {
 
   constructor(
     private readonly dittofeedClientService: DittofeedClientService,
+    private readonly dittofeedAdminClientService: DittofeedAdminClientService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
@@ -35,6 +37,16 @@ export class MarketingSyncJob {
         traits: data.traits,
         messageId: data.messageId,
       });
+
+      return;
+    }
+
+    if (data.kind === 'sync_consent') {
+      await this.dittofeedAdminClientService.setSubscriptionAssignments(
+        data.workspaceId,
+        data.userId,
+        data.changes,
+      );
 
       return;
     }

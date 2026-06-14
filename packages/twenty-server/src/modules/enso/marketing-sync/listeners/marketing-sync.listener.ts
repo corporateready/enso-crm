@@ -14,11 +14,14 @@ import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queu
 import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
 import { MarketingSyncJob } from 'src/modules/enso/marketing-sync/jobs/marketing-sync.job';
 import {
+  buildConsentSubscriptionChanges,
   buildPersonTraits,
+  CONSENT_CONSENT_FIELDS,
   INBOUND_ACTIVITY_EVENT_BY_KIND,
   type InboundActivityRecord,
   MARKETING_EVENT_DEAL_STAGE_CHANGED,
   type MarketingSyncJobData,
+  type PersonProjectConsentRecord,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
 import { type OpportunityWorkspaceEntity } from 'src/modules/opportunity/standard-objects/opportunity.workspace-entity';
 import { type PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
@@ -201,6 +204,73 @@ export class MarketingSyncListener {
         },
       );
     }
+  }
+
+  // Consent mirror (CRM → Dittofeed). personProjectConsent is written by both
+  // the intake pipeline (raw ORM) and manual manager edits (GraphQL) — the
+  // workspace event bus fires for both — so a grant/revoke from either path
+  // re-pushes the person's subscription state. Only projects mapped in
+  // PROJECT_SUBSCRIPTION_GROUPS produce changes; others no-op.
+  @OnDatabaseBatchEvent('personProjectConsent', DatabaseEventAction.CREATED)
+  async onPersonProjectConsentCreated(
+    payload: WorkspaceEventBatch<
+      ObjectRecordCreateEvent<PersonProjectConsentRecord>
+    >,
+  ): Promise<void> {
+    for (const event of payload.events) {
+      await this.enqueueConsentSync(payload.workspaceId, event.properties.after);
+    }
+  }
+
+  @OnDatabaseBatchEvent('personProjectConsent', DatabaseEventAction.UPDATED)
+  async onPersonProjectConsentUpdated(
+    payload: WorkspaceEventBatch<
+      ObjectRecordUpdateEvent<PersonProjectConsentRecord>
+    >,
+  ): Promise<void> {
+    for (const event of payload.events) {
+      const changed = objectRecordChangedProperties(
+        event.properties.before,
+        event.properties.after,
+      );
+
+      if (!changed.some((field) => CONSENT_CONSENT_FIELDS.has(field))) {
+        continue;
+      }
+
+      await this.enqueueConsentSync(payload.workspaceId, event.properties.after);
+    }
+  }
+
+  private async enqueueConsentSync(
+    workspaceId: string,
+    record: PersonProjectConsentRecord,
+  ): Promise<void> {
+    if (!isDefined(record.personId) || !isDefined(record.projectId)) {
+      return;
+    }
+
+    const changes = buildConsentSubscriptionChanges(record.projectId, record);
+
+    // Project has no Dittofeed groups → nothing to mirror.
+    if (Object.keys(changes).length === 0) {
+      return;
+    }
+
+    const timestamp = this.toIso(record.updatedAt);
+
+    await this.messageQueueService.add<MarketingSyncJobData>(
+      MarketingSyncJob.name,
+      {
+        kind: 'sync_consent',
+        workspaceId,
+        userId: record.personId,
+        changes,
+        // Re-pushes the full current state, so the latest write wins; the
+        // timestamp keeps retries idempotent without dropping real changes.
+        messageId: `sync_consent:${record.id}:${timestamp}`,
+      },
+    );
   }
 
   private async enqueueIdentify(
