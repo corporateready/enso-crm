@@ -3,4 +3,5 @@ export type OutboundRequestSource =
   | 'workflow-http'
   | 'logic-function'
   | 'dittofeed-sync'
-  | 'dittofeed-admin';
+  | 'dittofeed-admin'
+  | 'sms-md';

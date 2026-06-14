@@ -25,8 +25,10 @@ import {
   isMarketingEnrollmentStatus,
   type JourneyCallbackInput,
 } from 'src/modules/enso/marketing-sync/dtos/journey-callback.input';
+import { type SendSmsInput } from 'src/modules/enso/marketing-sync/dtos/send-sms.input';
 import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
+import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
 
 // Public (no-JWT) receiver for Dittofeed journey callbacks. It must live OUTSIDE
 // the `/rest/*` namespace — that namespace is owned by the authenticated REST
@@ -43,6 +45,7 @@ export class MarketingController {
   constructor(
     private readonly callbackService: MarketingJourneyCallbackService,
     private readonly consentRevokeService: MarketingConsentRevokeService,
+    private readonly smsService: MarketingSmsService,
   ) {}
 
   @Post('webhooks/enso/journey-callback')
@@ -74,6 +77,24 @@ export class MarketingController {
     this.assertValidUnsubscribeBody(body);
 
     await this.consentRevokeService.revoke(body);
+
+    return { ok: true };
+  }
+
+  // SMS journey step: a Dittofeed Webhook node relays the rendered SMS here, and
+  // we send it via sms.md (which isn't a native Dittofeed channel). Same
+  // shared-secret auth as the other callbacks.
+  @Post('webhooks/enso/send-sms')
+  @HttpCode(200)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async sendSms(
+    @Headers('x-enso-marketing-secret') secret: string | undefined,
+    @Body() body: SendSmsInput,
+  ): Promise<{ ok: true }> {
+    this.assertSecret(secret);
+    this.assertValidSmsBody(body);
+
+    await this.smsService.send(body);
 
     return { ok: true };
   }
@@ -125,6 +146,16 @@ export class MarketingController {
       throw new BadRequestException(
         'workspaceId, userId, projectId and a valid channel are required',
       );
+    }
+  }
+
+  private assertValidSmsBody(body: SendSmsInput): void {
+    if (
+      !isNonEmptyString(body?.workspaceId) ||
+      !isNonEmptyString(body?.to) ||
+      !isNonEmptyString(body?.message)
+    ) {
+      throw new BadRequestException('workspaceId, to and message are required');
     }
   }
 }
