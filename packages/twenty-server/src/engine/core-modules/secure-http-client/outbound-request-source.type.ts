@@ -4,4 +4,5 @@ export type OutboundRequestSource =
   | 'logic-function'
   | 'dittofeed-sync'
   | 'dittofeed-admin'
-  | 'sms-md';
+  | 'sms-md'
+  | 'meta-graph';

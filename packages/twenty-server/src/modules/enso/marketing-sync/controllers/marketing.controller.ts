@@ -25,8 +25,11 @@ import {
   isMarketingEnrollmentStatus,
   type JourneyCallbackInput,
 } from 'src/modules/enso/marketing-sync/dtos/journey-callback.input';
+import { type MetaAudienceInput } from 'src/modules/enso/marketing-sync/dtos/meta-audience.input';
 import { type SendSmsInput } from 'src/modules/enso/marketing-sync/dtos/send-sms.input';
 import { MarketingConsentRevokeService } from 'src/modules/enso/marketing-sync/services/marketing-consent-revoke.service';
+import { MarketingMetaService } from 'src/modules/enso/marketing-sync/services/marketing-meta.service';
+import { MetaAudienceClientService } from 'src/modules/enso/marketing-sync/services/meta-audience-client.service';
 import { MarketingJourneyCallbackService } from 'src/modules/enso/marketing-sync/services/marketing-journey-callback.service';
 import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
 
@@ -46,6 +49,8 @@ export class MarketingController {
     private readonly callbackService: MarketingJourneyCallbackService,
     private readonly consentRevokeService: MarketingConsentRevokeService,
     private readonly smsService: MarketingSmsService,
+    private readonly metaService: MarketingMetaService,
+    private readonly metaAudienceClientService: MetaAudienceClientService,
   ) {}
 
   @Post('webhooks/enso/journey-callback')
@@ -97,6 +102,48 @@ export class MarketingController {
     await this.smsService.send(body);
 
     return { ok: true };
+  }
+
+  // Meta Custom Audience step: a Dittofeed Webhook node (consent-gated via its
+  // subscription group) relays the person here; the CRM hashes email/phone and
+  // adds them to the audience. Same shared-secret auth.
+  @Post('webhooks/enso/meta-audience')
+  @HttpCode(200)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async metaAudience(
+    @Headers('x-enso-marketing-secret') secret: string | undefined,
+    @Body() body: MetaAudienceInput,
+  ): Promise<{ ok: true }> {
+    this.assertSecret(secret);
+    this.assertValidMetaBody(body);
+
+    await this.metaService.addToAudience(body);
+
+    return { ok: true };
+  }
+
+  // One-time setup: create the "customer file" Custom Audience and return its id
+  // (to be saved as META_CUSTOM_AUDIENCE_ID). Needs META_ACCESS_TOKEN +
+  // META_AD_ACCOUNT_ID in env; shared-secret guarded. Not called by the journey.
+  @Post('webhooks/enso/meta-create-audience')
+  @HttpCode(200)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async metaCreateAudience(
+    @Headers('x-enso-marketing-secret') secret: string | undefined,
+    @Body() body: { workspaceId?: string; name?: string },
+  ): Promise<{ ok: true; id: string }> {
+    this.assertSecret(secret);
+
+    if (!isNonEmptyString(body?.workspaceId)) {
+      throw new BadRequestException('workspaceId is required');
+    }
+
+    const id = await this.metaAudienceClientService.createAudience(
+      body.workspaceId,
+      isNonEmptyString(body?.name) ? body.name : 'ENSO Estate',
+    );
+
+    return { ok: true, id };
   }
 
   private assertSecret(secret: string | undefined): void {
@@ -156,6 +203,17 @@ export class MarketingController {
       !isNonEmptyString(body?.message)
     ) {
       throw new BadRequestException('workspaceId, to and message are required');
+    }
+  }
+
+  private assertValidMetaBody(body: MetaAudienceInput): void {
+    if (
+      !isNonEmptyString(body?.workspaceId) ||
+      (!isNonEmptyString(body?.email) && !isNonEmptyString(body?.phone))
+    ) {
+      throw new BadRequestException(
+        'workspaceId and at least one of email/phone are required',
+      );
     }
   }
 }
