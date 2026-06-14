@@ -9,9 +9,9 @@ import { SecureHttpClientService } from 'src/engine/core-modules/secure-http-cli
 // the CRM /webhooks/enso/send-sms relay → this client. Routing through the CRM
 // keeps the API key in CRM env (not in a Dittofeed template) and sends auditable.
 //
-// Authoritative contract (partner.sms.md/api/doc, verified 2026-06-14):
-//   GET {base}/v1/send?from=<alias>&to=<E.164>&message=<text>[&time=<delay>]
-//   Authorization: Bearer <SMS_MD_API_KEY>; 201 {"message":"Added to queue"}.
+// Authoritative contract (partner.sms.md/api/doc Swagger, verified 2026-06-14):
+//   GET {base}/v1/send?token=<key>&from=<alias>&to=<E.164>&message=<text>[&time=]
+//   Auth = apiKey `token` in the QUERY (security scheme), 201 {"message":"Added to queue"}.
 // Config from process.env: SMS_MD_API_URL (default https://api.sms.md/v1/send),
 // SMS_MD_API_KEY, SMS_MD_SENDER (default ARTIMA.MD — operator-approved alias).
 // When unconfigured the call no-ops so a missing key never breaks the worker.
@@ -60,15 +60,35 @@ export class SmsMdClientService {
       { workspaceId, source: 'sms-md' },
     );
 
-    const url =
-      `${this.baseUrl}?from=${encodeURIComponent(this.sender)}` +
-      `&to=${encodeURIComponent(params.to)}` +
-      `&message=${encodeURIComponent(params.message)}`;
+    // Auth is an apiKey named `token` in the QUERY (per partner.sms.md/api/doc),
+    // NOT an Authorization: Bearer header. Pass token + the recipient via axios
+    // `params` (not the URL string) so the secure client's request logger only
+    // records the base URL — keeping the API key and the phone number out of logs.
+    try {
+      await client.get(this.baseUrl, {
+        params: {
+          token: this.apiKey,
+          from: this.sender,
+          to: params.to,
+          message: params.message,
+        },
+      });
+    } catch (error) {
+      // Never let the raw axios error bubble: it holds a circular https-agent
+      // reference that crashes NestJS response serialization (→ opaque 500).
+      const axiosError = error as {
+        response?: { status?: number; data?: unknown };
+      };
+      const status = axiosError?.response?.status;
+      const data = axiosError?.response?.data;
 
-    // Throws on failure so the caller (or BullMQ) can react; sms.md returns 201
-    // {"message":"Added to queue"} on success.
-    await client.get(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
+      this.logger.warn(
+        `sms.md send failed (status ${status ?? 'unknown'}): ${
+          typeof data === 'string' ? data : JSON.stringify(data ?? {})
+        }`,
+      );
+
+      throw new Error(`sms.md send failed with status ${status ?? 'unknown'}`);
+    }
   }
 }
