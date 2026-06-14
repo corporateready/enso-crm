@@ -92,6 +92,7 @@ type ActionConfig = {
   Icon: IconComponent;
   soon?: boolean;
   startsTimer?: boolean;
+  loggedVia?: string;
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
@@ -302,8 +303,23 @@ export const TaskActionsWidget = ({
     skip: !isDefined(personId),
   });
 
+  // Per-manager capability: only members with a recording-capable corporate GSM
+  // get the on-system "Call from corporate GSM" action.
+  const currentMemberId = currentWorkspaceMember?.id;
+  const { record: memberRecord } = useFindOneRecord({
+    objectNameSingular: 'workspaceMember',
+    objectRecordId: currentMemberId,
+    recordGqlFields: { id: true, hasRecordingGsm: true },
+    skip: !isDefined(currentMemberId),
+  });
+  const hasRecordingGsm =
+    (memberRecord as { hasRecordingGsm?: boolean } | undefined)
+      ?.hasRecordingGsm === true;
+
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingLoggedVia, setPendingLoggedVia] =
+    useState<string>('MANUAL_LOG');
   // Manual call timer: a plain off-system call reports no duration, so we time it
   // CRM-side from "Call manually" until the manager hits Stop.
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
@@ -325,6 +341,23 @@ export const TaskActionsWidget = ({
   const surface = getChannelSurface(channel);
   const linkContext = buildLinkContext(person as PersonForLinks | undefined);
 
+  // The corporate-GSM call is on-system (the recording SIM captures both ways) but
+  // dials via a plain tel: — gated to capable managers, marked CORPORATE_GSM so a
+  // synced recording can attach later.
+  const onSystemActions: ActionConfig[] =
+    channel === 'CALL' && hasRecordingGsm
+      ? [
+          {
+            label: 'Call from corporate GSM',
+            Icon: IconDeviceMobile,
+            startsTimer: true,
+            loggedVia: 'CORPORATE_GSM',
+            buildHref: telHref,
+          },
+          ...surface.onSystem,
+        ]
+      : surface.onSystem;
+
   const elapsedSeconds = isDefined(callDurationS)
     ? callDurationS
     : isDefined(callStartedAt)
@@ -332,16 +365,24 @@ export const TaskActionsWidget = ({
       : 0;
 
   const handleOpen = (href: string | undefined) => {
-    if (isDefined(href)) {
+    if (!isDefined(href)) {
+      return;
+    }
+    // tel:/sms: navigate the current tab (the OS handler takes over) — using
+    // window.open for these spawns a blank tab on desktop.
+    if (href.startsWith('tel:') || href.startsWith('sms:')) {
+      window.location.href = href;
+    } else {
       window.open(href, '_blank', 'noopener,noreferrer');
     }
   };
 
-  const handleStartCall = (href: string | undefined) => {
-    handleOpen(href);
+  const handleStartCall = (href: string | undefined, loggedVia: string) => {
+    setPendingLoggedVia(loggedVia);
     setCallDurationS(null);
     setCallStartedAt(Date.now());
     setNow(Date.now());
+    handleOpen(href);
   };
 
   const handleStopCall = () => {
@@ -362,7 +403,7 @@ export const TaskActionsWidget = ({
     try {
       await createOutboundActivity({
         ...(isDefined(channel) ? { channel } : {}),
-        loggedVia: 'MANUAL_LOG',
+        loggedVia: pendingLoggedVia,
         body: notes,
         occurredAt: new Date().toISOString(),
         taskId,
@@ -383,6 +424,7 @@ export const TaskActionsWidget = ({
       setNotes('');
       setCallStartedAt(null);
       setCallDurationS(null);
+      setPendingLoggedVia('MANUAL_LOG');
     } finally {
       setIsSaving(false);
     }
@@ -395,7 +437,7 @@ export const TaskActionsWidget = ({
 
     const onClick =
       action.startsTimer === true
-        ? () => handleStartCall(href)
+        ? () => handleStartCall(href, action.loggedVia ?? 'MANUAL_LOG')
         : isDeepLink
           ? () => handleOpen(href)
           : undefined;
@@ -418,13 +460,13 @@ export const TaskActionsWidget = ({
 
   return (
     <StyledContainer>
-      {surface.onSystem.length > 0 && (
+      {onSystemActions.length > 0 && (
         <StyledSection>
           {isDefined(surface.onSystemLabel) && (
             <StyledSectionLabel>{surface.onSystemLabel}</StyledSectionLabel>
           )}
           <StyledRow>
-            {surface.onSystem.map((action) => renderAction(action, true))}
+            {onSystemActions.map((action) => renderAction(action, true))}
           </StyledRow>
         </StyledSection>
       )}
