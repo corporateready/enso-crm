@@ -368,13 +368,10 @@ export const TaskActionsWidget = ({
     if (!isDefined(href)) {
       return;
     }
-    // tel:/sms: navigate the current tab (the OS handler takes over) — using
-    // window.open for these spawns a blank tab on desktop.
-    if (href.startsWith('tel:') || href.startsWith('sms:')) {
-      window.location.href = href;
-    } else {
-      window.open(href, '_blank', 'noopener,noreferrer');
-    }
+    // Open in a separate context so the deep-link hand-off never freezes this
+    // page: on mobile the dialer/app opens; on desktop a blank tab is the only
+    // (harmless) cost. (Navigating the current tab to tel: hangs desktop.)
+    window.open(href, '_blank', 'noopener,noreferrer');
   };
 
   const handleStartCall = (href: string | undefined, loggedVia: string) => {
