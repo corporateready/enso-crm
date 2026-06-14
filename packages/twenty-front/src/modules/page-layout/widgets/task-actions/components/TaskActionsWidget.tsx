@@ -1,3 +1,4 @@
+import { useMutation } from '@apollo/client/react';
 import { styled } from '@linaria/react';
 import { useEffect, useState } from 'react';
 
@@ -22,6 +23,8 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
+import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
+import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
@@ -317,8 +320,16 @@ export const TaskActionsWidget = ({
     (memberRecord as { hasRecordingGsm?: boolean } | undefined)
       ?.hasRecordingGsm === true;
 
+  const { enqueueSuccessSnackBar, enqueueErrorSnackBar } = useSnackBar();
+  const [sendTaskToMyPhone, { loading: isSendingToPhone }] = useMutation<{
+    sendTaskToMyPhone: { success: boolean; error?: string | null };
+  }>(SEND_TASK_TO_MY_PHONE);
+
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // The selected outcome stays highlighted; reflects the task's saved outcome
+  // until the manager picks another (we no longer auto-close the task).
+  const [selectedOutcome, setSelectedOutcome] = useState<string | null>(null);
   const [pendingLoggedVia, setPendingLoggedVia] =
     useState<string>('MANUAL_LOG');
   // Manual call timer: a plain off-system call reports no duration, so we time it
@@ -326,6 +337,9 @@ export const TaskActionsWidget = ({
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callDurationS, setCallDurationS] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
+
+  const activeOutcome =
+    selectedOutcome ?? (task?.outcome as string | null | undefined) ?? null;
 
   const isTiming = isDefined(callStartedAt) && !isDefined(callDurationS);
 
@@ -411,11 +425,30 @@ export const TaskActionsWidget = ({
     }
   };
 
+  const handleContinueOnPhone = async () => {
+    if (!isDefined(taskId)) {
+      return;
+    }
+    const result = await sendTaskToMyPhone({ variables: { taskId } });
+    const outcome = result.data?.sendTaskToMyPhone;
+
+    if (outcome?.success === true) {
+      enqueueSuccessSnackBar({ message: 'Sent to your phone' });
+    } else {
+      enqueueErrorSnackBar({
+        message: outcome?.error ?? 'Could not send to your phone',
+      });
+    }
+  };
+
   const handleLog = async (outcome: string) => {
     if (!isDefined(taskId) || isSaving) {
       return;
     }
 
+    // Record the outcome; do NOT auto-close — the manager closes the task when
+    // they're done. The clicked outcome stays highlighted.
+    setSelectedOutcome(outcome);
     setIsSaving(true);
 
     try {
@@ -436,7 +469,7 @@ export const TaskActionsWidget = ({
       await updateOneRecord({
         objectNameSingular: 'task',
         idToUpdate: taskId,
-        updateOneRecordInput: { outcome, status: 'DONE' },
+        updateOneRecordInput: { outcome },
       });
 
       setNotes('');
@@ -530,15 +563,20 @@ export const TaskActionsWidget = ({
           onChange={(event) => setNotes(event.target.value)}
         />
         <StyledRow>
-          {surface.outcomes.map((outcome) => (
-            <Button
-              key={outcome}
-              title={OUTCOME_LABELS[outcome] ?? outcome}
-              variant="secondary"
-              disabled={isSaving}
-              onClick={() => handleLog(outcome)}
-            />
-          ))}
+          {surface.outcomes.map((outcome) => {
+            const isSelected = activeOutcome === outcome;
+
+            return (
+              <Button
+                key={outcome}
+                title={OUTCOME_LABELS[outcome] ?? outcome}
+                variant={isSelected ? 'primary' : 'secondary'}
+                accent={isSelected ? 'blue' : 'default'}
+                disabled={isSaving}
+                onClick={() => handleLog(outcome)}
+              />
+            );
+          })}
         </StyledRow>
       </StyledSection>
 
@@ -548,6 +586,16 @@ export const TaskActionsWidget = ({
           separately — it isn't a task action.
         </StyledFootnote>
       )}
+
+      <StyledRow>
+        <Button
+          title="Continue on phone"
+          Icon={IconDeviceMobile}
+          variant="secondary"
+          disabled={isSendingToPhone}
+          onClick={handleContinueOnPhone}
+        />
+      </StyledRow>
     </StyledContainer>
   );
 };

@@ -138,6 +138,68 @@ export class NotificationSettingsResolver {
         };
   }
 
+  // Desktop → mobile handoff: ping the current manager's OWN Chat space with a
+  // deep-link to this task, so they can pick it up on their phone (Actions tab).
+  @Mutation(() => GoogleChatTestResult)
+  async sendTaskToMyPhone(
+    @Args('taskId', { type: () => String }) taskId: string,
+    @AuthUser() user: UserEntity,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<GoogleChatTestResult> {
+    const webhookUrl = await this.googleChatWebhookService.getWebhookUrl({
+      userId: user.id,
+      workspaceId: workspace.id,
+    });
+
+    if (!isDefined(webhookUrl)) {
+      return {
+        success: false,
+        error: 'Connect Google Chat in Settings → Notifications first.',
+      };
+    }
+
+    const appUrl = (
+      process.env.ENSO_CRM_APP_URL ||
+      process.env.FRONTEND_URL ||
+      ''
+    ).replace(/\/$/, '');
+    const taskUrl = appUrl ? `${appUrl}/object/task/${taskId}` : undefined;
+
+    const actionWidget: Record<string, unknown> = isDefined(taskUrl)
+      ? {
+          buttonList: {
+            buttons: [
+              { text: 'Open task', onClick: { openLink: { url: taskUrl } } },
+            ],
+          },
+        }
+      : {
+          decoratedText: {
+            startIcon: { knownIcon: 'DESCRIPTION' },
+            text: 'Open the CRM on your phone to continue.',
+          },
+        };
+
+    const succeeded = await this.googleChatWebhookService.post(webhookUrl, {
+      cardsV2: [
+        {
+          cardId: 'enso-crm-continue-on-phone',
+          card: {
+            header: {
+              title: '📱 Continue on your phone',
+              subtitle: 'Open this task to log the touch from mobile.',
+            },
+            sections: [{ widgets: [actionWidget] }],
+          },
+        },
+      ],
+    });
+
+    return succeeded
+      ? { success: true }
+      : { success: false, error: 'Could not reach Google Chat.' };
+  }
+
   @Query(() => [GoogleChatNotificationPreference])
   async notificationPreferences(
     @AuthUser() user: UserEntity,
