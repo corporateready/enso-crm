@@ -22,6 +22,8 @@ import {
 } from 'src/modules/enso/notifications/notifications.constants';
 import { GoogleChatWebhookService } from 'src/modules/enso/notifications/services/google-chat-webhook.service';
 import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
+import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 
 // Each manager manages their OWN personal Google Chat webhook (the private space
 // that receives their CRM alerts). No special permission — being a signed-in
@@ -36,7 +38,52 @@ export class NotificationSettingsResolver {
   constructor(
     private readonly googleChatWebhookService: GoogleChatWebhookService,
     private readonly marketingSmsService: MarketingSmsService,
+    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
+
+  // The "continue on phone" handoff must reach whoever is WORKING the task — its
+  // assignee — not whoever happens to click (an admin viewing the task would
+  // otherwise ping their own space). Resolve assignee → workspaceMember.userId.
+  // Returns undefined when the task has no assignee, so callers fall back to the
+  // clicking user.
+  private async resolveTaskAssigneeUserId(
+    workspaceId: string,
+    taskId: string,
+  ): Promise<string | undefined> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const taskRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'task',
+            { shouldBypassPermissionChecks: true },
+          );
+        const task = await taskRepository.findOne({
+          where: { id: taskId },
+          select: { id: true, assigneeId: true },
+        });
+        const assigneeId = task?.assigneeId;
+
+        if (!isDefined(assigneeId)) {
+          return undefined;
+        }
+
+        const workspaceMemberRepository =
+          await this.globalWorkspaceOrmManager.getRepository<any>(
+            workspaceId,
+            'workspaceMember',
+            { shouldBypassPermissionChecks: true },
+          );
+        const assignee = await workspaceMemberRepository.findOne({
+          where: { id: assigneeId },
+          select: { id: true, userId: true },
+        });
+
+        return isDefined(assignee?.userId) ? assignee.userId : undefined;
+      },
+      buildSystemAuthContext(workspaceId),
+    );
+  }
 
   @Query(() => GoogleChatWebhookSettings)
   async googleChatWebhookSettings(
@@ -169,15 +216,27 @@ export class NotificationSettingsResolver {
     @AuthUser() user: UserEntity,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ): Promise<GoogleChatTestResult> {
+    // Route to the task's assignee (whoever is working it), not the clicker.
+    // Fall back to the clicker when the task is unassigned.
+    const assigneeUserId = await this.resolveTaskAssigneeUserId(
+      workspace.id,
+      taskId,
+    );
+    const targetUserId = assigneeUserId ?? user.id;
+    const isRoutingToOtherUser =
+      isDefined(assigneeUserId) && assigneeUserId !== user.id;
+
     const webhookUrl = await this.googleChatWebhookService.getWebhookUrl({
-      userId: user.id,
+      userId: targetUserId,
       workspaceId: workspace.id,
     });
 
     if (!isDefined(webhookUrl)) {
       return {
         success: false,
-        error: 'Connect Google Chat in Settings → Notifications first.',
+        error: isRoutingToOtherUser
+          ? "The assignee hasn't connected their Google Chat yet."
+          : 'Connect Google Chat in Settings → Notifications first.',
       };
     }
 
