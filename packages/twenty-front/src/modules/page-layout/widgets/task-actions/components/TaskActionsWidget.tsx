@@ -14,12 +14,7 @@ import {
   IconWorld,
   type IconComponent,
 } from 'twenty-ui/display';
-import {
-  Modal,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from 'twenty-ui/layout';
+import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
 import { Button, type SelectOption } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -35,6 +30,8 @@ import { Select } from '@/ui/input/components/Select';
 import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
+import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
+import { useModal } from '@/ui/layout/modal/hooks/useModal';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
 const StyledContainer = styled.div`
@@ -126,6 +123,8 @@ type ActionConfig = {
 const SMS_ALIAS_OPTIONS: SelectOption<string>[] = [
   { label: 'ARTIMA', value: 'ARTIMA' },
 ];
+
+const SMS_MODAL_ID = 'task-actions-sms-compose';
 
 type ChannelSurface = {
   onSystem: ActionConfig[];
@@ -359,7 +358,7 @@ export const TaskActionsWidget = ({
   }>(SEND_TASK_SMS);
 
   // Corporate-SMS compose modal: type the message, pick the sender alias, send.
-  const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
+  const { openModal, closeModal } = useModal();
   const [smsMessage, setSmsMessage] = useState('');
   const [smsAlias, setSmsAlias] = useState<string>('ARTIMA');
 
@@ -444,7 +443,7 @@ export const TaskActionsWidget = ({
   const handleActionClick = (action: ActionConfig) => {
     if (action.opensComposer === true) {
       setSmsMessage(linkContext.greeting ?? '');
-      setIsSmsModalOpen(true);
+      openModal(SMS_MODAL_ID);
 
       return;
     }
@@ -473,7 +472,7 @@ export const TaskActionsWidget = ({
 
     if (outcome?.success === true) {
       enqueueSuccessSnackBar({ message: 'SMS sent' });
-      setIsSmsModalOpen(false);
+      closeModal(SMS_MODAL_ID);
       setSmsMessage('');
     } else {
       enqueueErrorSnackBar({
@@ -663,51 +662,49 @@ export const TaskActionsWidget = ({
         />
       </StyledRow>
 
-      {isSmsModalOpen && (
-        <Modal
-          isOpen={isSmsModalOpen}
-          size="small"
-          padding="medium"
-          onBackdropMouseDown={() => setIsSmsModalOpen(false)}
-        >
-          <ModalHeader>
-            <StyledModalTitle>Send corporate SMS</StyledModalTitle>
-          </ModalHeader>
-          <ModalContent>
-            <StyledModalBody>
-              <TextArea
-                textAreaId="task-sms-message"
-                placeholder="Message to send…"
-                value={smsMessage}
-                onChange={setSmsMessage}
-                minRows={3}
-              />
-              <Select
-                dropdownId="task-sms-alias"
-                label="Send as"
-                options={SMS_ALIAS_OPTIONS}
-                value={smsAlias}
-                onChange={setSmsAlias}
-                fullWidth
-              />
-            </StyledModalBody>
-          </ModalContent>
-          <ModalFooter>
-            <Button
-              title="Cancel"
-              variant="secondary"
-              onClick={() => setIsSmsModalOpen(false)}
+      <ModalStatefulWrapper
+        modalInstanceId={SMS_MODAL_ID}
+        size="small"
+        padding="medium"
+        isClosable
+      >
+        <ModalHeader>
+          <StyledModalTitle>Send corporate SMS</StyledModalTitle>
+        </ModalHeader>
+        <ModalContent>
+          <StyledModalBody>
+            <TextArea
+              textAreaId="task-sms-message"
+              placeholder="Message to send…"
+              value={smsMessage}
+              onChange={setSmsMessage}
+              minRows={3}
             />
-            <Button
-              title="Send"
-              variant="primary"
-              accent="blue"
-              disabled={isSendingSms || smsMessage.trim() === ''}
-              onClick={handleSendSms}
+            <Select
+              dropdownId="task-sms-alias"
+              label="Send as"
+              options={SMS_ALIAS_OPTIONS}
+              value={smsAlias}
+              onChange={setSmsAlias}
+              fullWidth
             />
-          </ModalFooter>
-        </Modal>
-      )}
+          </StyledModalBody>
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            onClick={() => closeModal(SMS_MODAL_ID)}
+          />
+          <Button
+            title="Send"
+            variant="primary"
+            accent="blue"
+            disabled={isSendingSms || smsMessage.trim() === ''}
+            onClick={handleSendSms}
+          />
+        </ModalFooter>
+      </ModalStatefulWrapper>
     </StyledContainer>
   );
 };
