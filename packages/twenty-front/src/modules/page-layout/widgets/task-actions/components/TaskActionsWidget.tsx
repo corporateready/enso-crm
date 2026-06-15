@@ -20,8 +20,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from 'twenty-ui/layout';
-import { Button } from 'twenty-ui/input';
-import { type SelectOption } from 'twenty-ui/input';
+import { Button, type SelectOption } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
