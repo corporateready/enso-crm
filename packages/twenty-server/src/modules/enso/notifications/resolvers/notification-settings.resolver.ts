@@ -21,6 +21,7 @@ import {
   type NotificationEventKey,
 } from 'src/modules/enso/notifications/notifications.constants';
 import { GoogleChatWebhookService } from 'src/modules/enso/notifications/services/google-chat-webhook.service';
+import { MarketingSmsService } from 'src/modules/enso/marketing-sync/services/marketing-sms.service';
 
 // Each manager manages their OWN personal Google Chat webhook (the private space
 // that receives their CRM alerts). No special permission — being a signed-in
@@ -34,6 +35,7 @@ import { GoogleChatWebhookService } from 'src/modules/enso/notifications/service
 export class NotificationSettingsResolver {
   constructor(
     private readonly googleChatWebhookService: GoogleChatWebhookService,
+    private readonly marketingSmsService: MarketingSmsService,
   ) {}
 
   @Query(() => GoogleChatWebhookSettings)
@@ -136,6 +138,27 @@ export class NotificationSettingsResolver {
           success: false,
           error: 'Could not reach Google Chat. Check the URL.',
         };
+  }
+
+  // Manager-initiated corporate SMS from a task. Consent is enforced server-side
+  // inside MarketingSmsService (refuses if the lead hasn't granted SMS).
+  @Mutation(() => GoogleChatTestResult)
+  async sendTaskSms(
+    @Args('taskId', { type: () => String }) taskId: string,
+    @Args('message', { type: () => String }) message: string,
+    @Args('alias', { type: () => String, nullable: true }) alias: string | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<GoogleChatTestResult> {
+    if (!isDefined(message) || message.trim() === '') {
+      return { success: false, error: 'Message is empty.' };
+    }
+
+    return this.marketingSmsService.sendTaskSms({
+      workspaceId: workspace.id,
+      taskId,
+      message,
+      ...(isDefined(alias) ? { alias } : {}),
+    });
   }
 
   // Desktop → mobile handoff: ping the current manager's OWN Chat space with a

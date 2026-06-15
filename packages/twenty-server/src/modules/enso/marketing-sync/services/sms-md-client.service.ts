@@ -19,6 +19,8 @@ import { SecureHttpClientService } from 'src/engine/core-modules/secure-http-cli
 type SendSmsParams = {
   to: string;
   message: string;
+  // Operator-approved sender alias to send as; defaults to SMS_MD_SENDER (ARTIMA).
+  from?: string;
 };
 
 @Injectable()
@@ -70,7 +72,7 @@ export class SmsMdClientService {
       await client.get(this.baseUrl, {
         params: {
           token: this.apiKey,
-          from: this.sender,
+          from: params.from || this.sender,
           to: params.to,
           message: params.message,
         },
