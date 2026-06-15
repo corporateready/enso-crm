@@ -14,7 +14,14 @@ import {
   IconWorld,
   type IconComponent,
 } from 'twenty-ui/display';
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from 'twenty-ui/layout';
 import { Button } from 'twenty-ui/input';
+import { type SelectOption } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
@@ -23,7 +30,10 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
+import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTaskSms';
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
+import { Select } from '@/ui/input/components/Select';
+import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
@@ -75,6 +85,19 @@ const StyledFootnote = styled.div`
   padding-top: ${themeCssVariables.spacing[2]};
 `;
 
+const StyledModalTitle = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: 500;
+`;
+
+const StyledModalBody = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[3]};
+  width: 100%;
+`;
+
 // The widget asks the manager only for what the system can't see: the disposition
 // of a touch, and anything done off our infrastructure. On-system actions that need
 // telephony / messaging integrations are shown as `soon`. Off-system actions are
@@ -96,8 +119,14 @@ type ActionConfig = {
   soon?: boolean;
   startsTimer?: boolean;
   loggedVia?: string;
+  opensComposer?: boolean;
   buildHref?: (context: LinkContext) => string | undefined;
 };
+
+// Approved sender aliases (sms.md). Only ARTIMA today; will become per-project.
+const SMS_ALIAS_OPTIONS: SelectOption<string>[] = [
+  { label: 'ARTIMA', value: 'ARTIMA' },
+];
 
 type ChannelSurface = {
   onSystem: ActionConfig[];
@@ -200,8 +229,10 @@ const getChannelSurface = (
       };
     case 'SMS':
       return {
-        onSystemLabel: 'On system · gateway, delivery captured (one-way)',
-        onSystem: [{ label: 'Send corporate SMS', Icon: IconSend, soon: true }],
+        onSystemLabel: 'On system · gateway, one-way (sent via ARTIMA)',
+        onSystem: [
+          { label: 'Send corporate SMS', Icon: IconSend, opensComposer: true },
+        ],
         offSystemLabel: 'Off system · sent from your phone, log it',
         offSystem: [
           {
@@ -324,6 +355,14 @@ export const TaskActionsWidget = ({
   const [sendTaskToMyPhone, { loading: isSendingToPhone }] = useMutation<{
     sendTaskToMyPhone: { success: boolean; error?: string | null };
   }>(SEND_TASK_TO_MY_PHONE);
+  const [sendTaskSms, { loading: isSendingSms }] = useMutation<{
+    sendTaskSms: { success: boolean; error?: string | null };
+  }>(SEND_TASK_SMS);
+
+  // Corporate-SMS compose modal: type the message, pick the sender alias, send.
+  const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsAlias, setSmsAlias] = useState<string>('ARTIMA');
 
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -404,6 +443,13 @@ export const TaskActionsWidget = ({
   // is being logged, and (only for the plain off-system call) start the timer.
   // Corporate GSM does NOT time — its duration comes from the recording.
   const handleActionClick = (action: ActionConfig) => {
+    if (action.opensComposer === true) {
+      setSmsMessage(linkContext.greeting ?? '');
+      setIsSmsModalOpen(true);
+
+      return;
+    }
+
     handleOpen(action.buildHref?.(linkContext));
 
     if (isDefined(action.loggedVia)) {
@@ -414,6 +460,26 @@ export const TaskActionsWidget = ({
       setCallDurationS(null);
       setCallStartedAt(Date.now());
       setNow(Date.now());
+    }
+  };
+
+  const handleSendSms = async () => {
+    if (!isDefined(taskId) || smsMessage.trim() === '' || isSendingSms) {
+      return;
+    }
+    const result = await sendTaskSms({
+      variables: { taskId, message: smsMessage, alias: smsAlias },
+    });
+    const outcome = result.data?.sendTaskSms;
+
+    if (outcome?.success === true) {
+      enqueueSuccessSnackBar({ message: 'SMS sent' });
+      setIsSmsModalOpen(false);
+      setSmsMessage('');
+    } else {
+      enqueueErrorSnackBar({
+        message: outcome?.error ?? 'Could not send the SMS',
+      });
     }
   };
 
@@ -484,9 +550,10 @@ export const TaskActionsWidget = ({
   const renderAction = (action: ActionConfig, isPrimary: boolean) => {
     const href = action.buildHref?.(linkContext);
     const isDeepLink = isDefined(action.buildHref);
+    const isClickable = isDeepLink || action.opensComposer === true;
     const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
 
-    const onClick = isDeepLink ? () => handleActionClick(action) : undefined;
+    const onClick = isClickable ? () => handleActionClick(action) : undefined;
 
     return (
       <Button
@@ -596,6 +663,52 @@ export const TaskActionsWidget = ({
           onClick={handleContinueOnPhone}
         />
       </StyledRow>
+
+      {isSmsModalOpen && (
+        <Modal
+          isOpen={isSmsModalOpen}
+          size="small"
+          padding="medium"
+          onBackdropMouseDown={() => setIsSmsModalOpen(false)}
+        >
+          <ModalHeader>
+            <StyledModalTitle>Send corporate SMS</StyledModalTitle>
+          </ModalHeader>
+          <ModalContent>
+            <StyledModalBody>
+              <TextArea
+                textAreaId="task-sms-message"
+                placeholder="Message to send…"
+                value={smsMessage}
+                onChange={setSmsMessage}
+                minRows={3}
+              />
+              <Select
+                dropdownId="task-sms-alias"
+                label="Send as"
+                options={SMS_ALIAS_OPTIONS}
+                value={smsAlias}
+                onChange={setSmsAlias}
+                fullWidth
+              />
+            </StyledModalBody>
+          </ModalContent>
+          <ModalFooter>
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onClick={() => setIsSmsModalOpen(false)}
+            />
+            <Button
+              title="Send"
+              variant="primary"
+              accent="blue"
+              disabled={isSendingSms || smsMessage.trim() === ''}
+              onClick={handleSendSms}
+            />
+          </ModalFooter>
+        </Modal>
+      )}
     </StyledContainer>
   );
 };
