@@ -217,6 +217,33 @@ no person link (confirmed: a real manual log landed orphaned from its deal). The
 resolve the deal + person from the task's `taskTarget` pin (reliable), set both on the
 `outboundActivity`. Done as part of building the off-system manual path.
 
+## Actions generalize beyond tasks
+
+A **task** is *what to do* — either **automatic** (a sequence step) or **manual**
+(manager-created). An **action** is *what happened* — it writes an `outboundActivity`.
+The task is only one **entry point** that pre-fills the channel and the target; it is
+not what the activity is fundamentally about.
+
+This matters because an `outboundActivity` anchors to the **person + deal**, with the
+task as optional context (see "What every completed touch produces"). Strip the task
+away and the definition still holds: *log a channel touch on a contact/deal, with a
+note and (optionally) an outcome*. Nothing in that is task-specific — so the same
+channel-aware surface drops onto **person, opportunity, and company** unchanged, and a
+**standalone "Log activity"** entry point makes sense anywhere.
+
+- **Channel is implied by the action the manager clicks** — pressing WhatsApp / SMS /
+  Call *is* the channel selection. No separate channel dropdown: the standalone button
+  expands to the same per-channel action rows, and clicking one both picks the channel
+  and starts the touch (deep-link / timer / composer).
+- **Task outcome only applies when an action advances a task.** Reachability
+  (reached / no-answer / waiting) marks a task; a standalone ad-hoc touch still logs
+  channel + note (+ optional reachability on the activity), but there's no task to mark.
+- **On person/opportunity:** target = the record itself. **On company:** the surface
+  asks *which* person/deal to attribute the touch to (a company has many).
+- **Notes on activities are kept but their role is undecided** — we're not yet sure how
+  (or whether) free-text notes on an activity should be used vs. structured fields.
+  Keep the field; defer the convention (relates to the parked fields-vs-notes question).
+
 ## Build order
 
 1. **Off-system manual path** inside each widget — pure frontend, no telephony
@@ -233,3 +260,13 @@ resolve the deal + person from the task's `taskTarget` pin (reliable), set both 
 - Whether the deal disposition is a dropdown on the deal vs a stage-gate required
   field (lives in `sequencing-architecture.md`'s gated-stage machine).
 - AI-derived call disposition from the recording (recoverable, not real-time).
+- **Standalone touch ↔ open sequence task reconciliation** (great but complicated):
+  when a manager logs an ad-hoc touch directly on a deal/person (no task), should it
+  optionally **close or advance an open sequence task of the same channel** on that
+  deal — so manual logging keeps the cadence honest and the observer/dispatcher don't
+  double-chase? Leaning yes eventually; needs care around which task it matches (channel
+  + step), idempotency, and not skipping cadence steps. Not v1.
+- **Per-project SMS alias auto-default.** Approved sms.md senders are `ARTIMA`, `ENSO`
+  (ENSO Development + ENSO Estate), `IMOBILIARE` (Vanzari Imobiliare + IOANA RADU).
+  Default the alias from the deal's project; manager can still override. Today the
+  manager picks from the three.
