@@ -119,9 +119,17 @@ type ActionConfig = {
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
-// Approved sender aliases (sms.md). Only ARTIMA today; will become per-project.
+// Operator-approved sender aliases on sms.md (case-sensitive, confirmed against
+// the partner.sms.md Senders page). Per-project intent:
+//   ENSO       → ENSO Development, ENSO Estate
+//   IMOBILIARE → Vanzari Imobiliare, IOANA RADU
+//   ARTIMA     → original / fallback
+// Auto-defaulting the selection from the deal's project is a later refinement;
+// for now the manager picks.
 const SMS_ALIAS_OPTIONS: SelectOption<string>[] = [
   { label: 'ARTIMA', value: 'ARTIMA' },
+  { label: 'ENSO', value: 'ENSO' },
+  { label: 'IMOBILIARE', value: 'IMOBILIARE' },
 ];
 
 const SMS_MODAL_ID = 'task-actions-sms-compose';
