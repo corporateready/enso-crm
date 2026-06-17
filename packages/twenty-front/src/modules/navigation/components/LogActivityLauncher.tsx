@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 import { IconBolt } from 'twenty-ui/display';
 import { Button } from 'twenty-ui/input';
-import { ModalContent, ModalHeader } from 'twenty-ui/layout';
+import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { FormSingleRecordPicker } from '@/object-record/record-field/ui/form-types/components/FormSingleRecordPicker';
@@ -54,7 +54,7 @@ const StyledTitle = styled.div`
 `;
 
 export const LogActivityLauncher = () => {
-  const { openModal } = useModal();
+  const { openModal, closeModal } = useModal();
   const [objectType, setObjectType] = useState<string>('opportunity');
   const [pickedRecordId, setPickedRecordId] = useState<string | null>(null);
 
@@ -66,6 +66,11 @@ export const LogActivityLauncher = () => {
   const handleOpen = () => {
     reset();
     openModal(LAUNCHER_MODAL_ID);
+  };
+
+  const handleClose = () => {
+    closeModal(LAUNCHER_MODAL_ID);
+    reset();
   };
 
   const typeLabel =
@@ -84,6 +89,10 @@ export const LogActivityLauncher = () => {
         size="medium"
         padding="medium"
         isClosable
+        // The record picker renders its dropdown in a portal outside the modal,
+        // so click-outside-to-close would dismiss the modal the moment you open
+        // the picker. Disable it; close explicitly via the Close button.
+        shouldCloseModalOnClickOutsideOrEscape={false}
         onClose={reset}
       >
         <ModalHeader>
@@ -144,6 +153,9 @@ export const LogActivityLauncher = () => {
             )}
           </StyledBody>
         </ModalContent>
+        <ModalFooter>
+          <Button title="Close" variant="secondary" onClick={handleClose} />
+        </ModalFooter>
       </ModalStatefulWrapper>
     </NavigationDrawerSection>
   );
