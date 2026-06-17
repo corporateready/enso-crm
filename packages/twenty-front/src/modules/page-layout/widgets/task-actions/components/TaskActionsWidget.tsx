@@ -24,8 +24,10 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
+import { SEND_RECORD_SMS } from '@/settings/notifications/graphql/mutations/sendRecordSms';
 import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTaskSms';
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
+import { RECORD_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/recordSmsContext';
 import { TASK_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/taskSmsContext';
 import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
@@ -177,6 +179,20 @@ const CALL_OUTCOMES = [
 ];
 const MESSAGE_OUTCOMES = ['REACHED', 'NO_ANSWER'];
 
+// Object mode (logging a touch from a deal/contact record, no task): the manager
+// picks the channel — clicking it IS the channel choice — then the matching
+// channel surface (deep-links / SMS composer / outcomes) renders below.
+const OBJECT_MODE_CHANNELS: {
+  label: string;
+  value: string;
+  Icon: IconComponent;
+}[] = [
+  { label: 'Call', value: 'CALL', Icon: IconPhone },
+  { label: 'WhatsApp', value: 'WHATSAPP', Icon: IconBrandWhatsapp },
+  { label: 'SMS', value: 'SMS', Icon: IconSend },
+  { label: 'Social', value: 'SOCIAL', Icon: IconExternalLink },
+];
+
 const telHref = (context: LinkContext) =>
   isDefined(context.phoneE164) ? `tel:${context.phoneE164}` : undefined;
 
@@ -305,7 +321,15 @@ export const TaskActionsWidget = ({
   widget: _widget,
 }: TaskActionsWidgetProps) => {
   const { targetRecordIdentifier } = useLayoutRenderingContext();
-  const taskId = targetRecordIdentifier?.id;
+  const recordId = targetRecordIdentifier?.id;
+  const objectNameSingular = targetRecordIdentifier?.targetObjectNameSingular;
+  // Task mode = the action surface on a sequence/manual task (channel known).
+  // Object mode = the same surface on a deal record, where the manager picks the
+  // channel and the touch is logged against the deal + its point-of-contact.
+  const isTaskMode = objectNameSingular === 'task';
+  const isOpportunityMode = objectNameSingular === 'opportunity';
+
+  const taskId = isTaskMode ? recordId : undefined;
 
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
   const { updateOneRecord } = useUpdateOneRecord();
@@ -319,9 +343,9 @@ export const TaskActionsWidget = ({
     skip: !isDefined(taskId),
   });
 
-  // Resolve the deal + person from the task's taskTarget pins (reliable) — the
-  // nested task.sequenceRun.opportunityId is not returned by the record fetch,
-  // which is why earlier manual logs landed orphaned from their deal.
+  // Task mode: resolve the deal + person from the task's taskTarget pins
+  // (reliable) — the nested task.sequenceRun.opportunityId is not returned by the
+  // record fetch, which is why earlier manual logs landed orphaned from their deal.
   const { records: taskTargets } = useFindManyRecords({
     objectNameSingular: 'taskTarget',
     filter: { taskId: { eq: taskId } },
@@ -333,12 +357,25 @@ export const TaskActionsWidget = ({
     skip: !isDefined(taskId),
   });
 
-  const opportunityId = taskTargets?.find((target) =>
-    isDefined(target.targetOpportunityId),
-  )?.targetOpportunityId as string | undefined;
-  const personId = taskTargets?.find((target) =>
-    isDefined(target.targetPersonId),
-  )?.targetPersonId as string | undefined;
+  // Object mode (opportunity): the record IS the deal; the contact is its
+  // point-of-contact.
+  const opportunityRecordId = isOpportunityMode ? recordId : undefined;
+  const { record: opportunityRecord } = useFindOneRecord({
+    objectNameSingular: 'opportunity',
+    objectRecordId: opportunityRecordId,
+    recordGqlFields: { id: true, name: true, pointOfContactId: true },
+    skip: !isDefined(opportunityRecordId),
+  });
+
+  const opportunityId = isTaskMode
+    ? (taskTargets?.find((target) => isDefined(target.targetOpportunityId))
+        ?.targetOpportunityId as string | undefined)
+    : (opportunityRecordId ?? undefined);
+  const personId = isTaskMode
+    ? (taskTargets?.find((target) => isDefined(target.targetPersonId))
+        ?.targetPersonId as string | undefined)
+    : ((opportunityRecord as { pointOfContactId?: string } | undefined)
+        ?.pointOfContactId ?? undefined);
 
   const { record: person } = useFindOneRecord({
     objectNameSingular: 'person',
@@ -363,25 +400,45 @@ export const TaskActionsWidget = ({
   const [sendTaskToMyPhone, { loading: isSendingToPhone }] = useMutation<{
     sendTaskToMyPhone: { success: boolean; error?: string | null };
   }>(SEND_TASK_TO_MY_PHONE);
-  const [sendTaskSms, { loading: isSendingSms }] = useMutation<{
+  const [sendTaskSms, { loading: isSendingTaskSms }] = useMutation<{
     sendTaskSms: { success: boolean; error?: string | null };
   }>(SEND_TASK_SMS);
+  const [sendRecordSms, { loading: isSendingRecordSms }] = useMutation<{
+    sendRecordSms: { success: boolean; error?: string | null };
+  }>(SEND_RECORD_SMS);
+  const isSendingSms = isSendingTaskSms || isSendingRecordSms;
 
   // Corporate-SMS compose modal: type the message and send. The sender alias +
   // whether sending is allowed come from the server (deal's project + consent).
   const { openModal, closeModal } = useModal();
   const [smsMessage, setSmsMessage] = useState('');
+  type SmsContextShape = {
+    alias: string | null;
+    canSend: boolean;
+    reason: string | null;
+  };
   const [
-    fetchSmsContext,
-    { data: smsContextData, loading: isLoadingSmsContext },
-  ] = useLazyQuery<{
-    taskSmsContext: {
-      alias: string | null;
-      canSend: boolean;
-      reason: string | null;
-    };
-  }>(TASK_SMS_CONTEXT, { fetchPolicy: 'network-only' });
-  const smsContext = smsContextData?.taskSmsContext;
+    fetchTaskSmsContext,
+    { data: taskSmsContextData, loading: isLoadingTaskSmsContext },
+  ] = useLazyQuery<{ taskSmsContext: SmsContextShape }>(TASK_SMS_CONTEXT, {
+    fetchPolicy: 'network-only',
+  });
+  const [
+    fetchRecordSmsContext,
+    { data: recordSmsContextData, loading: isLoadingRecordSmsContext },
+  ] = useLazyQuery<{ recordSmsContext: SmsContextShape }>(RECORD_SMS_CONTEXT, {
+    fetchPolicy: 'network-only',
+  });
+  const smsContext = isTaskMode
+    ? taskSmsContextData?.taskSmsContext
+    : recordSmsContextData?.recordSmsContext;
+  const isLoadingSmsContext = isTaskMode
+    ? isLoadingTaskSmsContext
+    : isLoadingRecordSmsContext;
+
+  // Object mode: the manager picks the channel (it's implied by the action they
+  // click); task mode takes the channel from the task itself.
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
 
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -410,7 +467,9 @@ export const TaskActionsWidget = ({
     return () => clearInterval(intervalId);
   }, [isTiming]);
 
-  const channel = (task?.channel as string | null | undefined) ?? null;
+  const channel = isTaskMode
+    ? ((task?.channel as string | null | undefined) ?? null)
+    : selectedChannel;
   const surface = getChannelSurface(channel);
   const linkContext = buildLinkContext(person as PersonForLinks | undefined);
 
@@ -465,8 +524,15 @@ export const TaskActionsWidget = ({
     if (action.opensComposer === true) {
       setSmsMessage(linkContext.greeting ?? '');
       // Refresh consent + the project's alias each time the modal opens.
-      if (isDefined(taskId)) {
-        fetchSmsContext({ variables: { taskId } });
+      if (isTaskMode && isDefined(taskId)) {
+        fetchTaskSmsContext({ variables: { taskId } });
+      } else if (!isTaskMode) {
+        fetchRecordSmsContext({
+          variables: {
+            opportunityId: opportunityId ?? null,
+            personId: personId ?? null,
+          },
+        });
       }
       openModal(SMS_MODAL_ID);
 
@@ -488,17 +554,35 @@ export const TaskActionsWidget = ({
 
   const handleSendSms = async () => {
     if (
-      !isDefined(taskId) ||
       smsMessage.trim() === '' ||
       isSendingSms ||
       smsContext?.canSend !== true
     ) {
       return;
     }
-    const result = await sendTaskSms({
-      variables: { taskId, message: smsMessage },
-    });
-    const outcome = result.data?.sendTaskSms;
+
+    let outcome: { success: boolean; error?: string | null } | undefined;
+
+    if (isTaskMode) {
+      if (!isDefined(taskId)) {
+        return;
+      }
+      const result = await sendTaskSms({
+        variables: { taskId, message: smsMessage },
+      });
+
+      outcome = result.data?.sendTaskSms;
+    } else {
+      const result = await sendRecordSms({
+        variables: {
+          opportunityId: opportunityId ?? null,
+          personId: personId ?? null,
+          message: smsMessage,
+        },
+      });
+
+      outcome = result.data?.sendRecordSms;
+    }
 
     if (outcome?.success === true) {
       enqueueSuccessSnackBar({ message: 'SMS sent' });
@@ -536,7 +620,11 @@ export const TaskActionsWidget = ({
   };
 
   const handleLog = async (outcome: string) => {
-    if (!isDefined(taskId) || isSaving) {
+    if (isSaving) {
+      return;
+    }
+    // Need a target to log against: a task (task mode) or a deal/person (object).
+    if (isTaskMode ? !isDefined(taskId) : !isDefined(personId)) {
       return;
     }
 
@@ -551,7 +639,7 @@ export const TaskActionsWidget = ({
         loggedVia: pendingLoggedVia,
         body: notes,
         occurredAt: new Date().toISOString(),
-        taskId,
+        ...(isDefined(taskId) ? { taskId } : {}),
         ...(isDefined(callDurationS) ? { durationS: callDurationS } : {}),
         ...(isDefined(opportunityId) ? { opportunityId } : {}),
         ...(isDefined(personId) ? { personId } : {}),
@@ -560,11 +648,14 @@ export const TaskActionsWidget = ({
           : {}),
       });
 
-      await updateOneRecord({
-        objectNameSingular: 'task',
-        idToUpdate: taskId,
-        updateOneRecordInput: { outcome },
-      });
+      // Task mode also stamps the task's reachability outcome.
+      if (isTaskMode && isDefined(taskId)) {
+        await updateOneRecord({
+          objectNameSingular: 'task',
+          idToUpdate: taskId,
+          updateOneRecordInput: { outcome },
+        });
+      }
 
       setNotes('');
       setCallStartedAt(null);
@@ -598,99 +689,144 @@ export const TaskActionsWidget = ({
   };
 
   const hasTimer = isDefined(callStartedAt) || isDefined(callDurationS);
+  // Object mode shows nothing until a channel is chosen; task mode always shows.
+  const surfaceVisible = isTaskMode || isDefined(selectedChannel);
+
+  const handleSelectChannel = (value: string) => {
+    setSelectedChannel(value);
+    setSelectedOutcome(null);
+    setCallStartedAt(null);
+    setCallDurationS(null);
+    setPendingLoggedVia('MANUAL_LOG');
+  };
 
   return (
     <StyledContainer>
-      {onSystemActions.length > 0 && (
+      {!isTaskMode && (
         <StyledSection>
-          {isDefined(surface.onSystemLabel) && (
-            <StyledSectionLabel>{surface.onSystemLabel}</StyledSectionLabel>
-          )}
+          <StyledSectionLabel>
+            {isDefined(personId)
+              ? 'Log a touch — pick the channel'
+              : 'No point-of-contact on this deal yet'}
+          </StyledSectionLabel>
           <StyledRow>
-            {onSystemActions.map((action) => renderAction(action, true))}
-          </StyledRow>
-        </StyledSection>
-      )}
-
-      {surface.offSystem.length > 0 && (
-        <StyledSection>
-          {isDefined(surface.offSystemLabel) && (
-            <StyledSectionLabel>{surface.offSystemLabel}</StyledSectionLabel>
-          )}
-          <StyledRow>
-            {surface.offSystem.map((action) => renderAction(action, false))}
-          </StyledRow>
-        </StyledSection>
-      )}
-
-      {hasTimer && (
-        <StyledRow>
-          {isTiming ? (
-            <>
-              <Tag
-                color="blue"
-                text={`On call · ${formatDuration(elapsedSeconds)}`}
-                Icon={IconClock}
-              />
+            {OBJECT_MODE_CHANNELS.map((option) => (
               <Button
-                title="Stop"
-                variant="secondary"
-                onClick={handleStopCall}
+                key={option.value}
+                title={option.label}
+                Icon={option.Icon}
+                variant={
+                  selectedChannel === option.value ? 'primary' : 'secondary'
+                }
+                accent={selectedChannel === option.value ? 'blue' : 'default'}
+                disabled={!isDefined(personId)}
+                onClick={() => handleSelectChannel(option.value)}
               />
-            </>
-          ) : (
+            ))}
+          </StyledRow>
+        </StyledSection>
+      )}
+
+      {surfaceVisible && (
+        <>
+          {onSystemActions.length > 0 && (
+            <StyledSection>
+              {isDefined(surface.onSystemLabel) && (
+                <StyledSectionLabel>{surface.onSystemLabel}</StyledSectionLabel>
+              )}
+              <StyledRow>
+                {onSystemActions.map((action) => renderAction(action, true))}
+              </StyledRow>
+            </StyledSection>
+          )}
+
+          {surface.offSystem.length > 0 && (
+            <StyledSection>
+              {isDefined(surface.offSystemLabel) && (
+                <StyledSectionLabel>
+                  {surface.offSystemLabel}
+                </StyledSectionLabel>
+              )}
+              <StyledRow>
+                {surface.offSystem.map((action) => renderAction(action, false))}
+              </StyledRow>
+            </StyledSection>
+          )}
+
+          {hasTimer && (
+            <StyledRow>
+              {isTiming ? (
+                <>
+                  <Tag
+                    color="blue"
+                    text={`On call · ${formatDuration(elapsedSeconds)}`}
+                    Icon={IconClock}
+                  />
+                  <Button
+                    title="Stop"
+                    variant="secondary"
+                    onClick={handleStopCall}
+                  />
+                </>
+              ) : (
+                <StyledSectionLabel>
+                  {`Call timed at ${formatDuration(elapsedSeconds)} — pick the outcome to log it.`}
+                </StyledSectionLabel>
+              )}
+            </StyledRow>
+          )}
+
+          {isDefined(surface.waitingStatus) && (
+            <Tag color="orange" text={surface.waitingStatus} Icon={IconClock} />
+          )}
+
+          <StyledSection>
             <StyledSectionLabel>
-              {`Call timed at ${formatDuration(elapsedSeconds)} — pick the outcome to log it.`}
+              Log what happened on this touch
             </StyledSectionLabel>
+            <StyledTextArea
+              placeholder="Notes (what you said, what they wanted)…"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+            <StyledRow>
+              {surface.outcomes.map((outcome) => {
+                const isSelected = activeOutcome === outcome;
+
+                return (
+                  <Button
+                    key={outcome}
+                    title={OUTCOME_LABELS[outcome] ?? outcome}
+                    variant={isSelected ? 'primary' : 'secondary'}
+                    accent={isSelected ? 'blue' : 'default'}
+                    disabled={isSaving}
+                    onClick={() => handleLog(outcome)}
+                  />
+                );
+              })}
+            </StyledRow>
+          </StyledSection>
+
+          {surface.dealDispositionNote === true && (
+            <StyledFootnote>
+              Deal outcome (not interested / bought elsewhere) is set on the
+              deal, separately — it isn't a task action.
+            </StyledFootnote>
           )}
-        </StyledRow>
-      )}
 
-      {isDefined(surface.waitingStatus) && (
-        <Tag color="orange" text={surface.waitingStatus} Icon={IconClock} />
-      )}
-
-      <StyledSection>
-        <StyledSectionLabel>Log what happened on this touch</StyledSectionLabel>
-        <StyledTextArea
-          placeholder="Notes (what you said, what they wanted)…"
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-        />
-        <StyledRow>
-          {surface.outcomes.map((outcome) => {
-            const isSelected = activeOutcome === outcome;
-
-            return (
+          {isTaskMode && (
+            <StyledRow>
               <Button
-                key={outcome}
-                title={OUTCOME_LABELS[outcome] ?? outcome}
-                variant={isSelected ? 'primary' : 'secondary'}
-                accent={isSelected ? 'blue' : 'default'}
-                disabled={isSaving}
-                onClick={() => handleLog(outcome)}
+                title="Continue on phone"
+                Icon={IconDeviceMobile}
+                variant="secondary"
+                disabled={isSendingToPhone}
+                onClick={handleContinueOnPhone}
               />
-            );
-          })}
-        </StyledRow>
-      </StyledSection>
-
-      {surface.dealDispositionNote === true && (
-        <StyledFootnote>
-          Deal outcome (not interested / bought elsewhere) is set on the deal,
-          separately — it isn't a task action.
-        </StyledFootnote>
+            </StyledRow>
+          )}
+        </>
       )}
-
-      <StyledRow>
-        <Button
-          title="Continue on phone"
-          Icon={IconDeviceMobile}
-          variant="secondary"
-          disabled={isSendingToPhone}
-          onClick={handleContinueOnPhone}
-        />
-      </StyledRow>
 
       <ModalStatefulWrapper
         modalInstanceId={SMS_MODAL_ID}
