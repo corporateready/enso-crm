@@ -36,6 +36,7 @@ const TRAIT_FIELDS = new Set([
   'city',
   'jobTitle',
   'companyId',
+  'languages',
 ]);
 
 // CRM → Dittofeed connection (connection #1 in the spec). Listens to the
