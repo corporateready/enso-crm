@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react';
+import { useLazyQuery, useMutation } from '@apollo/client/react';
 import { styled } from '@linaria/react';
 import { useEffect, useState } from 'react';
 
@@ -15,7 +15,7 @@ import {
   type IconComponent,
 } from 'twenty-ui/display';
 import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
-import { Button, type SelectOption } from 'twenty-ui/input';
+import { Button } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
@@ -26,7 +26,7 @@ import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
 import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTaskSms';
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
-import { Select } from '@/ui/input/components/Select';
+import { TASK_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/taskSmsContext';
 import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
@@ -94,6 +94,16 @@ const StyledModalBody = styled.div`
   width: 100%;
 `;
 
+const StyledModalNote = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledModalBlocked = styled.div`
+  color: ${themeCssVariables.color.red};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
 // The widget asks the manager only for what the system can't see: the disposition
 // of a touch, and anything done off our infrastructure. On-system actions that need
 // telephony / messaging integrations are shown as `soon`. Off-system actions are
@@ -119,18 +129,10 @@ type ActionConfig = {
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
-// Operator-approved sender aliases on sms.md (case-sensitive, confirmed against
-// the partner.sms.md Senders page). Per-project intent:
-//   ENSO       → ENSO Development, ENSO Estate
-//   IMOBILIARE → Vanzari Imobiliare, IOANA RADU
-//   ARTIMA     → original / fallback
-// Auto-defaulting the selection from the deal's project is a later refinement;
-// for now the manager picks.
-const SMS_ALIAS_OPTIONS: SelectOption<string>[] = [
-  { label: 'ARTIMA', value: 'ARTIMA' },
-  { label: 'ENSO', value: 'ENSO' },
-  { label: 'IMOBILIARE', value: 'IMOBILIARE' },
-];
+// The SMS sender alias is no longer chosen here — it's resolved server-side from
+// the deal's project (project.smsAlias) and gated on the lead's SMS consent for
+// that project, so a manager can't send under a brand the lead didn't agree to.
+// The compose modal just shows the determined alias (read-only).
 
 const SMS_MODAL_ID = 'task-actions-sms-compose';
 
@@ -365,10 +367,21 @@ export const TaskActionsWidget = ({
     sendTaskSms: { success: boolean; error?: string | null };
   }>(SEND_TASK_SMS);
 
-  // Corporate-SMS compose modal: type the message, pick the sender alias, send.
+  // Corporate-SMS compose modal: type the message and send. The sender alias +
+  // whether sending is allowed come from the server (deal's project + consent).
   const { openModal, closeModal } = useModal();
   const [smsMessage, setSmsMessage] = useState('');
-  const [smsAlias, setSmsAlias] = useState<string>('ARTIMA');
+  const [
+    fetchSmsContext,
+    { data: smsContextData, loading: isLoadingSmsContext },
+  ] = useLazyQuery<{
+    taskSmsContext: {
+      alias: string | null;
+      canSend: boolean;
+      reason: string | null;
+    };
+  }>(TASK_SMS_CONTEXT, { fetchPolicy: 'network-only' });
+  const smsContext = smsContextData?.taskSmsContext;
 
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -451,6 +464,10 @@ export const TaskActionsWidget = ({
   const handleActionClick = (action: ActionConfig) => {
     if (action.opensComposer === true) {
       setSmsMessage(linkContext.greeting ?? '');
+      // Refresh consent + the project's alias each time the modal opens.
+      if (isDefined(taskId)) {
+        fetchSmsContext({ variables: { taskId } });
+      }
       openModal(SMS_MODAL_ID);
 
       return;
@@ -470,11 +487,16 @@ export const TaskActionsWidget = ({
   };
 
   const handleSendSms = async () => {
-    if (!isDefined(taskId) || smsMessage.trim() === '' || isSendingSms) {
+    if (
+      !isDefined(taskId) ||
+      smsMessage.trim() === '' ||
+      isSendingSms ||
+      smsContext?.canSend !== true
+    ) {
       return;
     }
     const result = await sendTaskSms({
-      variables: { taskId, message: smsMessage, alias: smsAlias },
+      variables: { taskId, message: smsMessage },
     });
     const outcome = result.data?.sendTaskSms;
 
@@ -688,14 +710,15 @@ export const TaskActionsWidget = ({
               onChange={setSmsMessage}
               minRows={3}
             />
-            <Select
-              dropdownId="task-sms-alias"
-              label="Send as"
-              options={SMS_ALIAS_OPTIONS}
-              value={smsAlias}
-              onChange={setSmsAlias}
-              fullWidth
-            />
+            {isLoadingSmsContext ? (
+              <StyledModalNote>Checking consent…</StyledModalNote>
+            ) : smsContext?.canSend === true ? (
+              <StyledModalNote>Sending as {smsContext.alias}</StyledModalNote>
+            ) : (
+              <StyledModalBlocked>
+                {smsContext?.reason ?? 'This SMS can’t be sent.'}
+              </StyledModalBlocked>
+            )}
           </StyledModalBody>
         </ModalContent>
         <ModalFooter>
@@ -708,7 +731,11 @@ export const TaskActionsWidget = ({
             title="Send"
             variant="primary"
             accent="blue"
-            disabled={isSendingSms || smsMessage.trim() === ''}
+            disabled={
+              isSendingSms ||
+              smsMessage.trim() === '' ||
+              smsContext?.canSend !== true
+            }
             onClick={handleSendSms}
           />
         </ModalFooter>
