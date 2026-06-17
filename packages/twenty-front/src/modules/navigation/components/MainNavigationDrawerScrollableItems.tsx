@@ -2,6 +2,7 @@ import { NavigationDrawerOpenedSection } from '@/navigation-menu-item/display/se
 import { NavigationDrawerWorkspaceSectionSkeletonLoader } from '@/object-metadata/components/NavigationDrawerWorkspaceSectionSkeletonLoader';
 
 import { isLayoutCustomizationModeEnabledState } from '@/layout-customization/states/isLayoutCustomizationModeEnabledState';
+import { LogActivityLauncher } from '@/navigation/components/LogActivityLauncher';
 import { NavigationDrawerOtherSection } from '@/navigation/components/NavigationDrawerOtherSection';
 import { RoutingPresenceSection } from '@/navigation/components/RoutingPresenceSection';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
@@ -44,6 +45,7 @@ export const MainNavigationDrawerScrollableItems = () => {
         <FavoritesSectionDispatcher />
         <WorkspaceSectionDispatcher />
       </Suspense>
+      {!isLayoutCustomizationModeEnabled && <LogActivityLauncher />}
       {!isLayoutCustomizationModeEnabled && <RoutingPresenceSection />}
       {!isLayoutCustomizationModeEnabled && <NavigationDrawerOtherSection />}
     </StyledScrollableItemsContainer>
