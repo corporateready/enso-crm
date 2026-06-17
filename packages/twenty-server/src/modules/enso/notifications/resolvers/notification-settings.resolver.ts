@@ -16,6 +16,7 @@ import { GoogleChatNotificationPreference } from 'src/modules/enso/notifications
 import { GoogleChatTestResult } from 'src/modules/enso/notifications/dtos/google-chat-test-result.dto';
 import { GoogleChatWebhookSettings } from 'src/modules/enso/notifications/dtos/google-chat-webhook-settings.dto';
 import { SetGoogleChatWebhookUrlInput } from 'src/modules/enso/notifications/dtos/set-google-chat-webhook-url.input';
+import { TaskSmsContext } from 'src/modules/enso/notifications/dtos/task-sms-context.dto';
 import {
   NOTIFICATION_EVENT_KEYS,
   type NotificationEventKey,
@@ -187,13 +188,26 @@ export class NotificationSettingsResolver {
         };
   }
 
-  // Manager-initiated corporate SMS from a task. Consent is enforced server-side
-  // inside MarketingSmsService (refuses if the lead hasn't granted SMS).
+  // Preflight for the compose modal: the sender alias determined from the deal's
+  // project + whether the SMS may be sent (phone on file, project alias, consent).
+  @Query(() => TaskSmsContext)
+  async taskSmsContext(
+    @Args('taskId', { type: () => String }) taskId: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<TaskSmsContext> {
+    return this.marketingSmsService.getTaskSmsContext({
+      workspaceId: workspace.id,
+      taskId,
+    });
+  }
+
+  // Manager-initiated corporate SMS from a task. Consent AND the sender alias are
+  // enforced server-side inside MarketingSmsService (the alias comes from the
+  // deal's project, never the client — refuses if no consent / no project alias).
   @Mutation(() => GoogleChatTestResult)
   async sendTaskSms(
     @Args('taskId', { type: () => String }) taskId: string,
     @Args('message', { type: () => String }) message: string,
-    @Args('alias', { type: () => String, nullable: true }) alias: string | null,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(message) || message.trim() === '') {
@@ -204,7 +218,6 @@ export class NotificationSettingsResolver {
       workspaceId: workspace.id,
       taskId,
       message,
-      ...(isDefined(alias) ? { alias } : {}),
     });
   }
 

@@ -35,6 +35,10 @@ export const NOTIFICATION_EVENTS = {
 export const TASK_DUE_SCANNER_CRON_PATTERN = '* * * * *';
 export const TASK_DUE_LAST_SCAN_KEY = 'TASK_DUE_LAST_SCAN_AT';
 
+// SMS delivery-receipt poll: sms.md has no push DLR, so refresh the status of
+// recently-sent SMS every 2 minutes (low volume, manual sends).
+export const SMS_DELIVERY_SCANNER_CRON_PATTERN = '*/2 * * * *';
+
 export type NotificationEventKey =
   (typeof NOTIFICATION_EVENTS)[keyof typeof NOTIFICATION_EVENTS];
 

@@ -23,6 +23,47 @@ type SendSmsParams = {
   from?: string;
 };
 
+// Normalised delivery state we persist on the outboundActivity. sms.md is
+// poll-based (no push DLR); QUEUED/SENT are in-transit, DELIVERED/FAILED final.
+export type SmsDeliveryStatus =
+  | 'QUEUED'
+  | 'SENT'
+  | 'DELIVERED'
+  | 'FAILED'
+  | 'UNKNOWN';
+
+// sms.md status dictionary (GET /v1/message/status, verified 2026-06-16):
+//   1 Ждет отправки (waiting)·2 Отправлено (sent)·3 Доставлено (delivered)
+//   4 Повторная отправка (retrying)·5 У оператора (queued at operator)
+//   9 Ошибка отправки (send error). Final = 3 (delivered) / 9 (failed).
+export const mapSmsMdStatusId = (statusId: number): SmsDeliveryStatus => {
+  switch (statusId) {
+    case 1:
+      return 'QUEUED';
+    case 2:
+    case 4:
+    case 5:
+      return 'SENT';
+    case 3:
+      return 'DELIVERED';
+    case 9:
+      return 'FAILED';
+    default:
+      return 'UNKNOWN';
+  }
+};
+
+export const isFinalSmsDeliveryStatus = (status: SmsDeliveryStatus): boolean =>
+  status === 'DELIVERED' || status === 'FAILED';
+
+type SmsMdMessage = {
+  id: string;
+  to: string;
+  message: string;
+  status: string;
+  dateCreated: string;
+};
+
 @Injectable()
 export class SmsMdClientService {
   private readonly logger = new Logger(SmsMdClientService.name);
@@ -46,6 +87,12 @@ export class SmsMdClientService {
     // The operator-approved alias on the account is "ARTIMA" (not "ARTIMA.MD" —
     // see partner.sms.md → Senders). Override per deployment via SMS_MD_SENDER.
     return process.env.SMS_MD_SENDER || 'ARTIMA';
+  }
+
+  // The message-status API lives next to /send (…/v1/message). Derive it from
+  // the send base so a custom SMS_MD_API_URL keeps both in sync.
+  private get messageBaseUrl(): string {
+    return this.baseUrl.replace(/\/send$/, '/message');
   }
 
   get isConfigured(): boolean {
@@ -93,6 +140,74 @@ export class SmsMdClientService {
       );
 
       throw new Error(`sms.md send failed with status ${status ?? 'unknown'}`);
+    }
+  }
+
+  // sms.md /send returns only {"message":"Added to queue"} — no id. Correlate
+  // the just-sent message by matching exact body + recipient suffix on the most
+  // recent messages, so we can poll its delivery status later. Best-effort.
+  async findRecentMessageId(
+    workspaceId: string,
+    params: { to: string; message: string },
+  ): Promise<string | undefined> {
+    if (!this.isConfigured) {
+      return undefined;
+    }
+    const client = this.secureHttpClientService.getHttpClient(
+      { timeout: 10_000, retries: 1 },
+      { workspaceId, source: 'sms-md' },
+    );
+    // Recipient comes back without the country prefix (e.g. 69362004); match on
+    // the trailing digits of the E.164 we sent.
+    const toDigits = params.to.replace(/\D/g, '');
+
+    try {
+      const response = await client.get(this.messageBaseUrl, {
+        params: { token: this.apiKey, perpage: 20 },
+      });
+      const rows = (response.data?.data ?? []) as SmsMdMessage[];
+      const match = rows.find(
+        (row) =>
+          row.message === params.message &&
+          toDigits.endsWith(row.to.replace(/\D/g, '')),
+      );
+
+      return match?.id;
+    } catch (error) {
+      this.logger.warn(
+        `sms.md message lookup failed: ${(error as Error).message}`,
+      );
+
+      return undefined;
+    }
+  }
+
+  // GET /v1/message/{id} → numeric statusId, mapped to our normalised status.
+  async getDeliveryStatus(
+    workspaceId: string,
+    messageId: string,
+  ): Promise<SmsDeliveryStatus | undefined> {
+    if (!this.isConfigured) {
+      return undefined;
+    }
+    const client = this.secureHttpClientService.getHttpClient(
+      { timeout: 10_000, retries: 1 },
+      { workspaceId, source: 'sms-md' },
+    );
+
+    try {
+      const response = await client.get(`${this.messageBaseUrl}/${messageId}`, {
+        params: { token: this.apiKey },
+      });
+      const statusId = Number(response.data?.statusId);
+
+      return Number.isFinite(statusId) ? mapSmsMdStatusId(statusId) : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `sms.md status lookup failed for ${messageId}: ${(error as Error).message}`,
+      );
+
+      return undefined;
     }
   }
 }
