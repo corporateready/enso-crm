@@ -268,6 +268,206 @@ export class MarketingSmsService {
     return result;
   }
 
+  // Deal-keyed variant of resolveTaskSmsContext for object/standalone logging
+  // (no task): given a chosen deal + contact, resolve phone + the project's
+  // alias + consent. Same authoritative rules — alias from the deal's project.
+  async resolveSmsContextForDeal(params: {
+    workspaceId: string;
+    opportunityId?: string;
+    personId?: string;
+  }): Promise<{
+    to?: string;
+    alias?: string;
+    canSend: boolean;
+    reason?: string;
+  }> {
+    const { workspaceId, opportunityId, personId } = params;
+
+    if (!isNonEmptyString(personId)) {
+      return { canSend: false, reason: 'No contact selected.' };
+    }
+    if (!isNonEmptyString(opportunityId)) {
+      return { canSend: false, reason: 'Pick a deal to send under its brand.' };
+    }
+
+    let context: {
+      to?: string;
+      alias?: string;
+      canSend: boolean;
+      reason?: string;
+    } = { canSend: false, reason: 'Could not resolve this deal.' };
+
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const opportunityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'opportunity',
+          { shouldBypassPermissionChecks: true },
+        );
+      const projectRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'project',
+          { shouldBypassPermissionChecks: true },
+        );
+      const personRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'person',
+          { shouldBypassPermissionChecks: true },
+        );
+      const consentRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'personProjectConsent',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const person = await personRepository.findOne({
+        where: { id: personId },
+      });
+      const to = toE164(
+        person?.phones?.primaryPhoneCallingCode,
+        person?.phones?.primaryPhoneNumber,
+      );
+
+      if (!isDefined(to)) {
+        context = {
+          canSend: false,
+          reason: 'No phone number on file for this contact.',
+        };
+
+        return;
+      }
+
+      const opportunity = await opportunityRepository.findOne({
+        where: { id: opportunityId },
+      });
+      const projectId =
+        (opportunity?.projectId as string | undefined) ?? undefined;
+      const alias = isDefined(projectId)
+        ? (((await projectRepository.findOne({ where: { id: projectId } }))
+            ?.smsAlias as string | undefined) ?? undefined)
+        : undefined;
+
+      if (!isNonEmptyString(alias)) {
+        context = {
+          to,
+          canSend: false,
+          reason: "No SMS sender is configured for this deal's project.",
+        };
+
+        return;
+      }
+
+      const consents = await consentRepository.find({ where: { personId } });
+      const consent = isDefined(projectId)
+        ? consents.find((row: any) => row.projectId === projectId)
+        : undefined;
+
+      if (consent?.smsMarketingConsent !== true) {
+        context = {
+          to,
+          alias,
+          canSend: false,
+          reason: 'This lead has not granted SMS consent.',
+        };
+
+        return;
+      }
+
+      context = { to, alias, canSend: true };
+    }, buildSystemAuthContext(workspaceId));
+
+    return context;
+  }
+
+  // Modal preflight for object/standalone SMS: alias + sendability for a deal.
+  async getRecordSmsContext(params: {
+    workspaceId: string;
+    opportunityId?: string;
+    personId?: string;
+  }): Promise<{
+    alias: string | null;
+    canSend: boolean;
+    reason: string | null;
+  }> {
+    const context = await this.resolveSmsContextForDeal(params);
+
+    return {
+      alias: context.alias ?? null,
+      canSend: context.canSend,
+      reason: context.reason ?? null,
+    };
+  }
+
+  // Manager-initiated SMS from a record (no task): same consent + alias rules,
+  // logs an outboundActivity linked to the deal + contact (no taskId).
+  async sendRecordSms(params: {
+    workspaceId: string;
+    opportunityId?: string;
+    personId?: string;
+    message: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const { workspaceId, opportunityId, personId, message } = params;
+    const context = await this.resolveSmsContextForDeal({
+      workspaceId,
+      opportunityId,
+      personId,
+    });
+
+    if (
+      !context.canSend ||
+      !isNonEmptyString(context.to) ||
+      !isNonEmptyString(context.alias)
+    ) {
+      return { success: false, error: context.reason ?? 'Could not send SMS.' };
+    }
+
+    const { to, alias } = context;
+
+    await this.smsMdClientService.send(workspaceId, {
+      to,
+      message,
+      from: alias,
+    });
+
+    const externalId = await this.smsMdClientService.findRecentMessageId(
+      workspaceId,
+      { to, message },
+    );
+
+    let result: { success: boolean; error?: string } = {
+      success: false,
+      error: 'Could not log the SMS.',
+    };
+
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const outboundActivityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'outboundActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      await outboundActivityRepository.save({
+        channel: 'SMS',
+        loggedVia: 'CRM_INITIATED',
+        body: message,
+        fromIdentity: alias,
+        deliveryStatus: 'QUEUED',
+        occurredAt: new Date(),
+        ...(isDefined(externalId) ? { externalId } : {}),
+        ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+        personId,
+      });
+
+      result = { success: true };
+    }, buildSystemAuthContext(workspaceId));
+
+    return result;
+  }
+
   // Delivery-receipt poll (sms.md is poll-only, no push DLR). For recent SMS
   // activities still in a non-final state that carry an sms.md message id,
   // refresh deliveryStatus. Silent: updates the field, no timeline event.

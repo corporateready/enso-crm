@@ -221,6 +221,45 @@ export class NotificationSettingsResolver {
     });
   }
 
+  // Object/standalone SMS preflight: alias + sendability for a chosen deal+contact.
+  @Query(() => TaskSmsContext)
+  async recordSmsContext(
+    @Args('opportunityId', { type: () => String, nullable: true })
+    opportunityId: string | null,
+    @Args('personId', { type: () => String, nullable: true })
+    personId: string | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<TaskSmsContext> {
+    return this.marketingSmsService.getRecordSmsContext({
+      workspaceId: workspace.id,
+      ...(isDefined(opportunityId) ? { opportunityId } : {}),
+      ...(isDefined(personId) ? { personId } : {}),
+    });
+  }
+
+  // Object/standalone corporate SMS: same server-side consent + alias rules as
+  // sendTaskSms, but keyed by the chosen deal + contact (logs without a taskId).
+  @Mutation(() => GoogleChatTestResult)
+  async sendRecordSms(
+    @Args('opportunityId', { type: () => String, nullable: true })
+    opportunityId: string | null,
+    @Args('personId', { type: () => String, nullable: true })
+    personId: string | null,
+    @Args('message', { type: () => String }) message: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<GoogleChatTestResult> {
+    if (!isDefined(message) || message.trim() === '') {
+      return { success: false, error: 'Message is empty.' };
+    }
+
+    return this.marketingSmsService.sendRecordSms({
+      workspaceId: workspace.id,
+      ...(isDefined(opportunityId) ? { opportunityId } : {}),
+      ...(isDefined(personId) ? { personId } : {}),
+      message,
+    });
+  }
+
   // Desktop → mobile handoff: ping the current manager's OWN Chat space with a
   // deep-link to this task, so they can pick it up on their phone (Actions tab).
   @Mutation(() => GoogleChatTestResult)
