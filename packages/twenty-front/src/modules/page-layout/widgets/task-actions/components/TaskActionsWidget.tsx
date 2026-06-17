@@ -29,6 +29,7 @@ import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTa
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
 import { RECORD_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/recordSmsContext';
 import { TASK_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/taskSmsContext';
+import { Select } from '@/ui/input/components/Select';
 import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
@@ -324,12 +325,22 @@ export const TaskActionsWidget = ({
   const recordId = targetRecordIdentifier?.id;
   const objectNameSingular = targetRecordIdentifier?.targetObjectNameSingular;
   // Task mode = the action surface on a sequence/manual task (channel known).
-  // Object mode = the same surface on a deal record, where the manager picks the
-  // channel and the touch is logged against the deal + its point-of-contact.
+  // Object mode = the same surface on a deal/person/company record, where the
+  // manager picks the channel (and, off a person/company, the deal/contact) and
+  // the touch is logged against that deal + contact.
   const isTaskMode = objectNameSingular === 'task';
   const isOpportunityMode = objectNameSingular === 'opportunity';
+  const isPersonMode = objectNameSingular === 'person';
+  const isCompanyMode = objectNameSingular === 'company';
 
   const taskId = isTaskMode ? recordId : undefined;
+
+  // Person/company mode: the manager picks the deal (and, for a company, the
+  // contact) the touch attaches to.
+  const [pickedOpportunityId, setPickedOpportunityId] = useState<string | null>(
+    null,
+  );
+  const [pickedPersonId, setPickedPersonId] = useState<string | null>(null);
 
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
   const { updateOneRecord } = useUpdateOneRecord();
@@ -367,15 +378,44 @@ export const TaskActionsWidget = ({
     skip: !isDefined(opportunityRecordId),
   });
 
+  // Person mode: the record is the contact; the deals to attach to are the
+  // opportunities they're the point-of-contact on.
+  const { records: personDeals } = useFindManyRecords({
+    objectNameSingular: 'opportunity',
+    filter: { pointOfContactId: { eq: isPersonMode ? recordId : undefined } },
+    recordGqlFields: { id: true, name: true },
+    skip: !isPersonMode || !isDefined(recordId),
+  });
+
+  // Company mode: pick a contact (its people) and a deal (its opportunities).
+  const { records: companyContacts } = useFindManyRecords({
+    objectNameSingular: 'person',
+    filter: { companyId: { eq: isCompanyMode ? recordId : undefined } },
+    recordGqlFields: { id: true, name: { firstName: true, lastName: true } },
+    skip: !isCompanyMode || !isDefined(recordId),
+  });
+  const { records: companyDeals } = useFindManyRecords({
+    objectNameSingular: 'opportunity',
+    filter: { companyId: { eq: isCompanyMode ? recordId : undefined } },
+    recordGqlFields: { id: true, name: true },
+    skip: !isCompanyMode || !isDefined(recordId),
+  });
+
   const opportunityId = isTaskMode
     ? (taskTargets?.find((target) => isDefined(target.targetOpportunityId))
         ?.targetOpportunityId as string | undefined)
-    : (opportunityRecordId ?? undefined);
+    : isOpportunityMode
+      ? (opportunityRecordId ?? undefined)
+      : (pickedOpportunityId ?? undefined);
   const personId = isTaskMode
     ? (taskTargets?.find((target) => isDefined(target.targetPersonId))
         ?.targetPersonId as string | undefined)
-    : ((opportunityRecord as { pointOfContactId?: string } | undefined)
-        ?.pointOfContactId ?? undefined);
+    : isOpportunityMode
+      ? ((opportunityRecord as { pointOfContactId?: string } | undefined)
+          ?.pointOfContactId ?? undefined)
+      : isPersonMode
+        ? recordId
+        : (pickedPersonId ?? undefined);
 
   const { record: person } = useFindOneRecord({
     objectNameSingular: 'person',
@@ -692,6 +732,31 @@ export const TaskActionsWidget = ({
   // Object mode shows nothing until a channel is chosen; task mode always shows.
   const surfaceVisible = isTaskMode || isDefined(selectedChannel);
 
+  // Person/company mode requires picking the deal (and, for a company, the
+  // contact) before the channel chooser appears.
+  const needsContact = isCompanyMode;
+  const needsDeal = isPersonMode || isCompanyMode;
+  const pickersResolved =
+    (!needsContact || isDefined(pickedPersonId)) &&
+    (!needsDeal || isDefined(pickedOpportunityId));
+
+  const dealPickerOptions = (
+    (isPersonMode ? personDeals : companyDeals) ?? []
+  ).map((deal) => ({
+    label: ((deal as { name?: string }).name ?? '') || 'Untitled deal',
+    value: deal.id as string,
+  }));
+  const contactPickerOptions = (companyContacts ?? []).map((contact) => {
+    const name = (
+      contact as { name?: { firstName?: string; lastName?: string } }
+    ).name;
+    const label =
+      `${name?.firstName ?? ''} ${name?.lastName ?? ''}`.trim() ||
+      'Unnamed contact';
+
+    return { label, value: contact.id as string };
+  });
+
   const handleSelectChannel = (value: string) => {
     setSelectedChannel(value);
     setSelectedOutcome(null);
@@ -700,30 +765,74 @@ export const TaskActionsWidget = ({
     setPendingLoggedVia('MANUAL_LOG');
   };
 
+  const resetChannelOnPick = () => {
+    setSelectedChannel(null);
+    setSelectedOutcome(null);
+    setCallStartedAt(null);
+    setCallDurationS(null);
+  };
+
   return (
     <StyledContainer>
       {!isTaskMode && (
         <StyledSection>
-          <StyledSectionLabel>
-            {isDefined(personId)
-              ? 'Log a touch — pick the channel'
-              : 'No point-of-contact on this deal yet'}
-          </StyledSectionLabel>
-          <StyledRow>
-            {OBJECT_MODE_CHANNELS.map((option) => (
-              <Button
-                key={option.value}
-                title={option.label}
-                Icon={option.Icon}
-                variant={
-                  selectedChannel === option.value ? 'primary' : 'secondary'
-                }
-                accent={selectedChannel === option.value ? 'blue' : 'default'}
-                disabled={!isDefined(personId)}
-                onClick={() => handleSelectChannel(option.value)}
-              />
-            ))}
-          </StyledRow>
+          {needsContact && (
+            <Select
+              dropdownId="actions-contact-picker"
+              label="Contact"
+              options={contactPickerOptions}
+              emptyOption={{ label: 'Select a contact…', value: '' }}
+              value={pickedPersonId ?? ''}
+              onChange={(value) => {
+                setPickedPersonId(value === '' ? null : value);
+                resetChannelOnPick();
+              }}
+              withSearchInput
+              fullWidth
+            />
+          )}
+          {needsDeal && (
+            <Select
+              dropdownId="actions-deal-picker"
+              label="Deal"
+              options={dealPickerOptions}
+              emptyOption={{ label: 'Select a deal…', value: '' }}
+              value={pickedOpportunityId ?? ''}
+              onChange={(value) => {
+                setPickedOpportunityId(value === '' ? null : value);
+                resetChannelOnPick();
+              }}
+              withSearchInput
+              fullWidth
+            />
+          )}
+
+          {pickersResolved && (
+            <>
+              <StyledSectionLabel>
+                {isDefined(personId)
+                  ? 'Log a touch — pick the channel'
+                  : 'No contact / phone on file'}
+              </StyledSectionLabel>
+              <StyledRow>
+                {OBJECT_MODE_CHANNELS.map((option) => (
+                  <Button
+                    key={option.value}
+                    title={option.label}
+                    Icon={option.Icon}
+                    variant={
+                      selectedChannel === option.value ? 'primary' : 'secondary'
+                    }
+                    accent={
+                      selectedChannel === option.value ? 'blue' : 'default'
+                    }
+                    disabled={!isDefined(personId)}
+                    onClick={() => handleSelectChannel(option.value)}
+                  />
+                ))}
+              </StyledRow>
+            </>
+          )}
         </StyledSection>
       )}
 
