@@ -16,17 +16,11 @@ import { NavigationDrawerItem } from '@/ui/navigation/navigation-drawer/componen
 import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerSection';
 import { PageLayoutType } from '~/generated-metadata/graphql';
 
-// Global "Log activity" entry point: log a touch against any deal / person /
-// company from anywhere, without opening the record. Pick the object type +
-// the record, then host the same channel-aware Actions surface in the modal
-// (via a synthetic LayoutRenderingContext, so the widget runs in object mode).
+// Global "Log activity" entry point. A touch always targets a PERSON, so the
+// launcher picks a contact, then hosts the same channel-aware Actions surface in
+// person mode (via a synthetic LayoutRenderingContext) — where the manager can
+// optionally attach a related deal and pick the channel.
 const LAUNCHER_MODAL_ID = 'enso-log-activity-launcher';
-
-const OBJECT_TYPES: { label: string; value: string }[] = [
-  { label: 'Deal', value: 'opportunity' },
-  { label: 'Person', value: 'person' },
-  { label: 'Company', value: 'company' },
-];
 
 const StyledBody = styled.div`
   display: flex;
@@ -55,13 +49,9 @@ const StyledTitle = styled.div`
 
 export const LogActivityLauncher = () => {
   const { openModal, closeModal } = useModal();
-  const [objectType, setObjectType] = useState<string>('opportunity');
-  const [pickedRecordId, setPickedRecordId] = useState<string | null>(null);
+  const [pickedPersonId, setPickedPersonId] = useState<string | null>(null);
 
-  const reset = () => {
-    setObjectType('opportunity');
-    setPickedRecordId(null);
-  };
+  const reset = () => setPickedPersonId(null);
 
   const handleOpen = () => {
     reset();
@@ -72,10 +62,6 @@ export const LogActivityLauncher = () => {
     closeModal(LAUNCHER_MODAL_ID);
     reset();
   };
-
-  const typeLabel =
-    OBJECT_TYPES.find((option) => option.value === objectType)?.label ??
-    'record';
 
   return (
     <NavigationDrawerSection>
@@ -100,20 +86,20 @@ export const LogActivityLauncher = () => {
         </ModalHeader>
         <ModalContent>
           <StyledBody>
-            {isDefined(pickedRecordId) ? (
+            {isDefined(pickedPersonId) ? (
               <>
                 <StyledRow>
                   <Button
-                    title="Pick another record"
+                    title="Pick another contact"
                     variant="secondary"
-                    onClick={() => setPickedRecordId(null)}
+                    onClick={() => setPickedPersonId(null)}
                   />
                 </StyledRow>
                 <LayoutRenderingProvider
                   value={{
                     targetRecordIdentifier: {
-                      id: pickedRecordId,
-                      targetObjectNameSingular: objectType,
+                      id: pickedPersonId,
+                      targetObjectNameSingular: 'person',
                     },
                     layoutType: PageLayoutType.RECORD_PAGE,
                     isInSidePanel: false,
@@ -124,28 +110,14 @@ export const LogActivityLauncher = () => {
               </>
             ) : (
               <>
-                <StyledLabel>Log a touch against…</StyledLabel>
-                <StyledRow>
-                  {OBJECT_TYPES.map((option) => (
-                    <Button
-                      key={option.value}
-                      title={option.label}
-                      variant={
-                        objectType === option.value ? 'primary' : 'secondary'
-                      }
-                      accent={objectType === option.value ? 'blue' : 'default'}
-                      onClick={() => setObjectType(option.value)}
-                    />
-                  ))}
-                </StyledRow>
+                <StyledLabel>Who did you reach?</StyledLabel>
                 <FormSingleRecordPicker
-                  key={objectType}
-                  label={`Pick a ${typeLabel.toLowerCase()}`}
-                  objectNameSingulars={[objectType]}
+                  label="Pick a contact"
+                  objectNameSingulars={['person']}
                   defaultValue={null}
                   onChange={(value) => {
                     if (typeof value === 'string' && value !== '') {
-                      setPickedRecordId(value);
+                      setPickedPersonId(value);
                     }
                   }}
                 />

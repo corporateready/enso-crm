@@ -16,6 +16,7 @@ import { GoogleChatNotificationPreference } from 'src/modules/enso/notifications
 import { GoogleChatTestResult } from 'src/modules/enso/notifications/dtos/google-chat-test-result.dto';
 import { GoogleChatWebhookSettings } from 'src/modules/enso/notifications/dtos/google-chat-webhook-settings.dto';
 import { SetGoogleChatWebhookUrlInput } from 'src/modules/enso/notifications/dtos/set-google-chat-webhook-url.input';
+import { PersonSmsContext } from 'src/modules/enso/notifications/dtos/person-sms-context.dto';
 import { TaskSmsContext } from 'src/modules/enso/notifications/dtos/task-sms-context.dto';
 import {
   NOTIFICATION_EVENT_KEYS,
@@ -256,6 +257,45 @@ export class NotificationSettingsResolver {
       workspaceId: workspace.id,
       ...(isDefined(opportunityId) ? { opportunityId } : {}),
       ...(isDefined(personId) ? { personId } : {}),
+      message,
+    });
+  }
+
+  // Person-keyed SMS preflight (object/launcher): the aliases the contact may be
+  // reached under (their consented projects' brands).
+  @Query(() => PersonSmsContext)
+  async personSmsContext(
+    @Args('personId', { type: () => String, nullable: true })
+    personId: string | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<PersonSmsContext> {
+    return this.marketingSmsService.getPersonSmsContext({
+      workspaceId: workspace.id,
+      ...(isDefined(personId) ? { personId } : {}),
+    });
+  }
+
+  // Person-keyed corporate SMS: the chosen alias must be one the contact
+  // consented to (validated server-side). Optional deal links the activity.
+  @Mutation(() => GoogleChatTestResult)
+  async sendPersonSms(
+    @Args('personId', { type: () => String, nullable: true })
+    personId: string | null,
+    @Args('message', { type: () => String }) message: string,
+    @Args('alias', { type: () => String, nullable: true }) alias: string | null,
+    @Args('opportunityId', { type: () => String, nullable: true })
+    opportunityId: string | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<GoogleChatTestResult> {
+    if (!isDefined(message) || message.trim() === '') {
+      return { success: false, error: 'Message is empty.' };
+    }
+
+    return this.marketingSmsService.sendPersonSms({
+      workspaceId: workspace.id,
+      ...(isDefined(personId) ? { personId } : {}),
+      ...(isDefined(alias) ? { alias } : {}),
+      ...(isDefined(opportunityId) ? { opportunityId } : {}),
       message,
     });
   }

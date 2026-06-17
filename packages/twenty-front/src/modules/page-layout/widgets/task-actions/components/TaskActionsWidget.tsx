@@ -24,10 +24,10 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
-import { SEND_RECORD_SMS } from '@/settings/notifications/graphql/mutations/sendRecordSms';
+import { SEND_PERSON_SMS } from '@/settings/notifications/graphql/mutations/sendPersonSms';
 import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTaskSms';
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
-import { RECORD_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/recordSmsContext';
+import { PERSON_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/personSmsContext';
 import { TASK_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/taskSmsContext';
 import { Select } from '@/ui/input/components/Select';
 import { TextArea } from '@/ui/input/components/TextArea';
@@ -445,38 +445,51 @@ export const TaskActionsWidget = ({
   const [sendTaskSms, { loading: isSendingTaskSms }] = useMutation<{
     sendTaskSms: { success: boolean; error?: string | null };
   }>(SEND_TASK_SMS);
-  const [sendRecordSms, { loading: isSendingRecordSms }] = useMutation<{
-    sendRecordSms: { success: boolean; error?: string | null };
-  }>(SEND_RECORD_SMS);
-  const isSendingSms = isSendingTaskSms || isSendingRecordSms;
+  const [sendPersonSms, { loading: isSendingPersonSms }] = useMutation<{
+    sendPersonSms: { success: boolean; error?: string | null };
+  }>(SEND_PERSON_SMS);
+  const isSendingSms = isSendingTaskSms || isSendingPersonSms;
 
-  // Corporate-SMS compose modal: type the message and send. The sender alias +
-  // whether sending is allowed come from the server (deal's project + consent).
+  // Corporate-SMS compose modal. Task mode: the alias is the deal's project brand
+  // (server-determined, read-only). Object mode: a touch targets the PERSON, so
+  // the manager picks among the brands that person has consented to.
   const { openModal, closeModal } = useModal();
   const [smsMessage, setSmsMessage] = useState('');
-  type SmsContextShape = {
-    alias: string | null;
-    canSend: boolean;
-    reason: string | null;
-  };
+  const [selectedSmsAlias, setSelectedSmsAlias] = useState<string>('');
   const [
     fetchTaskSmsContext,
     { data: taskSmsContextData, loading: isLoadingTaskSmsContext },
-  ] = useLazyQuery<{ taskSmsContext: SmsContextShape }>(TASK_SMS_CONTEXT, {
-    fetchPolicy: 'network-only',
-  });
+  ] = useLazyQuery<{
+    taskSmsContext: {
+      alias: string | null;
+      canSend: boolean;
+      reason: string | null;
+    };
+  }>(TASK_SMS_CONTEXT, { fetchPolicy: 'network-only' });
   const [
-    fetchRecordSmsContext,
-    { data: recordSmsContextData, loading: isLoadingRecordSmsContext },
-  ] = useLazyQuery<{ recordSmsContext: SmsContextShape }>(RECORD_SMS_CONTEXT, {
-    fetchPolicy: 'network-only',
-  });
-  const smsContext = isTaskMode
-    ? taskSmsContextData?.taskSmsContext
-    : recordSmsContextData?.recordSmsContext;
+    fetchPersonSmsContext,
+    { data: personSmsContextData, loading: isLoadingPersonSmsContext },
+  ] = useLazyQuery<{
+    personSmsContext: {
+      aliases: string[];
+      canSend: boolean;
+      reason: string | null;
+    };
+  }>(PERSON_SMS_CONTEXT, { fetchPolicy: 'network-only' });
+  const taskSmsContext = taskSmsContextData?.taskSmsContext;
+  const personSmsContext = personSmsContextData?.personSmsContext;
   const isLoadingSmsContext = isTaskMode
     ? isLoadingTaskSmsContext
-    : isLoadingRecordSmsContext;
+    : isLoadingPersonSmsContext;
+  const smsCanSend = isTaskMode
+    ? taskSmsContext?.canSend === true
+    : personSmsContext?.canSend === true;
+  const smsReason = isTaskMode
+    ? taskSmsContext?.reason
+    : personSmsContext?.reason;
+  const personAliases = personSmsContext?.aliases ?? [];
+  const effectiveSmsAlias =
+    selectedSmsAlias !== '' ? selectedSmsAlias : (personAliases[0] ?? '');
 
   // Object mode: the manager picks the channel (it's implied by the action they
   // click); task mode takes the channel from the task itself.
@@ -565,16 +578,13 @@ export const TaskActionsWidget = ({
   const handleActionClick = (action: ActionConfig) => {
     if (action.opensComposer === true) {
       setSmsMessage(linkContext.greeting ?? '');
-      // Refresh consent + the project's alias each time the modal opens.
+      setSelectedSmsAlias('');
+      // Refresh each time the modal opens. Task = deal's project alias; object =
+      // the brands the contact has consented to.
       if (isTaskMode && isDefined(taskId)) {
         fetchTaskSmsContext({ variables: { taskId } });
       } else if (!isTaskMode) {
-        fetchRecordSmsContext({
-          variables: {
-            opportunityId: opportunityId ?? null,
-            personId: personId ?? null,
-          },
-        });
+        fetchPersonSmsContext({ variables: { personId: personId ?? null } });
       }
       openModal(SMS_MODAL_ID);
 
@@ -595,11 +605,7 @@ export const TaskActionsWidget = ({
   };
 
   const handleSendSms = async () => {
-    if (
-      smsMessage.trim() === '' ||
-      isSendingSms ||
-      smsContext?.canSend !== true
-    ) {
+    if (smsMessage.trim() === '' || isSendingSms || !smsCanSend) {
       return;
     }
 
@@ -615,15 +621,19 @@ export const TaskActionsWidget = ({
 
       outcome = result.data?.sendTaskSms;
     } else {
-      const result = await sendRecordSms({
+      if (effectiveSmsAlias === '') {
+        return;
+      }
+      const result = await sendPersonSms({
         variables: {
-          opportunityId: opportunityId ?? null,
           personId: personId ?? null,
           message: smsMessage,
+          alias: effectiveSmsAlias,
+          opportunityId: opportunityId ?? null,
         },
       });
 
-      outcome = result.data?.sendRecordSms;
+      outcome = result.data?.sendPersonSms;
     }
 
     if (outcome?.success === true) {
@@ -734,13 +744,11 @@ export const TaskActionsWidget = ({
   // Object mode shows nothing until a channel is chosen; task mode always shows.
   const surfaceVisible = isTaskMode || isDefined(selectedChannel);
 
-  // Person/company mode requires picking the deal (and, for a company, the
-  // contact) before the channel chooser appears.
+  // A touch targets a PERSON. Company mode needs a contact picked first; the
+  // deal is always optional context. Person/opportunity already have the person.
   const needsContact = isCompanyMode;
-  const needsDeal = isPersonMode || isCompanyMode;
-  const pickersResolved =
-    (!needsContact || isDefined(pickedPersonId)) &&
-    (!needsDeal || isDefined(pickedOpportunityId));
+  const showDealPicker = isPersonMode || isCompanyMode;
+  const pickersResolved = !needsContact || isDefined(pickedPersonId);
 
   const dealPickerOptions = (
     (isPersonMode ? personDeals : companyDeals) ?? []
@@ -793,17 +801,16 @@ export const TaskActionsWidget = ({
               fullWidth
             />
           )}
-          {needsDeal && (
+          {showDealPicker && (
             <Select
               dropdownId="actions-deal-picker"
-              label="Deal"
+              label="Related deal (optional)"
               options={dealPickerOptions}
-              emptyOption={{ label: 'Select a deal…', value: '' }}
+              emptyOption={{ label: 'No deal', value: '' }}
               value={pickedOpportunityId ?? ''}
-              onChange={(value) => {
-                setPickedOpportunityId(value === '' ? null : value);
-                resetChannelOnPick();
-              }}
+              onChange={(value) =>
+                setPickedOpportunityId(value === '' ? null : value)
+              }
               withSearchInput
               fullWidth
             />
@@ -959,12 +966,26 @@ export const TaskActionsWidget = ({
             />
             {isLoadingSmsContext ? (
               <StyledModalNote>Checking consent…</StyledModalNote>
-            ) : smsContext?.canSend === true ? (
-              <StyledModalNote>Sending as {smsContext.alias}</StyledModalNote>
-            ) : (
+            ) : !smsCanSend ? (
               <StyledModalBlocked>
-                {smsContext?.reason ?? 'This SMS can’t be sent.'}
+                {smsReason ?? 'This SMS can’t be sent.'}
               </StyledModalBlocked>
+            ) : isTaskMode ? (
+              <StyledModalNote>
+                Sending as {taskSmsContext?.alias}
+              </StyledModalNote>
+            ) : (
+              <Select
+                dropdownId="task-sms-alias"
+                label="Send as"
+                options={personAliases.map((alias) => ({
+                  label: alias,
+                  value: alias,
+                }))}
+                value={effectiveSmsAlias}
+                onChange={setSelectedSmsAlias}
+                fullWidth
+              />
             )}
           </StyledModalBody>
         </ModalContent>
@@ -981,7 +1002,8 @@ export const TaskActionsWidget = ({
             disabled={
               isSendingSms ||
               smsMessage.trim() === '' ||
-              smsContext?.canSend !== true
+              !smsCanSend ||
+              (!isTaskMode && effectiveSmsAlias === '')
             }
             onClick={handleSendSms}
           />
