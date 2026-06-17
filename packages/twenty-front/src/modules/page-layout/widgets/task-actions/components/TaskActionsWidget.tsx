@@ -315,12 +315,14 @@ const buildLinkContext = (person: PersonForLinks | undefined): LinkContext => {
 };
 
 type TaskActionsWidgetProps = {
-  widget: PageLayoutWidget;
+  // Optional: the page-layout renderer passes the widget config, but the global
+  // "Log activity" launcher hosts this surface with no page-layout widget.
+  widget?: PageLayoutWidget;
 };
 
 export const TaskActionsWidget = ({
   widget: _widget,
-}: TaskActionsWidgetProps) => {
+}: TaskActionsWidgetProps = {}) => {
   const { targetRecordIdentifier } = useLayoutRenderingContext();
   const recordId = targetRecordIdentifier?.id;
   const objectNameSingular = targetRecordIdentifier?.targetObjectNameSingular;
