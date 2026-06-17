@@ -468,6 +468,188 @@ export class MarketingSmsService {
     return result;
   }
 
+  // Person-keyed SMS for object/launcher logging: a touch targets a PERSON, so
+  // the allowed senders are the brands of the projects THAT PERSON consented to
+  // (distinct project.smsAlias across their granted personProjectConsent rows).
+  // The deal is optional context. Returns phone + the consented-brand alias set.
+  private async resolvePersonSms(
+    workspaceId: string,
+    personId?: string,
+  ): Promise<{ to?: string; aliases: string[]; canSend: boolean; reason?: string }> {
+    if (!isNonEmptyString(personId)) {
+      return { aliases: [], canSend: false, reason: 'No contact selected.' };
+    }
+
+    let result: {
+      to?: string;
+      aliases: string[];
+      canSend: boolean;
+      reason?: string;
+    } = { aliases: [], canSend: false, reason: 'Could not resolve this contact.' };
+
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const personRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'person',
+          { shouldBypassPermissionChecks: true },
+        );
+      const consentRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'personProjectConsent',
+          { shouldBypassPermissionChecks: true },
+        );
+      const projectRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'project',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const person = await personRepository.findOne({ where: { id: personId } });
+      const to = toE164(
+        person?.phones?.primaryPhoneCallingCode,
+        person?.phones?.primaryPhoneNumber,
+      );
+
+      if (!isDefined(to)) {
+        result = {
+          aliases: [],
+          canSend: false,
+          reason: 'No phone number on file for this contact.',
+        };
+
+        return;
+      }
+
+      const consents = await consentRepository.find({ where: { personId } });
+      const consentedProjectIds = consents
+        .filter((row: any) => row.smsMarketingConsent === true)
+        .map((row: any) => row.projectId as string | undefined)
+        .filter((projectId: string | undefined) => isNonEmptyString(projectId));
+
+      if (consentedProjectIds.length === 0) {
+        result = {
+          to,
+          aliases: [],
+          canSend: false,
+          reason: 'This contact has not granted SMS consent.',
+        };
+
+        return;
+      }
+
+      const aliasSet = new Set<string>();
+
+      for (const projectId of consentedProjectIds) {
+        const project = await projectRepository.findOne({
+          where: { id: projectId },
+        });
+        const alias = project?.smsAlias as string | undefined;
+
+        if (isNonEmptyString(alias)) {
+          aliasSet.add(alias);
+        }
+      }
+
+      if (aliasSet.size === 0) {
+        result = {
+          to,
+          aliases: [],
+          canSend: false,
+          reason:
+            "No SMS sender is configured for this contact's consented projects.",
+        };
+
+        return;
+      }
+
+      result = { to, aliases: [...aliasSet], canSend: true };
+    }, buildSystemAuthContext(workspaceId));
+
+    return result;
+  }
+
+  // Modal preflight: the sender aliases the contact may be reached under.
+  async getPersonSmsContext(params: {
+    workspaceId: string;
+    personId?: string;
+  }): Promise<{ aliases: string[]; canSend: boolean; reason: string | null }> {
+    const context = await this.resolvePersonSms(
+      params.workspaceId,
+      params.personId,
+    );
+
+    return {
+      aliases: context.aliases,
+      canSend: context.canSend,
+      reason: context.reason ?? null,
+    };
+  }
+
+  // Object/launcher SMS: validate the chosen alias is one the contact consented
+  // to (authoritative), send, and log against the contact (+ optional deal).
+  async sendPersonSms(params: {
+    workspaceId: string;
+    personId?: string;
+    message: string;
+    alias?: string;
+    opportunityId?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const { workspaceId, personId, message, alias, opportunityId } = params;
+    const context = await this.resolvePersonSms(workspaceId, personId);
+
+    if (!context.canSend || !isNonEmptyString(context.to)) {
+      return { success: false, error: context.reason ?? 'Could not send SMS.' };
+    }
+    if (!isNonEmptyString(alias) || !context.aliases.includes(alias)) {
+      return {
+        success: false,
+        error: 'Pick a sender the contact has consented to.',
+      };
+    }
+
+    const { to } = context;
+
+    await this.smsMdClientService.send(workspaceId, { to, message, from: alias });
+
+    const externalId = await this.smsMdClientService.findRecentMessageId(
+      workspaceId,
+      { to, message },
+    );
+
+    let result: { success: boolean; error?: string } = {
+      success: false,
+      error: 'Could not log the SMS.',
+    };
+
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const outboundActivityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'outboundActivity',
+          { shouldBypassPermissionChecks: true },
+        );
+
+      await outboundActivityRepository.save({
+        channel: 'SMS',
+        loggedVia: 'CRM_INITIATED',
+        body: message,
+        fromIdentity: alias,
+        deliveryStatus: 'QUEUED',
+        occurredAt: new Date(),
+        ...(isDefined(externalId) ? { externalId } : {}),
+        ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+        personId,
+      });
+
+      result = { success: true };
+    }, buildSystemAuthContext(workspaceId));
+
+    return result;
+  }
+
   // Delivery-receipt poll (sms.md is poll-only, no push DLR). For recent SMS
   // activities still in a non-final state that carry an sms.md message id,
   // refresh deliveryStatus. Silent: updates the field, no timeline event.
