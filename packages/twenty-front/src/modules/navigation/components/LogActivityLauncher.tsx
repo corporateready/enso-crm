@@ -7,7 +7,7 @@ import { Button } from 'twenty-ui/input';
 import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
-import { FormSingleRecordPicker } from '@/object-record/record-field/ui/form-types/components/FormSingleRecordPicker';
+import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { TaskActionsWidget } from '@/page-layout/widgets/task-actions/components/TaskActionsWidget';
 import { LayoutRenderingProvider } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
@@ -17,9 +17,9 @@ import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/compo
 import { PageLayoutType } from '~/generated-metadata/graphql';
 
 // Global "Log activity" entry point. A touch always targets a PERSON, so the
-// launcher picks a contact, then hosts the same channel-aware Actions surface in
-// person mode (via a synthetic LayoutRenderingContext) — where the manager can
-// optionally attach a related deal and pick the channel.
+// launcher searches contacts (a self-contained list — not the form record
+// picker, which doesn't behave when mounted in the nav drawer), then hosts the
+// same channel-aware Actions surface in person mode via a synthetic context.
 const LAUNCHER_MODAL_ID = 'enso-log-activity-launcher';
 
 const StyledBody = styled.div`
@@ -29,16 +29,45 @@ const StyledBody = styled.div`
   width: 100%;
 `;
 
-const StyledRow = styled.div`
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: ${themeCssVariables.spacing[2]};
-`;
-
 const StyledLabel = styled.div`
   color: ${themeCssVariables.font.color.tertiary};
   font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledSearchInput = styled.input`
+  background: ${themeCssVariables.background.transparent.lighter};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.primary};
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.md};
+  padding: ${themeCssVariables.spacing[2]};
+  width: 100%;
+`;
+
+const StyledResults = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+  max-height: 220px;
+  overflow-y: auto;
+`;
+
+const StyledResultRow = styled.button`
+  background: transparent;
+  border: none;
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.primary};
+  cursor: pointer;
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.md};
+  padding: ${themeCssVariables.spacing[2]};
+  text-align: left;
+  width: 100%;
+
+  &:hover {
+    background: ${themeCssVariables.background.transparent.light};
+  }
 `;
 
 const StyledTitle = styled.div`
@@ -47,11 +76,42 @@ const StyledTitle = styled.div`
   font-weight: 500;
 `;
 
+type PersonRecord = {
+  id: string;
+  name?: { firstName?: string; lastName?: string } | null;
+};
+
+const personLabel = (person: PersonRecord) =>
+  `${person.name?.firstName ?? ''} ${person.name?.lastName ?? ''}`.trim() ||
+  'Unnamed contact';
+
 export const LogActivityLauncher = () => {
   const { openModal, closeModal } = useModal();
   const [pickedPersonId, setPickedPersonId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
-  const reset = () => setPickedPersonId(null);
+  const trimmedSearch = search.trim();
+  const { records } = useFindManyRecords({
+    objectNameSingular: 'person',
+    recordGqlFields: { id: true, name: { firstName: true, lastName: true } },
+    limit: 8,
+    ...(trimmedSearch !== ''
+      ? {
+          filter: {
+            or: [
+              { name: { firstName: { ilike: `%${trimmedSearch}%` } } },
+              { name: { lastName: { ilike: `%${trimmedSearch}%` } } },
+            ],
+          },
+        }
+      : {}),
+  });
+  const people = (records ?? []) as PersonRecord[];
+
+  const reset = () => {
+    setPickedPersonId(null);
+    setSearch('');
+  };
 
   const handleOpen = () => {
     reset();
@@ -75,9 +135,6 @@ export const LogActivityLauncher = () => {
         size="medium"
         padding="medium"
         isClosable
-        // The record picker renders its dropdown in a portal outside the modal,
-        // so click-outside-to-close would dismiss the modal the moment you open
-        // the picker. Disable it; close explicitly via the Close button.
         shouldCloseModalOnClickOutsideOrEscape={false}
         onClose={reset}
       >
@@ -88,13 +145,11 @@ export const LogActivityLauncher = () => {
           <StyledBody>
             {isDefined(pickedPersonId) ? (
               <>
-                <StyledRow>
-                  <Button
-                    title="Pick another contact"
-                    variant="secondary"
-                    onClick={() => setPickedPersonId(null)}
-                  />
-                </StyledRow>
+                <Button
+                  title="Pick another contact"
+                  variant="secondary"
+                  onClick={reset}
+                />
                 <LayoutRenderingProvider
                   value={{
                     targetRecordIdentifier: {
@@ -111,16 +166,25 @@ export const LogActivityLauncher = () => {
             ) : (
               <>
                 <StyledLabel>Who did you reach?</StyledLabel>
-                <FormSingleRecordPicker
-                  label="Pick a contact"
-                  objectNameSingulars={['person']}
-                  defaultValue={null}
-                  onChange={(value) => {
-                    if (typeof value === 'string' && value !== '') {
-                      setPickedPersonId(value);
-                    }
-                  }}
+                <StyledSearchInput
+                  autoFocus
+                  placeholder="Search a contact by name…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
                 />
+                <StyledResults>
+                  {people.map((person) => (
+                    <StyledResultRow
+                      key={person.id}
+                      onClick={() => setPickedPersonId(person.id)}
+                    >
+                      {personLabel(person)}
+                    </StyledResultRow>
+                  ))}
+                  {people.length === 0 && (
+                    <StyledLabel>No matching contact</StyledLabel>
+                  )}
+                </StyledResults>
               </>
             )}
           </StyledBody>
