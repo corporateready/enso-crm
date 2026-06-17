@@ -114,6 +114,12 @@ export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
     email: 'b8fea92b-c85e-47f3-805c-0a038a84210d',
     sms: '2d9dfa15-6b65-4d3e-b7b2-ef0d93cc8b82',
   },
+  // ARTIMA Business & Lifestyle (ENS2301) — second pilot, entered via the
+  // "New ARTIMA Leads" segment (deal_created projectCode=ENS2301 + email).
+  '4b63d540-a54a-4a0f-94e6-959d35d4112d': {
+    email: '1a777cd5-64ae-43b1-a7de-1a8b8499dccc',
+    sms: '083cfdb6-2f79-4bdb-8109-f9e241699240',
+  },
 };
 
 // Resolve a consent row to Dittofeed's {subscriptionGroupId: isSubscribed} map.
@@ -170,6 +176,15 @@ export const toE164 = (
 // marketing segments / templates actually use. Grows as custom fields land
 // (language, country, consent flags). Undefined values are dropped so we never
 // clobber a Dittofeed trait with null.
+// Person.languages is a workspace multi-select — read the first code (e.g.
+// 'RO'/'RU') as a scalar `language` trait so Dittofeed journeys can branch on it.
+const firstLanguage = (person: PersonWorkspaceEntity): string | undefined => {
+  const languages = (person as unknown as { languages?: string[] | null })
+    .languages;
+
+  return Array.isArray(languages) ? languages[0] : undefined;
+};
+
 export const buildPersonTraits = (
   person: PersonWorkspaceEntity,
 ): Record<string, unknown> => {
@@ -184,6 +199,7 @@ export const buildPersonTraits = (
     city: person.city,
     jobTitle: person.jobTitle,
     companyId: person.companyId,
+    language: firstLanguage(person),
     createdAt: person.createdAt,
   };
 
