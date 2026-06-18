@@ -438,24 +438,35 @@ export const TaskActionsWidget = ({
 
   // Object mode: the contact's open tasks — selecting one logs the touch against
   // it (sets its outcome + feeds the cadence) instead of as a standalone touch.
+  // Read the task via the taskTarget→task relation in one query (the taskId
+  // scalar isn't reliably returned by the generic hook).
   const { records: personTaskTargets } = useFindManyRecords({
     objectNameSingular: 'taskTarget',
     filter: { targetPersonId: { eq: isTaskMode ? undefined : objectPersonId } },
-    recordGqlFields: { id: true, taskId: true },
+    recordGqlFields: {
+      id: true,
+      task: { id: true, title: true, status: true, channel: true },
+    },
     skip: isTaskMode || !isDefined(objectPersonId),
   });
-  const candidateTaskIds = (personTaskTargets ?? [])
-    .map((target) => target.taskId as string | undefined)
-    .filter((id): id is string => isDefined(id));
-  const { records: candidateTasks } = useFindManyRecords({
-    objectNameSingular: 'task',
-    filter: { id: { in: candidateTaskIds } },
-    recordGqlFields: { id: true, title: true, status: true, channel: true },
-    skip: isTaskMode || candidateTaskIds.length === 0,
-  });
-  const openTasks = (candidateTasks ?? []).filter(
-    (task) => (task as { status?: string }).status !== 'DONE',
-  ) as { id: string; title?: string; channel?: string }[];
+  const openTasks = (personTaskTargets ?? [])
+    .map(
+      (target) =>
+        (
+          target as {
+            task?: {
+              id: string;
+              title?: string;
+              status?: string;
+              channel?: string;
+            };
+          }
+        ).task,
+    )
+    .filter(
+      (task): task is { id: string; title?: string; channel?: string } =>
+        isDefined(task) && (task as { status?: string }).status !== 'DONE',
+    );
 
   // Per-manager capability: only members with a recording-capable corporate GSM
   // get the on-system "Call from corporate GSM" action.
