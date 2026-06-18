@@ -214,7 +214,14 @@ export const PageLayoutTabsRenderer = () => {
       : sortedActiveTabs;
   }, [sortedActiveTabs, chatwootTab, chatwootPresence, isPageLayoutInEditMode]);
 
-  const activeTabExistsInCurrentPageLayout = currentPageLayout.tabs.some(
+  // The main content must only render a tab that lives in the rendered tab
+  // list. The pinned-left (summary) tab is sliced out of `visibleTabs` and is
+  // already shown in the left panel — if `activeTabId` ever resolves to it
+  // (the side panel makes that tab selectable and shares the active-tab state
+  // with the full page), guarding on `currentPageLayout.tabs` would duplicate
+  // it into the main pane. Guard on `visibleTabs` so it can't, letting the tab
+  // effect fall back to the first visible tab (Timeline) instead.
+  const activeTabIsRenderableInMainContent = visibleTabs.some(
     (tab) => tab.id === activeTabId,
   );
 
@@ -262,7 +269,7 @@ export const PageLayoutTabsRenderer = () => {
             )}
             defaultEnableXScroll={false}
           >
-            {isDefined(activeTabId) && activeTabExistsInCurrentPageLayout && (
+            {isDefined(activeTabId) && activeTabIsRenderableInMainContent && (
               <PageLayoutMainContent tabId={activeTabId} />
             )}
           </ScrollWrapper>
