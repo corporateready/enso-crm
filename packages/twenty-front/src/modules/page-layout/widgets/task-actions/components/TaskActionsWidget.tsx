@@ -813,6 +813,9 @@ export const TaskActionsWidget = ({
         ...(isDefined(channel) ? { channel } : {}),
         loggedVia: pendingLoggedVia,
         body: notes,
+        // The touch's own disposition — recorded on the activity itself so a
+        // standalone touch (no task) still captures its outcome, not only the task.
+        outcome,
         occurredAt: new Date().toISOString(),
         ...(isDefined(taskId) ? { taskId } : {}),
         ...(isDefined(callDurationS) ? { durationS: callDurationS } : {}),
