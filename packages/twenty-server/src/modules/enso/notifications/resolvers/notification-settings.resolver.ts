@@ -285,6 +285,8 @@ export class NotificationSettingsResolver {
     @Args('alias', { type: () => String, nullable: true }) alias: string | null,
     @Args('opportunityId', { type: () => String, nullable: true })
     opportunityId: string | null,
+    @Args('taskId', { type: () => String, nullable: true })
+    taskId: string | null,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(message) || message.trim() === '') {
@@ -296,6 +298,7 @@ export class NotificationSettingsResolver {
       ...(isDefined(personId) ? { personId } : {}),
       ...(isDefined(alias) ? { alias } : {}),
       ...(isDefined(opportunityId) ? { opportunityId } : {}),
+      ...(isDefined(taskId) ? { taskId } : {}),
       message,
     });
   }

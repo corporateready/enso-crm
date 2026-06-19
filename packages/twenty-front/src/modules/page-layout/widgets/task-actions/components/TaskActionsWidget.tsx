@@ -742,6 +742,7 @@ export const TaskActionsWidget = ({
           message: smsMessage,
           alias: effectiveSmsAlias,
           opportunityId: opportunityId ?? null,
+          taskId: taskId ?? null,
         },
       });
 
@@ -752,6 +753,16 @@ export const TaskActionsWidget = ({
       enqueueSuccessSnackBar({ message: 'SMS sent' });
       closeModal(SMS_MODAL_ID);
       setSmsMessage('');
+      // A one-way SMS is the manager's action: move the linked task to
+      // "sent · waiting for reply" (IN_PROGRESS). The reply observer / a manual
+      // close advances it from there — we don't mark it DONE on send.
+      if (isDefined(taskId) && task?.status !== 'DONE') {
+        await updateOneRecord({
+          objectNameSingular: 'task',
+          idToUpdate: taskId,
+          updateOneRecordInput: { status: 'IN_PROGRESS' },
+        });
+      }
     } else {
       enqueueErrorSnackBar({
         message: outcome?.error ?? 'Could not send the SMS',
@@ -1052,9 +1063,15 @@ export const TaskActionsWidget = ({
             </StyledRow>
           )}
 
-          {isDefined(surface.waitingStatus) && (
-            <Tag color="orange" text={surface.waitingStatus} Icon={IconClock} />
-          )}
+          {isDefined(surface.waitingStatus) &&
+            (task as { status?: string } | undefined)?.status ===
+              'IN_PROGRESS' && (
+              <Tag
+                color="orange"
+                text={surface.waitingStatus}
+                Icon={IconClock}
+              />
+            )}
 
           <StyledSection>
             <StyledSectionLabel>

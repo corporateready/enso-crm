@@ -475,7 +475,12 @@ export class MarketingSmsService {
   private async resolvePersonSms(
     workspaceId: string,
     personId?: string,
-  ): Promise<{ to?: string; aliases: string[]; canSend: boolean; reason?: string }> {
+  ): Promise<{
+    to?: string;
+    aliases: string[];
+    canSend: boolean;
+    reason?: string;
+  }> {
     if (!isNonEmptyString(personId)) {
       return { aliases: [], canSend: false, reason: 'No contact selected.' };
     }
@@ -485,7 +490,11 @@ export class MarketingSmsService {
       aliases: string[];
       canSend: boolean;
       reason?: string;
-    } = { aliases: [], canSend: false, reason: 'Could not resolve this contact.' };
+    } = {
+      aliases: [],
+      canSend: false,
+      reason: 'Could not resolve this contact.',
+    };
 
     await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
       const personRepository =
@@ -507,7 +516,9 @@ export class MarketingSmsService {
           { shouldBypassPermissionChecks: true },
         );
 
-      const person = await personRepository.findOne({ where: { id: personId } });
+      const person = await personRepository.findOne({
+        where: { id: personId },
+      });
       const to = toE164(
         person?.phones?.primaryPhoneCallingCode,
         person?.phones?.primaryPhoneNumber,
@@ -596,8 +607,10 @@ export class MarketingSmsService {
     message: string;
     alias?: string;
     opportunityId?: string;
+    taskId?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { workspaceId, personId, message, alias, opportunityId } = params;
+    const { workspaceId, personId, message, alias, opportunityId, taskId } =
+      params;
     const context = await this.resolvePersonSms(workspaceId, personId);
 
     if (!context.canSend || !isNonEmptyString(context.to)) {
@@ -612,7 +625,11 @@ export class MarketingSmsService {
 
     const { to } = context;
 
-    await this.smsMdClientService.send(workspaceId, { to, message, from: alias });
+    await this.smsMdClientService.send(workspaceId, {
+      to,
+      message,
+      from: alias,
+    });
 
     const externalId = await this.smsMdClientService.findRecentMessageId(
       workspaceId,
@@ -641,6 +658,7 @@ export class MarketingSmsService {
         occurredAt: new Date(),
         ...(isDefined(externalId) ? { externalId } : {}),
         ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+        ...(isNonEmptyString(taskId) ? { taskId } : {}),
         personId,
       });
 
