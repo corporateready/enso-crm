@@ -935,11 +935,13 @@ export const TaskActionsWidget = ({
             <Select
               dropdownId="actions-task-picker"
               label="Against task (optional)"
-              options={openTasks.map((openTask) => ({
-                label: openTask.title ?? 'Untitled task',
-                value: openTask.id,
-              }))}
-              emptyOption={{ label: 'No task', value: '' }}
+              options={[
+                { label: 'No task', value: '' },
+                ...openTasks.map((openTask) => ({
+                  label: openTask.title ?? 'Untitled task',
+                  value: openTask.id,
+                })),
+              ]}
               value={selectedTaskId ?? ''}
               onChange={(value) =>
                 handleSelectTask(value === '' ? null : value)
@@ -953,8 +955,7 @@ export const TaskActionsWidget = ({
             <Select
               dropdownId="actions-deal-picker"
               label="Related deal (optional)"
-              options={dealPickerOptions}
-              emptyOption={{ label: 'No deal', value: '' }}
+              options={[{ label: 'No deal', value: '' }, ...dealPickerOptions]}
               value={pickedOpportunityId ?? ''}
               onChange={(value) =>
                 setPickedOpportunityId(value === '' ? null : value)
