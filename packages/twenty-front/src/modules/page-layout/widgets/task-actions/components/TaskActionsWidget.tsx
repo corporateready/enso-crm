@@ -254,7 +254,8 @@ const getChannelSurface = (
       };
     case 'SMS':
       return {
-        onSystemLabel: 'On system · gateway, one-way (sent via ARTIMA)',
+        onSystemLabel:
+          'On system · SMS gateway, one-way (sent under the consented brand)',
         onSystem: [
           { label: 'Send corporate SMS', Icon: IconSend, opensComposer: true },
         ],
