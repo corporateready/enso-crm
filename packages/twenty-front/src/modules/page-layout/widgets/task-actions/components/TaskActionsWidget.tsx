@@ -1,6 +1,6 @@
 import { useLazyQuery, useMutation } from '@apollo/client/react';
 import { styled } from '@linaria/react';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 
 import { isDefined } from 'twenty-shared/utils';
 import { Tag } from 'twenty-ui/components';
@@ -33,6 +33,7 @@ import { Select } from '@/ui/input/components/Select';
 import { TextArea } from '@/ui/input/components/TextArea';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
+import { ModalComponentInstanceContext } from '@/ui/layout/modal/contexts/ModalComponentInstanceContext';
 import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
@@ -335,6 +336,11 @@ export const TaskActionsWidget = ({
   const isOpportunityMode = objectNameSingular === 'opportunity';
   const isPersonMode = objectNameSingular === 'person';
   const isCompanyMode = objectNameSingular === 'company';
+
+  // The widget is hosted inside a modal only via the global "Log activity"
+  // launcher. There, Select dropdowns must render above the modal's z-index or
+  // they open behind it (invisible).
+  const isInModal = isDefined(useContext(ModalComponentInstanceContext));
 
   // Object mode: optional deal/contact pickers, plus logging against one of the
   // contact's open tasks (which switches the surface into that task's context).
@@ -928,6 +934,7 @@ export const TaskActionsWidget = ({
               }}
               withSearchInput
               fullWidth
+              isDropdownInModal={isInModal}
             />
           )}
 
@@ -948,6 +955,7 @@ export const TaskActionsWidget = ({
               }
               withSearchInput
               fullWidth
+              isDropdownInModal={isInModal}
             />
           )}
 
@@ -962,6 +970,7 @@ export const TaskActionsWidget = ({
               }
               withSearchInput
               fullWidth
+              isDropdownInModal={isInModal}
             />
           )}
 
@@ -1134,6 +1143,7 @@ export const TaskActionsWidget = ({
                 value={effectiveSmsAlias}
                 onChange={setSelectedSmsAlias}
                 fullWidth
+                isDropdownInModal
               />
             )}
           </StyledModalBody>

@@ -54,6 +54,9 @@ export type SelectProps<Value extends SelectValue> = {
   dropdownOffset?: DropdownOffset;
   hasRightElement?: boolean;
   showContextualTextInControl?: boolean;
+  // Renders the dropdown above a modal's z-index. Set when the Select lives
+  // inside a modal, otherwise the dropdown opens behind it (invisible).
+  isDropdownInModal?: boolean;
 };
 
 const StyledContainer = styled.div<{ fullWidth?: boolean }>`
@@ -95,6 +98,7 @@ export const Select = <Value extends SelectValue>({
   dropdownOffset,
   hasRightElement,
   showContextualTextInControl = true,
+  isDropdownInModal = false,
 }: SelectProps<Value>) => {
   const selectContainerRef = useRef<HTMLDivElement>(null);
 
@@ -201,6 +205,7 @@ export const Select = <Value extends SelectValue>({
           dropdownId={dropdownId}
           dropdownPlacement="bottom-start"
           dropdownOffset={dropdownOffset}
+          isDropdownInModal={isDropdownInModal}
           onOpen={handleDropdownOpen}
           clickableComponent={
             <SelectControl
