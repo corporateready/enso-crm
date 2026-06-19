@@ -417,15 +417,21 @@ export const TaskActionsWidget = ({
         ? (pickedPersonId ?? undefined)
         : undefined;
 
-  // In task context, the deal + contact come from the task's pins; otherwise
-  // from the object record / pickers.
-  const opportunityId = inTaskContext
-    ? (taskTargets?.find((target) => isDefined(target.targetOpportunityId))
-        ?.targetOpportunityId as string | undefined)
+  // The selected task's pinned deal — used only as an overridable DEFAULT for the
+  // deal picker in object mode (the manager can change or clear it).
+  const taskPinnedOpportunityId = taskTargets?.find((target) =>
+    isDefined(target.targetOpportunityId),
+  )?.targetOpportunityId as string | undefined;
+
+  // On the task RECORD surface the deal + contact come from the task's pins. In
+  // object/launcher mode they come from the manager's independent picks (the deal
+  // is seeded from a selected task but stays overridable — see the effect below).
+  const opportunityId = isTaskMode
+    ? taskPinnedOpportunityId
     : isOpportunityMode
       ? (opportunityRecordId ?? undefined)
       : (pickedOpportunityId ?? undefined);
-  const personId = inTaskContext
+  const personId = isTaskMode
     ? (taskTargets?.find((target) => isDefined(target.targetPersonId))
         ?.targetPersonId as string | undefined)
     : objectPersonId;
@@ -521,13 +527,15 @@ export const TaskActionsWidget = ({
   }>(PERSON_SMS_CONTEXT, { fetchPolicy: 'network-only' });
   const taskSmsContext = taskSmsContextData?.taskSmsContext;
   const personSmsContext = personSmsContextData?.personSmsContext;
-  const isLoadingSmsContext = inTaskContext
+  // Task RECORD surface = the deal's project alias (read-only). Everywhere else
+  // (object/launcher, even with a task selected) = the person's consented aliases.
+  const isLoadingSmsContext = isTaskMode
     ? isLoadingTaskSmsContext
     : isLoadingPersonSmsContext;
-  const smsCanSend = inTaskContext
+  const smsCanSend = isTaskMode
     ? taskSmsContext?.canSend === true
     : personSmsContext?.canSend === true;
-  const smsReason = inTaskContext
+  const smsReason = isTaskMode
     ? taskSmsContext?.reason
     : personSmsContext?.reason;
   const personAliases = personSmsContext?.aliases ?? [];
@@ -565,7 +573,61 @@ export const TaskActionsWidget = ({
     return () => clearInterval(intervalId);
   }, [isTiming]);
 
-  const channel = inTaskContext
+  // Object/launcher mode: pre-select the contact's first open task (overridable
+  // via the Task picker, including clearing it). Guarded to apply once per
+  // contact so a manual clear/change sticks.
+  const [autoSelectedTaskForPerson, setAutoSelectedTaskForPerson] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (isTaskMode || !isDefined(objectPersonId)) {
+      return;
+    }
+    if (autoSelectedTaskForPerson === objectPersonId) {
+      return;
+    }
+    if (openTasks.length === 0) {
+      return;
+    }
+    setAutoSelectedTaskForPerson(objectPersonId);
+    setSelectedTaskId((current) => current ?? openTasks[0].id);
+  }, [isTaskMode, objectPersonId, openTasks, autoSelectedTaskForPerson]);
+
+  // Seed the deal + channel from a newly selected task as overridable DEFAULTS
+  // (the manager can change either, or clear the task). Once per task selection,
+  // and only after the task's record + targets have loaded.
+  const [seededFromTask, setSeededFromTask] = useState<string | null>(null);
+  useEffect(() => {
+    if (isTaskMode) {
+      return;
+    }
+    if (!isDefined(selectedTaskId)) {
+      if (seededFromTask !== null) {
+        setSeededFromTask(null);
+      }
+
+      return;
+    }
+    if (seededFromTask === selectedTaskId) {
+      return;
+    }
+    if (task?.id !== selectedTaskId) {
+      return;
+    }
+    setSeededFromTask(selectedTaskId);
+    setPickedOpportunityId(taskPinnedOpportunityId ?? null);
+    setSelectedChannel((task?.channel as string | null | undefined) ?? null);
+  }, [
+    isTaskMode,
+    selectedTaskId,
+    task,
+    taskPinnedOpportunityId,
+    seededFromTask,
+  ]);
+
+  // Task RECORD surface locks the channel to the task. Object/launcher mode lets
+  // the manager pick (seeded from a selected task's channel, but overridable).
+  const channel = isTaskMode
     ? ((task?.channel as string | null | undefined) ?? null)
     : selectedChannel;
   const surface = getChannelSurface(channel);
@@ -622,11 +684,11 @@ export const TaskActionsWidget = ({
     if (action.opensComposer === true) {
       setSmsMessage(linkContext.greeting ?? '');
       setSelectedSmsAlias('');
-      // Refresh each time the modal opens. Task = deal's project alias; object =
-      // the brands the contact has consented to.
-      if (inTaskContext && isDefined(taskId)) {
+      // Refresh each time the modal opens. Task record = deal's project alias;
+      // object/launcher = the brands the contact has consented to.
+      if (isTaskMode && isDefined(taskId)) {
         fetchTaskSmsContext({ variables: { taskId } });
-      } else if (!inTaskContext) {
+      } else {
         fetchPersonSmsContext({ variables: { personId: personId ?? null } });
       }
       openModal(SMS_MODAL_ID);
@@ -654,7 +716,7 @@ export const TaskActionsWidget = ({
 
     let outcome: { success: boolean; error?: string | null } | undefined;
 
-    if (inTaskContext) {
+    if (isTaskMode) {
       if (!isDefined(taskId)) {
         return;
       }
@@ -718,8 +780,8 @@ export const TaskActionsWidget = ({
     if (isSaving) {
       return;
     }
-    // Need a target to log against: a task (task context) or a person (object).
-    if (inTaskContext ? !isDefined(taskId) : !isDefined(personId)) {
+    // Need a target: the task (task record surface) or the person (object mode).
+    if (isTaskMode ? !isDefined(taskId) : !isDefined(personId)) {
       return;
     }
 
@@ -743,9 +805,9 @@ export const TaskActionsWidget = ({
           : {}),
       });
 
-      // In task context, also stamp the task's reachability outcome (feeds the
-      // sequence/cadence) — same as the task's own surface.
-      if (inTaskContext && isDefined(taskId)) {
+      // Whenever a task is linked (its own surface, or one selected in object
+      // mode), stamp its reachability outcome — feeds the sequence/cadence.
+      if (isDefined(taskId)) {
         await updateOneRecord({
           objectNameSingular: 'task',
           idToUpdate: taskId,
@@ -785,9 +847,9 @@ export const TaskActionsWidget = ({
   };
 
   const hasTimer = isDefined(callStartedAt) || isDefined(callDurationS);
-  // Surface shows in task context (task record or a selected open task) or once
-  // a standalone channel is chosen.
-  const surfaceVisible = inTaskContext || isDefined(selectedChannel);
+  // Surface shows on the task record, or once a channel is chosen in object mode
+  // (the channel is seeded from a selected task, so picking a task reveals it).
+  const surfaceVisible = isTaskMode || isDefined(selectedChannel);
 
   // A touch targets a PERSON. Company mode needs a contact picked first; the
   // deal is always optional context. Person/opportunity already have the person.
@@ -812,8 +874,9 @@ export const TaskActionsWidget = ({
     return { label, value: contact.id as string };
   });
 
+  // Channel and task are independent in object mode: picking a channel just
+  // overrides the (task-seeded) channel; it does NOT clear the selected task.
   const handleSelectChannel = (value: string) => {
-    setSelectedTaskId(null);
     setSelectedChannel(value);
     setSelectedOutcome(null);
     setCallStartedAt(null);
@@ -821,13 +884,19 @@ export const TaskActionsWidget = ({
     setPendingLoggedVia('MANUAL_LOG');
   };
 
-  const handleSelectTask = (id: string) => {
+  // Task picker (object mode). Selecting a task seeds its deal + channel as
+  // overridable defaults (see effect); clearing it ("No task") wipes those seeds
+  // so the manager starts from a clean standalone touch.
+  const handleSelectTask = (id: string | null) => {
     setSelectedTaskId(id);
-    setSelectedChannel(null);
     setSelectedOutcome(null);
     setCallStartedAt(null);
     setCallDurationS(null);
     setPendingLoggedVia('MANUAL_LOG');
+    if (!isDefined(id)) {
+      setSelectedChannel(null);
+      setPickedOpportunityId(null);
+    }
   };
 
   const resetChannelOnPick = () => {
@@ -841,94 +910,83 @@ export const TaskActionsWidget = ({
     <StyledContainer>
       {!isTaskMode && (
         <StyledSection>
-          {isDefined(selectedTaskId) ? (
-            <StyledRow>
-              <Button
-                title="Log without this task"
-                variant="secondary"
-                onClick={() => setSelectedTaskId(null)}
-              />
-            </StyledRow>
-          ) : (
+          {/* Contact, task, and deal are independent optional links. The task is
+              pre-selected if the contact has an open one (overridable/clearable);
+              the deal is seeded from a selected task but can be changed/cleared. */}
+          {needsContact && (
+            <Select
+              dropdownId="actions-contact-picker"
+              label="Contact"
+              options={contactPickerOptions}
+              emptyOption={{ label: 'Select a contact…', value: '' }}
+              value={pickedPersonId ?? ''}
+              onChange={(value) => {
+                setPickedPersonId(value === '' ? null : value);
+                setSelectedTaskId(null);
+                resetChannelOnPick();
+              }}
+              withSearchInput
+              fullWidth
+            />
+          )}
+
+          {openTasks.length > 0 && (
+            <Select
+              dropdownId="actions-task-picker"
+              label="Against task (optional)"
+              options={openTasks.map((openTask) => ({
+                label: openTask.title ?? 'Untitled task',
+                value: openTask.id,
+              }))}
+              emptyOption={{ label: 'No task', value: '' }}
+              value={selectedTaskId ?? ''}
+              onChange={(value) =>
+                handleSelectTask(value === '' ? null : value)
+              }
+              withSearchInput
+              fullWidth
+            />
+          )}
+
+          {showDealPicker && (
+            <Select
+              dropdownId="actions-deal-picker"
+              label="Related deal (optional)"
+              options={dealPickerOptions}
+              emptyOption={{ label: 'No deal', value: '' }}
+              value={pickedOpportunityId ?? ''}
+              onChange={(value) =>
+                setPickedOpportunityId(value === '' ? null : value)
+              }
+              withSearchInput
+              fullWidth
+            />
+          )}
+
+          {pickersResolved && (
             <>
-              {needsContact && (
-                <Select
-                  dropdownId="actions-contact-picker"
-                  label="Contact"
-                  options={contactPickerOptions}
-                  emptyOption={{ label: 'Select a contact…', value: '' }}
-                  value={pickedPersonId ?? ''}
-                  onChange={(value) => {
-                    setPickedPersonId(value === '' ? null : value);
-                    setSelectedTaskId(null);
-                    resetChannelOnPick();
-                  }}
-                  withSearchInput
-                  fullWidth
-                />
-              )}
-
-              {openTasks.length > 0 && (
-                <StyledSection>
-                  <StyledSectionLabel>
-                    Open tasks for this contact — log against one
-                  </StyledSectionLabel>
-                  <StyledRow>
-                    {openTasks.map((openTask) => (
-                      <Button
-                        key={openTask.id}
-                        title={openTask.title ?? 'Untitled task'}
-                        variant="secondary"
-                        onClick={() => handleSelectTask(openTask.id)}
-                      />
-                    ))}
-                  </StyledRow>
-                </StyledSection>
-              )}
-
-              {showDealPicker && (
-                <Select
-                  dropdownId="actions-deal-picker"
-                  label="Related deal (optional)"
-                  options={dealPickerOptions}
-                  emptyOption={{ label: 'No deal', value: '' }}
-                  value={pickedOpportunityId ?? ''}
-                  onChange={(value) =>
-                    setPickedOpportunityId(value === '' ? null : value)
-                  }
-                  withSearchInput
-                  fullWidth
-                />
-              )}
-
-              {pickersResolved && (
-                <>
-                  <StyledSectionLabel>
-                    {isDefined(personId)
-                      ? 'Or log a standalone touch — pick the channel'
-                      : 'No contact / phone on file'}
-                  </StyledSectionLabel>
-                  <StyledRow>
-                    {OBJECT_MODE_CHANNELS.map((option) => (
-                      <Button
-                        key={option.value}
-                        title={option.label}
-                        Icon={option.Icon}
-                        variant={
-                          selectedChannel === option.value
-                            ? 'primary'
-                            : 'secondary'
-                        }
-                        accent={
-                          selectedChannel === option.value ? 'blue' : 'default'
-                        }
-                        disabled={!isDefined(personId)}
-                        onClick={() => handleSelectChannel(option.value)}
-                      />
-                    ))}
-                  </StyledRow>
-                </>
-              )}
+              <StyledSectionLabel>
+                {isDefined(personId)
+                  ? 'How did you reach them? — pick the channel'
+                  : 'No contact / phone on file'}
+              </StyledSectionLabel>
+              <StyledRow>
+                {OBJECT_MODE_CHANNELS.map((option) => (
+                  <Button
+                    key={option.value}
+                    title={option.label}
+                    Icon={option.Icon}
+                    variant={
+                      selectedChannel === option.value ? 'primary' : 'secondary'
+                    }
+                    accent={
+                      selectedChannel === option.value ? 'blue' : 'default'
+                    }
+                    disabled={!isDefined(personId)}
+                    onClick={() => handleSelectChannel(option.value)}
+                  />
+                ))}
+              </StyledRow>
             </>
           )}
         </StyledSection>
@@ -1059,7 +1117,7 @@ export const TaskActionsWidget = ({
               <StyledModalBlocked>
                 {smsReason ?? 'This SMS can’t be sent.'}
               </StyledModalBlocked>
-            ) : inTaskContext ? (
+            ) : isTaskMode ? (
               <StyledModalNote>
                 Sending as {taskSmsContext?.alias}
               </StyledModalNote>
@@ -1092,7 +1150,7 @@ export const TaskActionsWidget = ({
               isSendingSms ||
               smsMessage.trim() === '' ||
               !smsCanSend ||
-              (!inTaskContext && effectiveSmsAlias === '')
+              (!isTaskMode && effectiveSmsAlias === '')
             }
             onClick={handleSendSms}
           />
