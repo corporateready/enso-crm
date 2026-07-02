@@ -76,6 +76,7 @@ import { ChannelSyncModule } from 'src/modules/connected-account/channel-sync/ch
 import { DashboardModule } from 'src/modules/dashboard/dashboard.module';
 import { SendEmailModule } from 'src/modules/messaging/message-outbound-manager/send-email.module';
 import { NotificationSettingsModule } from 'src/modules/enso/notifications/notification-settings.module';
+import { OutboundEmailModule } from 'src/modules/enso/outbound-email/outbound-email.module';
 import { AuditModule } from './audit/audit.module';
 import { ClientConfigModule } from './client-config/client-config.module';
 import { EventLogsModule } from './event-logs/event-logs.module';
@@ -131,6 +132,7 @@ import { FileModule } from './file/file.module';
     ChannelSyncModule,
     SendEmailModule,
     NotificationSettingsModule,
+    OutboundEmailModule,
     FileStorageModule.forRoot(),
     LoggerModule.forRootAsync({
       useFactory: loggerModuleFactory,
