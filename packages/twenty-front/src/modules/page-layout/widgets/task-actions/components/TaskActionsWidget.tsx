@@ -9,6 +9,7 @@ import {
   IconClock,
   IconDeviceMobile,
   IconExternalLink,
+  IconMail,
   IconPhone,
   IconSend,
   IconWorld,
@@ -25,9 +26,13 @@ import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
 import { SEND_PERSON_SMS } from '@/settings/notifications/graphql/mutations/sendPersonSms';
+import { SEND_RECORD_EMAIL } from '@/settings/notifications/graphql/mutations/sendRecordEmail';
+import { SEND_TASK_EMAIL } from '@/settings/notifications/graphql/mutations/sendTaskEmail';
 import { SEND_TASK_SMS } from '@/settings/notifications/graphql/mutations/sendTaskSms';
 import { SEND_TASK_TO_MY_PHONE } from '@/settings/notifications/graphql/mutations/sendTaskToMyPhone';
+import { PERSON_EMAIL_CONTEXT } from '@/settings/notifications/graphql/queries/personEmailContext';
 import { PERSON_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/personSmsContext';
+import { TASK_EMAIL_CONTEXT } from '@/settings/notifications/graphql/queries/taskEmailContext';
 import { TASK_SMS_CONTEXT } from '@/settings/notifications/graphql/queries/taskSmsContext';
 import { Select } from '@/ui/input/components/Select';
 import { TextArea } from '@/ui/input/components/TextArea';
@@ -108,6 +113,25 @@ const StyledModalBlocked = styled.div`
   font-size: ${themeCssVariables.font.size.sm};
 `;
 
+// Email consent is advisory, not a gate: a missing grant shows an amber note but
+// the send stays enabled (the manager decides). Distinct from the red block,
+// which only appears when the email is technically unsendable.
+const StyledModalWarning = styled.div`
+  color: ${themeCssVariables.color.orange};
+  font-size: ${themeCssVariables.font.size.sm};
+`;
+
+const StyledSubjectInput = styled.input`
+  background: ${themeCssVariables.background.transparent.lighter};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.primary};
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.md};
+  padding: ${themeCssVariables.spacing[2]};
+  width: 100%;
+`;
+
 // The widget asks the manager only for what the system can't see: the disposition
 // of a touch, and anything done off our infrastructure. On-system actions that need
 // telephony / messaging integrations are shown as `soon`. Off-system actions are
@@ -120,6 +144,7 @@ type LinkContext = {
   phoneE164?: string;
   phoneDigits?: string;
   socialUrl?: string;
+  email?: string;
   greeting?: string;
 };
 
@@ -130,6 +155,7 @@ type ActionConfig = {
   startsTimer?: boolean;
   loggedVia?: string;
   opensComposer?: boolean;
+  opensEmailComposer?: boolean;
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
@@ -139,6 +165,7 @@ type ActionConfig = {
 // The compose modal just shows the determined alias (read-only).
 
 const SMS_MODAL_ID = 'task-actions-sms-compose';
+const EMAIL_MODAL_ID = 'task-actions-email-compose';
 
 type ChannelSurface = {
   onSystem: ActionConfig[];
@@ -156,6 +183,7 @@ type PersonForLinks = {
     primaryPhoneNumber?: string;
     primaryPhoneCallingCode?: string;
   } | null;
+  emails?: { primaryEmail?: string } | null;
   instagramLink?: { primaryLinkUrl?: string } | null;
   facebookLink?: { primaryLinkUrl?: string } | null;
 };
@@ -192,11 +220,15 @@ const OBJECT_MODE_CHANNELS: {
   { label: 'Call', value: 'CALL', Icon: IconPhone },
   { label: 'WhatsApp', value: 'WHATSAPP', Icon: IconBrandWhatsapp },
   { label: 'SMS', value: 'SMS', Icon: IconSend },
+  { label: 'Email', value: 'EMAIL', Icon: IconMail },
   { label: 'Social', value: 'SOCIAL', Icon: IconExternalLink },
 ];
 
 const telHref = (context: LinkContext) =>
   isDefined(context.phoneE164) ? `tel:${context.phoneE164}` : undefined;
+
+const mailtoHref = (context: LinkContext) =>
+  isDefined(context.email) ? `mailto:${context.email}` : undefined;
 
 const formatDuration = (totalSeconds: number) => {
   const minutes = Math.floor(totalSeconds / 60);
@@ -273,6 +305,24 @@ const getChannelSurface = (
         ],
         outcomes: MESSAGE_OUTCOMES,
       };
+    case 'EMAIL':
+      return {
+        onSystemLabel:
+          'On system · sent from your connected mailbox, logged & threaded',
+        onSystem: [
+          { label: 'Send email', Icon: IconMail, opensEmailComposer: true },
+        ],
+        offSystemLabel: 'Off system · draft in your mail app, then log it',
+        offSystem: [
+          {
+            label: 'Open in mail app',
+            Icon: IconMail,
+            buildHref: mailtoHref,
+          },
+        ],
+        outcomes: MESSAGE_OUTCOMES,
+        waitingStatus: 'Waiting for reply',
+      };
     case 'SOCIAL':
       return {
         onSystem: [
@@ -306,12 +356,14 @@ const buildLinkContext = (person: PersonForLinks | undefined): LinkContext => {
   const socialUrl =
     person?.instagramLink?.primaryLinkUrl ??
     person?.facebookLink?.primaryLinkUrl;
+  const email = person?.emails?.primaryEmail ?? '';
   const firstName = person?.name?.firstName ?? '';
 
   return {
     phoneE164: e164,
     phoneDigits: digits,
     socialUrl: isDefined(socialUrl) && socialUrl !== '' ? socialUrl : undefined,
+    email: email !== '' ? email : undefined,
     greeting: firstName !== '' ? `Hi ${firstName}, ` : undefined,
   };
 };
@@ -506,6 +558,17 @@ export const TaskActionsWidget = ({
   }>(SEND_PERSON_SMS);
   const isSendingSms = isSendingTaskSms || isSendingPersonSms;
 
+  // Manager 1:1 email. Task mode = the task's own email; object/launcher =
+  // to the chosen contact (+ optional deal). Sent from the manager's connected
+  // mailbox, resolved server-side.
+  const [sendTaskEmail, { loading: isSendingTaskEmail }] = useMutation<{
+    sendTaskEmail: { success: boolean; error?: string | null };
+  }>(SEND_TASK_EMAIL);
+  const [sendRecordEmail, { loading: isSendingRecordEmail }] = useMutation<{
+    sendRecordEmail: { success: boolean; error?: string | null };
+  }>(SEND_RECORD_EMAIL);
+  const isSendingEmail = isSendingTaskEmail || isSendingRecordEmail;
+
   // Corporate-SMS compose modal. Task mode: the alias is the deal's project brand
   // (server-determined, read-only). Object mode: a touch targets the PERSON, so
   // the manager picks among the brands that person has consented to.
@@ -548,6 +611,47 @@ export const TaskActionsWidget = ({
   const personAliases = personSmsContext?.aliases ?? [];
   const effectiveSmsAlias =
     selectedSmsAlias !== '' ? selectedSmsAlias : (personAliases[0] ?? '');
+
+  // Email compose modal. Same task/object split as SMS, but consent is advisory:
+  // `canSend` reflects only technical validity (recipient email + a usable
+  // connected mailbox); `hasEmailConsent`/`consentNote` inform, never gate.
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [
+    fetchTaskEmailContext,
+    { data: taskEmailContextData, loading: isLoadingTaskEmailContext },
+  ] = useLazyQuery<{
+    taskEmailContext: {
+      from: string | null;
+      canSend: boolean;
+      reason: string | null;
+      hasEmailConsent: boolean;
+      consentNote: string | null;
+    };
+  }>(TASK_EMAIL_CONTEXT, { fetchPolicy: 'network-only' });
+  const [
+    fetchPersonEmailContext,
+    { data: personEmailContextData, loading: isLoadingPersonEmailContext },
+  ] = useLazyQuery<{
+    personEmailContext: {
+      from: string | null;
+      canSend: boolean;
+      reason: string | null;
+      hasEmailConsent: boolean;
+      consentNote: string | null;
+    };
+  }>(PERSON_EMAIL_CONTEXT, { fetchPolicy: 'network-only' });
+  const emailContext = isTaskMode
+    ? taskEmailContextData?.taskEmailContext
+    : personEmailContextData?.personEmailContext;
+  const isLoadingEmailContext = isTaskMode
+    ? isLoadingTaskEmailContext
+    : isLoadingPersonEmailContext;
+  const emailCanSend = emailContext?.canSend === true;
+  const emailReason = emailContext?.reason;
+  const emailFrom = emailContext?.from;
+  const hasEmailConsent = emailContext?.hasEmailConsent === true;
+  const emailConsentNote = emailContext?.consentNote;
 
   // Object mode: the manager picks the channel (it's implied by the action they
   // click); task mode takes the channel from the task itself.
@@ -703,6 +807,25 @@ export const TaskActionsWidget = ({
       return;
     }
 
+    if (action.opensEmailComposer === true) {
+      setEmailSubject('');
+      setEmailBody('');
+      // Refresh the sender + advisory consent each time the modal opens.
+      if (isTaskMode && isDefined(taskId)) {
+        fetchTaskEmailContext({ variables: { taskId } });
+      } else {
+        fetchPersonEmailContext({
+          variables: {
+            opportunityId: opportunityId ?? null,
+            personId: personId ?? null,
+          },
+        });
+      }
+      openModal(EMAIL_MODAL_ID);
+
+      return;
+    }
+
     handleOpen(action.buildHref?.(linkContext));
 
     if (isDefined(action.loggedVia)) {
@@ -766,6 +889,58 @@ export const TaskActionsWidget = ({
     } else {
       enqueueErrorSnackBar({
         message: outcome?.error ?? 'Could not send the SMS',
+      });
+    }
+  };
+
+  const handleSendEmail = async () => {
+    // Only technical validity gates the send — consent is advisory (informed in
+    // the modal). An empty body is still refused server- and client-side.
+    if (emailBody.trim() === '' || isSendingEmail || !emailCanSend) {
+      return;
+    }
+
+    let outcome: { success: boolean; error?: string | null } | undefined;
+
+    if (isTaskMode) {
+      if (!isDefined(taskId)) {
+        return;
+      }
+      const result = await sendTaskEmail({
+        variables: { taskId, subject: emailSubject, body: emailBody },
+      });
+
+      outcome = result.data?.sendTaskEmail;
+    } else {
+      const result = await sendRecordEmail({
+        variables: {
+          opportunityId: opportunityId ?? null,
+          personId: personId ?? null,
+          subject: emailSubject,
+          body: emailBody,
+        },
+      });
+
+      outcome = result.data?.sendRecordEmail;
+    }
+
+    if (outcome?.success === true) {
+      enqueueSuccessSnackBar({ message: 'Email sent' });
+      closeModal(EMAIL_MODAL_ID);
+      setEmailSubject('');
+      setEmailBody('');
+      // Like SMS: a sent 1:1 email moves the linked task to "waiting for reply"
+      // (IN_PROGRESS); the reply observer / a manual close advances it from there.
+      if (isDefined(taskId) && task?.status !== 'DONE') {
+        await updateOneRecord({
+          objectNameSingular: 'task',
+          idToUpdate: taskId,
+          updateOneRecordInput: { status: 'IN_PROGRESS' },
+        });
+      }
+    } else {
+      enqueueErrorSnackBar({
+        message: outcome?.error ?? 'Could not send the email',
       });
     }
   };
@@ -848,7 +1023,10 @@ export const TaskActionsWidget = ({
   const renderAction = (action: ActionConfig, isPrimary: boolean) => {
     const href = action.buildHref?.(linkContext);
     const isDeepLink = isDefined(action.buildHref);
-    const isClickable = isDeepLink || action.opensComposer === true;
+    const isClickable =
+      isDeepLink ||
+      action.opensComposer === true ||
+      action.opensEmailComposer === true;
     const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
 
     const onClick = isClickable ? () => handleActionClick(action) : undefined;
@@ -1185,6 +1363,66 @@ export const TaskActionsWidget = ({
               (!isTaskMode && effectiveSmsAlias === '')
             }
             onClick={handleSendSms}
+          />
+        </ModalFooter>
+      </ModalStatefulWrapper>
+
+      <ModalStatefulWrapper
+        modalInstanceId={EMAIL_MODAL_ID}
+        size="small"
+        padding="medium"
+        isClosable
+      >
+        <ModalHeader>
+          <StyledModalTitle>Send email</StyledModalTitle>
+        </ModalHeader>
+        <ModalContent>
+          <StyledModalBody>
+            <StyledSubjectInput
+              placeholder="Subject"
+              value={emailSubject}
+              onChange={(event) => setEmailSubject(event.target.value)}
+            />
+            <TextArea
+              textAreaId="task-email-body"
+              placeholder="Write your message…"
+              value={emailBody}
+              onChange={setEmailBody}
+              minRows={5}
+            />
+            {isLoadingEmailContext ? (
+              <StyledModalNote>Checking…</StyledModalNote>
+            ) : !emailCanSend ? (
+              <StyledModalBlocked>
+                {emailReason ?? 'This email can’t be sent.'}
+              </StyledModalBlocked>
+            ) : (
+              <>
+                {isDefined(emailFrom) && (
+                  <StyledModalNote>Sending from {emailFrom}</StyledModalNote>
+                )}
+                {/* Advisory only — the send stays enabled. */}
+                {!hasEmailConsent && isDefined(emailConsentNote) && (
+                  <StyledModalWarning>{emailConsentNote}</StyledModalWarning>
+                )}
+              </>
+            )}
+          </StyledModalBody>
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            title="Cancel"
+            variant="secondary"
+            onClick={() => closeModal(EMAIL_MODAL_ID)}
+          />
+          <Button
+            title="Send"
+            variant="primary"
+            accent="blue"
+            disabled={
+              isSendingEmail || emailBody.trim() === '' || !emailCanSend
+            }
+            onClick={handleSendEmail}
           />
         </ModalFooter>
       </ModalStatefulWrapper>
