@@ -9,6 +9,7 @@ import { ResolverValidationPipe } from 'src/engine/core-modules/graphql/pipes/re
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { AuthUserWorkspaceId } from 'src/engine/decorators/auth/auth-user-workspace-id.decorator';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
+import { AuthWorkspaceMemberId } from 'src/engine/decorators/auth/auth-workspace-member-id.decorator';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { GoogleChatTestResult } from 'src/modules/enso/notifications/dtos/google-chat-test-result.dto';
@@ -51,6 +52,7 @@ export class OutboundEmailResolver {
     @Args('body', { type: () => String }) body: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUserWorkspaceId() userWorkspaceId: string,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(body) || body.trim() === '') {
       return { success: false, error: 'Message is empty.' };
@@ -62,6 +64,7 @@ export class OutboundEmailResolver {
       subject: subject ?? '',
       body,
       userWorkspaceId,
+      workspaceMemberId,
     });
   }
 
@@ -96,6 +99,7 @@ export class OutboundEmailResolver {
     @Args('body', { type: () => String }) body: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUserWorkspaceId() userWorkspaceId: string,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(body) || body.trim() === '') {
       return { success: false, error: 'Message is empty.' };
@@ -104,6 +108,7 @@ export class OutboundEmailResolver {
     return this.outboundEmailService.sendRecordEmail({
       workspaceId: workspace.id,
       userWorkspaceId,
+      workspaceMemberId,
       subject: subject ?? '',
       body,
       ...(isDefined(opportunityId) ? { opportunityId } : {}),

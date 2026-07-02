@@ -10,6 +10,7 @@ import { UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { AuthUser } from 'src/engine/decorators/auth/auth-user.decorator';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
+import { AuthWorkspaceMemberId } from 'src/engine/decorators/auth/auth-workspace-member-id.decorator';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { GoogleChatNotificationPreference } from 'src/modules/enso/notifications/dtos/google-chat-notification-preference.dto';
@@ -210,6 +211,7 @@ export class NotificationSettingsResolver {
     @Args('taskId', { type: () => String }) taskId: string,
     @Args('message', { type: () => String }) message: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(message) || message.trim() === '') {
       return { success: false, error: 'Message is empty.' };
@@ -219,6 +221,7 @@ export class NotificationSettingsResolver {
       workspaceId: workspace.id,
       taskId,
       message,
+      workspaceMemberId,
     });
   }
 
@@ -248,6 +251,7 @@ export class NotificationSettingsResolver {
     personId: string | null,
     @Args('message', { type: () => String }) message: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(message) || message.trim() === '') {
       return { success: false, error: 'Message is empty.' };
@@ -258,6 +262,7 @@ export class NotificationSettingsResolver {
       ...(isDefined(opportunityId) ? { opportunityId } : {}),
       ...(isDefined(personId) ? { personId } : {}),
       message,
+      workspaceMemberId,
     });
   }
 
@@ -288,6 +293,7 @@ export class NotificationSettingsResolver {
     @Args('taskId', { type: () => String, nullable: true })
     taskId: string | null,
     @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
   ): Promise<GoogleChatTestResult> {
     if (!isDefined(message) || message.trim() === '') {
       return { success: false, error: 'Message is empty.' };
@@ -300,6 +306,7 @@ export class NotificationSettingsResolver {
       ...(isDefined(opportunityId) ? { opportunityId } : {}),
       ...(isDefined(taskId) ? { taskId } : {}),
       message,
+      workspaceMemberId,
     });
   }
 
