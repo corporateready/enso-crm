@@ -509,7 +509,7 @@ export class OutboundEmailService {
       personId,
       opportunityId,
       subject,
-      externalId,
+      headerMessageId: sendResult.headerMessageId,
       workspaceMemberId,
     });
 
@@ -525,7 +525,7 @@ export class OutboundEmailService {
     personId?: string;
     opportunityId?: string;
     subject: string;
-    externalId?: string;
+    headerMessageId?: string | null;
     workspaceMemberId?: string;
   }): Promise<void> {
     const {
@@ -533,7 +533,7 @@ export class OutboundEmailService {
       personId,
       opportunityId,
       subject,
-      externalId,
+      headerMessageId,
       workspaceMemberId,
     } = params;
 
@@ -545,22 +545,32 @@ export class OutboundEmailService {
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
         async () => {
           // Correlate to the native Message (persisted above) so the frontend can
-          // hide its duplicate "linked an email" row — matched on externalId.
+          // hide its duplicate "linked an email" row — matched on the RFC
+          // header-message-id. Best-effort in its OWN try: a correlation miss must
+          // never prevent the timeline line itself from being written.
           let messageId: string | undefined;
 
-          if (isNonEmptyString(externalId)) {
-            const messageRepository =
-              await this.globalWorkspaceOrmManager.getRepository<any>(
-                workspaceId,
-                'message',
-                { shouldBypassPermissionChecks: true },
-              );
-            const message = await messageRepository.findOne({
-              where: { externalId },
-            });
+          if (isNonEmptyString(headerMessageId)) {
+            try {
+              const messageRepository =
+                await this.globalWorkspaceOrmManager.getRepository<any>(
+                  workspaceId,
+                  'message',
+                  { shouldBypassPermissionChecks: true },
+                );
+              const message = await messageRepository.findOne({
+                where: { headerMessageId },
+              });
 
-            if (isDefined(message?.id)) {
-              messageId = message.id;
+              if (isDefined(message?.id)) {
+                messageId = message.id;
+              }
+            } catch (error) {
+              this.logger.warn(
+                `outbound email message correlation failed: ${
+                  (error as Error).message
+                }`,
+              );
             }
           }
 
