@@ -208,8 +208,9 @@ export class MarketingSmsService {
     workspaceId: string;
     taskId: string;
     message: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { workspaceId, taskId, message } = params;
+    const { workspaceId, taskId, message, workspaceMemberId } = params;
     const context = await this.resolveTaskSmsContext(workspaceId, taskId);
 
     if (
@@ -259,11 +260,21 @@ export class MarketingSmsService {
         taskId,
         ...(isDefined(externalId) ? { externalId } : {}),
         ...(isDefined(opportunityId) ? { opportunityId } : {}),
+        ...(isNonEmptyString(workspaceMemberId)
+          ? { performedById: workspaceMemberId }
+          : {}),
         personId,
       });
 
       result = { success: true };
     }, buildSystemAuthContext(workspaceId));
+
+    await this.writeOutboundSmsTimeline({
+      workspaceId,
+      personId,
+      opportunityId,
+      workspaceMemberId,
+    });
 
     return result;
   }
@@ -408,8 +419,10 @@ export class MarketingSmsService {
     opportunityId?: string;
     personId?: string;
     message: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { workspaceId, opportunityId, personId, message } = params;
+    const { workspaceId, opportunityId, personId, message, workspaceMemberId } =
+      params;
     const context = await this.resolveSmsContextForDeal({
       workspaceId,
       opportunityId,
@@ -459,11 +472,21 @@ export class MarketingSmsService {
         occurredAt: new Date(),
         ...(isDefined(externalId) ? { externalId } : {}),
         ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+        ...(isNonEmptyString(workspaceMemberId)
+          ? { performedById: workspaceMemberId }
+          : {}),
         personId,
       });
 
       result = { success: true };
     }, buildSystemAuthContext(workspaceId));
+
+    await this.writeOutboundSmsTimeline({
+      workspaceId,
+      personId,
+      opportunityId,
+      workspaceMemberId,
+    });
 
     return result;
   }
@@ -608,9 +631,17 @@ export class MarketingSmsService {
     alias?: string;
     opportunityId?: string;
     taskId?: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { workspaceId, personId, message, alias, opportunityId, taskId } =
-      params;
+    const {
+      workspaceId,
+      personId,
+      message,
+      alias,
+      opportunityId,
+      taskId,
+      workspaceMemberId,
+    } = params;
     const context = await this.resolvePersonSms(workspaceId, personId);
 
     if (!context.canSend || !isNonEmptyString(context.to)) {
@@ -659,11 +690,21 @@ export class MarketingSmsService {
         ...(isDefined(externalId) ? { externalId } : {}),
         ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
         ...(isNonEmptyString(taskId) ? { taskId } : {}),
+        ...(isNonEmptyString(workspaceMemberId)
+          ? { performedById: workspaceMemberId }
+          : {}),
         personId,
       });
 
       result = { success: true };
     }, buildSystemAuthContext(workspaceId));
+
+    await this.writeOutboundSmsTimeline({
+      workspaceId,
+      personId,
+      opportunityId,
+      workspaceMemberId,
+    });
 
     return result;
   }
@@ -744,6 +785,57 @@ export class MarketingSmsService {
         `marketing SMS timeline write failed for person ${userId}: ${
           (error as Error).message
         }`,
+      );
+    }
+  }
+
+  // One clean, unified timeline line for a manager-sent 1:1 SMS ("Sent an SMS —
+  // by <Manager>"), attributed to the sender (or ENSO CRM if unknown). Targets the
+  // contact + deal. Best-effort: a timeline failure must not fail the SMS send.
+  private async writeOutboundSmsTimeline(params: {
+    workspaceId: string;
+    personId?: string;
+    opportunityId?: string;
+    workspaceMemberId?: string;
+  }): Promise<void> {
+    const { workspaceId, personId, opportunityId, workspaceMemberId } = params;
+
+    if (!isNonEmptyString(personId) && !isNonEmptyString(opportunityId)) {
+      return;
+    }
+
+    try {
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const timelineRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'timelineActivity',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const rows = buildEnsoTimelineInserts({
+            action: 'sms-sent',
+            target: {
+              ...(isNonEmptyString(personId) ? { personId } : {}),
+              ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+            },
+            segments: [{ text: 'Sent an SMS' }],
+            ...(isNonEmptyString(workspaceMemberId)
+              ? { workspaceMemberId }
+              : { auto: true }),
+            happensAt: new Date().toISOString(),
+          });
+
+          if (rows.length > 0) {
+            await timelineRepository.insert(rows);
+          }
+        },
+        buildSystemAuthContext(workspaceId),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `outbound SMS timeline write failed: ${(error as Error).message}`,
       );
     }
   }

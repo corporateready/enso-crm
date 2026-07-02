@@ -10,6 +10,7 @@ import { EmailComposerService } from 'src/engine/core-modules/tool/tools/email-t
 import { ConnectedAccountEntity } from 'src/engine/metadata-modules/connected-account/entities/connected-account.entity';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
 import { SendEmailService } from 'src/modules/messaging/message-outbound-manager/services/send-email.service';
 import { type SendMessageResult } from 'src/modules/messaging/message-outbound-manager/types/send-message-result.type';
 
@@ -388,8 +389,10 @@ export class OutboundEmailService {
     subject: string;
     body: string;
     taskId?: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { workspaceId, context, subject, body, taskId } = params;
+    const { workspaceId, context, subject, body, taskId, workspaceMemberId } =
+      params;
     const { to, from, connectedAccountId, opportunityId, personId } = context;
 
     if (
@@ -489,13 +492,112 @@ export class OutboundEmailService {
         ...(isNonEmptyString(externalThreadId) ? { externalThreadId } : {}),
         ...(isNonEmptyString(taskId) ? { taskId } : {}),
         ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+        // The sending manager — so the touch is attributed to them, not "System".
+        ...(isNonEmptyString(workspaceMemberId) ? { performedById: workspaceMemberId } : {}),
         personId,
       });
 
       result = { success: true };
     }, buildSystemAuthContext(workspaceId));
 
+    // One clean, unified timeline line for the touch ("Sent an email … — by
+    // <Manager>"), and — since we ALSO persist a native Message above — the
+    // matching native "linked an email" row is hidden client-side by keying this
+    // event to the same message id. Best-effort: never fail the send.
+    await this.writeOutboundEmailTimeline({
+      workspaceId,
+      personId,
+      opportunityId,
+      subject,
+      externalId,
+      workspaceMemberId,
+    });
+
     return result;
+  }
+
+  // Emits the enso green-sentence timeline event for a sent 1:1 email. Opens its
+  // OWN workspace context (called after the log block closes — never nested), and
+  // resolves the native message id (by externalId) so the frontend can dedupe the
+  // native "linked an email" row against this event.
+  private async writeOutboundEmailTimeline(params: {
+    workspaceId: string;
+    personId?: string;
+    opportunityId?: string;
+    subject: string;
+    externalId?: string;
+    workspaceMemberId?: string;
+  }): Promise<void> {
+    const {
+      workspaceId,
+      personId,
+      opportunityId,
+      subject,
+      externalId,
+      workspaceMemberId,
+    } = params;
+
+    if (!isNonEmptyString(personId) && !isNonEmptyString(opportunityId)) {
+      return;
+    }
+
+    try {
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          // Correlate to the native Message (persisted above) so the frontend can
+          // hide its duplicate "linked an email" row — matched on externalId.
+          let messageId: string | undefined;
+
+          if (isNonEmptyString(externalId)) {
+            const messageRepository =
+              await this.globalWorkspaceOrmManager.getRepository<any>(
+                workspaceId,
+                'message',
+                { shouldBypassPermissionChecks: true },
+              );
+            const message = await messageRepository.findOne({
+              where: { externalId },
+            });
+
+            if (isDefined(message?.id)) {
+              messageId = message.id;
+            }
+          }
+
+          const timelineRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'timelineActivity',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const rows = buildEnsoTimelineInserts({
+            action: 'email-sent',
+            target: {
+              ...(isNonEmptyString(personId) ? { personId } : {}),
+              ...(isNonEmptyString(opportunityId) ? { opportunityId } : {}),
+            },
+            segments: isNonEmptyString(subject)
+              ? [{ text: 'Sent an email · ' }, { text: subject }]
+              : [{ text: 'Sent an email' }],
+            ...(isNonEmptyString(workspaceMemberId)
+              ? { workspaceMemberId }
+              : { auto: true }),
+            ...(isDefined(messageId) ? { linkedRecordId: messageId } : {}),
+            happensAt: new Date().toISOString(),
+          });
+
+          if (rows.length > 0) {
+            await timelineRepository.insert(rows);
+          }
+        },
+        buildSystemAuthContext(workspaceId),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `outbound email timeline write failed: ${(error as Error).message}`,
+      );
+    }
   }
 
   // Manager-initiated 1:1 email from a task. Technical validity + sender are
@@ -507,6 +609,7 @@ export class OutboundEmailService {
     subject: string;
     body: string;
     userWorkspaceId?: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
     const context = await this.resolveTaskEmailContext(
       params.workspaceId,
@@ -520,6 +623,7 @@ export class OutboundEmailService {
       subject: params.subject,
       body: params.body,
       taskId: params.taskId,
+      workspaceMemberId: params.workspaceMemberId,
     });
   }
 
@@ -532,6 +636,7 @@ export class OutboundEmailService {
     subject: string;
     body: string;
     userWorkspaceId?: string;
+    workspaceMemberId?: string;
   }): Promise<{ success: boolean; error?: string }> {
     const context = await this.resolveEmailContextForDeal({
       workspaceId: params.workspaceId,
@@ -545,6 +650,7 @@ export class OutboundEmailService {
       context,
       subject: params.subject,
       body: params.body,
+      workspaceMemberId: params.workspaceMemberId,
     });
   }
 }
