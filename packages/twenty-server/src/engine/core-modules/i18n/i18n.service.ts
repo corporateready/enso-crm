@@ -44,6 +44,8 @@ import { messages as zhHantMessages } from 'src/engine/core-modules/i18n/locales
 export class I18nService implements OnModuleInit {
   private i18nInstancesMap: Record<keyof typeof APP_LOCALES, I18n> =
     {} as Record<keyof typeof APP_LOCALES, I18n>;
+  private messagesByLocale: Record<keyof typeof APP_LOCALES, Messages> =
+    {} as Record<keyof typeof APP_LOCALES, Messages>;
 
   async loadTranslations() {
     const messagesByLocale: Record<keyof typeof APP_LOCALES, Messages> = {
@@ -80,6 +82,8 @@ export class I18nService implements OnModuleInit {
       'zh-TW': zhHantMessages,
     };
 
+    this.messagesByLocale = messagesByLocale;
+
     (
       Object.entries(messagesByLocale) as [keyof typeof APP_LOCALES, Messages][]
     ).forEach(([locale, messages]) => {
@@ -94,6 +98,21 @@ export class I18nService implements OnModuleInit {
 
   getI18nInstance(locale: keyof typeof APP_LOCALES) {
     return this.i18nInstancesMap[locale];
+  }
+
+  // Returns true only when the catalog holds a non-empty compiled entry for
+  // this id. Mirrors Lingui's own `messageForId || message || id` fallback:
+  // an absent or empty entry makes i18n._() compile the raw id at runtime,
+  // which floods "Uncompiled message detected!" warnings. Callers should gate
+  // translateMessage on this to skip that path entirely.
+  hasMessage({
+    messageId,
+    locale = SOURCE_LOCALE,
+  }: {
+    messageId: string;
+    locale?: keyof typeof APP_LOCALES;
+  }): boolean {
+    return Boolean(this.messagesByLocale[locale]?.[messageId]);
   }
 
   translateMessage({

@@ -349,18 +349,21 @@ export class ViewService {
     objectLabelPlural?: string,
     locale?: keyof typeof APP_LOCALES,
   ): string {
+    const effectiveLocale = locale ?? SOURCE_LOCALE;
+
     if (viewName.includes('{objectLabelPlural}') && objectLabelPlural) {
       const messageId = generateMessageId(viewName);
-      const translatedTemplate = this.i18nService.translateMessage({
-        messageId,
-        values: {
-          objectLabelPlural,
-        },
-        locale: locale ?? SOURCE_LOCALE,
-      });
 
-      if (translatedTemplate !== messageId) {
-        return translatedTemplate;
+      // Only translate when the catalog actually has the entry; otherwise
+      // i18n._() would compile the raw id at runtime and flood warnings.
+      if (this.i18nService.hasMessage({ messageId, locale: effectiveLocale })) {
+        return this.i18nService.translateMessage({
+          messageId,
+          values: {
+            objectLabelPlural,
+          },
+          locale: effectiveLocale,
+        });
       }
 
       return viewName.replace('{objectLabelPlural}', objectLabelPlural);
@@ -368,13 +371,12 @@ export class ViewService {
 
     if (!isCustom) {
       const messageId = generateMessageId(viewName);
-      const translatedMessage = this.i18nService.translateMessage({
-        messageId,
-        locale: locale ?? SOURCE_LOCALE,
-      });
 
-      if (translatedMessage !== messageId) {
-        return translatedMessage;
+      if (this.i18nService.hasMessage({ messageId, locale: effectiveLocale })) {
+        return this.i18nService.translateMessage({
+          messageId,
+          locale: effectiveLocale,
+        });
       }
     }
 
