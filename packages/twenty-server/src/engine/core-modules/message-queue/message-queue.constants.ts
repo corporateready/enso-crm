@@ -25,4 +25,5 @@ export enum MessageQueue {
   ensoCompanyEnrichmentQueue = 'enso-company-enrichment-queue',
   ensoCompanyMergeQueue = 'enso-company-merge-queue',
   ensoMarketingSyncQueue = 'enso-marketing-sync-queue',
+  ensoTelephonyQueue = 'enso-telephony-queue',
 }

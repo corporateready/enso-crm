@@ -9,6 +9,7 @@ import { MarketingSyncModule } from 'src/modules/enso/marketing-sync/marketing-s
 import { EnsoTaskDueModule } from 'src/modules/enso/notifications/task-due-scanner.module';
 import { EnsoSmsDeliveryModule } from 'src/modules/enso/notifications/sms-delivery-scanner.module';
 import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
+import { TelephonyModule } from 'src/modules/enso/telephony/telephony.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
 import { WorkflowModule } from 'src/modules/workflow/workflow.module';
 import { WorkspaceMemberModule } from 'src/modules/workspace-member/workspace-member.module';
@@ -25,6 +26,7 @@ import { WorkspaceMemberModule } from 'src/modules/workspace-member/workspace-me
     EnsoNotificationListenersModule,
     EnsoTaskDueModule,
     EnsoSmsDeliveryModule,
+    TelephonyModule,
     WorkflowModule,
     WorkspaceMemberModule,
   ],

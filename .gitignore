@@ -1,4 +1,8 @@
 **/**/.env
+# `**/**/.env` does not match `.env.bak`, `.env.local`, etc. — cover the family
+# so a timestamped backup of a secrets file can never become committable.
+**/.env.*
+!**/.env.example
 .n8n-api-key
 posthog-form-intake-backup-*.json
 n8n-*-intake-backup-*.json

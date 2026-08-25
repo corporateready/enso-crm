@@ -1,122 +1,312 @@
 ---
 title: Telephony
-description: Zadarma SDK direct in Twenty + Roistat webhook in n8n + Moldcell observed via Roistat.
+description: Inbound calls — Moldcell PBX (programmable, MD) + Zadarma (RO) + Roistat as the attribution layer. Real-time routing and post-call ingest are two separate modules.
 ---
 
 # Telephony
 
-Three players. Roistat is the attribution layer. Zadarma is the programmable RO provider. Moldcell is the MD call-center (no public API).
+Three players, and the division of labour matters:
 
-**Status: Shipped (intake).** Inbound calls land as `inboundActivity` rows and drive the pipeline ([lead-pipeline](../systems/lead-pipeline)); first-touch attribution keys on the Roistat visit id ([attribution](../systems/attribution)).
+- **Moldcell Virtual PBX** (MD) — the call-truth source. Who is ringing, who answered, how long, the recording. **Programmable** (see below).
+- **Zadarma** (RO) — same role for +40 numbers.
+- **Roistat** — the attribution layer in front of both. It owns the marketing→call linkage (campaign, UTM, keyword, project) and nothing else.
 
-## Where each piece lives
+Roistat can tell us *where a call came from*. Only the PBX can tell us *who should answer it and who did*. Those are different questions, and they are answered by two different modules.
 
-| Piece | Layer | Module / flow |
+**Status: not built.** This document is the design of record plus the measured
+state of the legacy stack. Earlier versions of this page claimed
+"Shipped (intake)", a `telephony-zadarma` NestJS module, and a
+`POST /api/intake/call` endpoint — **none of those ever existed**. See
+[Legacy reality](#legacy-reality-measured-2026-08-25) for what is actually running.
+
+## Correction: Moldcell is not a black box
+
+The previous design was built on the premise that Moldcell had no public API, so
+Moldcell calls could only be observed indirectly through Roistat. **That premise
+is false**, and it is why real-time routing was considered impossible for years.
+
+Moldcell Virtual PBX is a white-labelled **ITooLabs Communications Server** with
+a full documented REST API (spec: `https://itoolabstest.pbx.moldcell.md/media/admin/pdf/crm_rest_api.pdf`,
+17 pages, RU only; wiki `https://wiki.pbx.moldcell.md/crm`). Our tenant is
+`enso.pbx.moldcell.md`. The legacy n8n stack already calls it, so it is proven in
+practice.
+
+Auth is HTTPS plus a single pre-shared token, bidirectional: CRM→PBX requests
+send `token`; PBX→CRM pushes carry `crm_token` so we can verify them. There is no
+HMAC and no signing.
+
+### PBX → CRM (pushes)
+
+All pushes for one connector arrive at **one URL**, dispatched on `cmd`.
+
+| `cmd` | When | Key fields |
 |---|---|---|
-| Roistat call webhook receiver | n8n | `roistat-call-intake` flow → POST to Twenty `/api/intake/call` |
-| Zadarma direct webhook receiver | n8n | `zadarma-direct-intake` flow → POST to Twenty `/api/intake/call` |
-| Zadarma SDK calls (click-to-call, recordings, extension list) | Twenty fork | `telephony-zadarma` NestJS module — replaces `zadarma-signer` Render service |
-| Zadarma "who answered" reconciliation | Twenty fork | BullMQ job triggered by `notify_record` event |
-| Roistat outcome push-back (on deal close) | Twenty fork | `attribution` module event listener |
-| Daily Zadarma extension sync | Trigger.dev | scheduled job, updates `users.sip_extension` |
-| Moldcell call observation | (no direct integration) | Observed indirectly via Roistat when DID-substituted |
+| `event` | Real-time call signalling | `type` ∈ `INCOMING`/`ACCEPTED`/`COMPLETED`/`CANCELLED`/`OUTGOING`/`TRANSFERRED`, `phone`, `diversion` (DID dialled), `user`, `direction`, **`callid` (stable across all related legs)** |
+| `history` | At hangup | `status` ∈ `Success`/`Missed`/`Cancel`/`Busy`/`NotAvailable`/`NotAllowed`/`NotFound`, `duration`, `start` (`YYYYmmddTHHMMSSZ`), **`link` = recording URL**, `callid`, `user` |
+| `contact` | On each new inbound call, **while ringing** | Request: `phone`, `callid`. Response: `{contact_name, responsible}` → PBX can **auto-transfer to the responsible manager**, with a fallback if busy/unanswered |
 
-## Roistat — attribution feed
+### CRM → PBX (`POST https://enso.pbx.moldcell.md/sys/crm_api.wcgp`, `cmd=` + `token=`)
 
-Roistat substitutes DIDs per campaign, captures `visit_id` + UTM, fires webhook to n8n.
-
-| Aspect | Detail |
+| `cmd` | Use |
 |---|---|
-| Auth (incoming webhook) | None native — n8n verifies by IP allowlist + path secret |
-| Auth (CRM → Roistat outbound) | `Api-key: <key>` header + `?project=12345` query |
-| Rate limit (Roistat API) | 10/sec, 5k/hour per project |
-| Webhook fires per call | Twice — at start + at completion (dedup in Twenty by `roistat_call_id`) |
+| `makeCall` | Click-to-dial — rings the manager, then bridges to the client; returns CallID |
+| `accounts` | PBX users → map to `workspaceMember` (login, `realName`, `ext`, `telnum`) |
+| `groups` | Departments |
+| `history` | CSV pull: `UID,type,client,account,via,start,wait,duration,record` |
+| `subscribeOnCalls`, `set_dnd`, `get_dnd`, `subscriptionStatus` | Per-agent / per-department call reception — the PBX-side counterpart of `isAvailableForRouting` |
 
-n8n's `roistat-call-intake` flow:
-1. Receive webhook
-2. Normalize phone (`callee` → E.164)
-3. Identify provider (RO=Zadarma, MD=Moldcell by callee prefix)
-4. POST to Twenty `/api/intake/call` with `{ provider: 'roistat', payload: <normalized> }`
-5. Twenty deduplicates by `(roistat, roistat_call_id)`, merges start + end events into one Activity
+Multiple **API connectors** can coexist on one tenant, each with its own CRM
+address and token. The CRM gets its own connector; the legacy n8n connector is
+left untouched. Because `contact` auto-transfer is enabled **per number**, the
+two connectors must not both steer the same numbers.
 
-CRM → Roistat (outcome push-back):
-- Twenty's `attribution` module listens for `deal.stage_changed` to `ClosedWon`
-- Posts to `POST /project/phone-call?project=12345` with `order_id: deal.id`, `value_eur`, `closed_at`, `visit_id`
-- Roistat dashboards then show revenue per source
+## Architecture: two modules, deliberately separate
 
-## Zadarma — programmable RO provider
+Real-time routing and record creation have incompatible constraints. Keeping them
+apart is the central design decision.
 
-Twenty's `telephony-zadarma` NestJS module wraps the Zadarma SDK directly. No more `zadarma-signer` on Render — folded into our backend.
+### Module A — Real-time call routing (during the ring)
 
-### What we use
+Answers the PBX `contact` push. Synchronous, millisecond budget, **writes nothing**.
 
-| Capability | Endpoint | Where in Twenty |
+1. `phone` → Person → active `personProjectAssignment` (sticky owner)
+2. Owner found → return `{contact_name, responsible}` → PBX rings that manager directly
+3. No owner → return `contact_name` only → PBX falls through to its department queue
+
+Hard requirements: a strict timeout and a **safe fallback** — omitting
+`responsible` must be the failure mode. A stall here delays a live call, so this
+path must not sit behind heavy middleware or a shared job queue. It reads only;
+it never creates a Person, Opportunity, or activity.
+
+Sticky ownership therefore becomes real-time: a returning customer's call rings
+the manager who owns them, before anyone touches the CRM.
+
+### Module B — Post-call ingest (near real-time)
+
+Everything else. Correlates the 3–4 events describing one call into a single
+`inboundActivity`, then hands off to the existing pipeline unchanged.
+
+- **Correlation key: Moldcell `callid`** — authoritative and stable across legs.
+  Roistat's own call `id` and `visit_id` correlate onto it by (phone, ~10-min window).
+- **Create early, patch later.** Create the `inboundActivity` on the first signal
+  (`event INCOMING`, or Roistat at-call) so the lead exists within seconds, then
+  patch outcome, duration, and recording as later events arrive. Waiting for the
+  call to end before creating anything is what made the legacy design blind.
+- **Who answered** comes from `event ACCEPTED`.`user` / `history`.`user`, mapped
+  via `cmd=accounts` → `workspaceMember`. Answered calls **auto-claim** to that
+  manager. Missed calls (`CANCELLED`, `status=Missed`) enter normal routing plus
+  the claim window.
+- **Reconciliation sweep** catches calls whose terminal event never arrived
+  (observed: 1 in 6 Roistat after-call events went missing).
+
+Downstream is unchanged: `inboundActivity(kind=INCOMING_CALL)` →
+[lead pipeline](../systems/lead-pipeline) → Person → Company → Opportunity →
+[routing](../systems/routing) → claim.
+
+### Why this collapses the legacy complexity
+
+Every hard mechanism in the legacy stack is a workaround for *polling instead of
+receiving*:
+
+| Legacy workaround | Replaced by |
+|---|---|
+| 7s grace period + 3-probe retry ladder (~7s/32s/92s) | `event ACCEPTED` push |
+| 1-minute rolling PBX poller | `event CANCELLED` / `history status=Missed` push |
+| Synthetic `roistat_first`/`roistat_second` fabrication | `history` (authoritative status/duration/recording) |
+| `call_merge:<phone>:<bucket>` heuristics, adjacent-bucket probing | `callid` |
+| No real-time routing at all | `contact` |
+
+## Roistat — attribution only
+
+Project **187275**. API base `https://cloud.roistat.com/api/v1`, auth
+`Api-key: <key>` header + `?project=187275`. Credentials: `ROISTAT_API_KEY`,
+`ROISTAT_PROJECT_ID`.
+
+### Two webhook slots per scenario
+
+Both are configured today, on every scenario that has any webhook at all:
+
+| Slot | Fires | Adds |
 |---|---|---|
-| Webhook receive (notify_start/answer/end/record/etc.) | n8n receives, posts to Twenty | n8n + intake module |
-| Click-to-call | `GET /v1/request/callback/` | `telephony-zadarma.click-to-call(managerSip, prospectPhone)` |
-| Recording retrieve | `GET /v1/pbx/record/request/` | `telephony-zadarma.get-recording-url(callId)` (returns signed URL) |
-| Extension list + employee names | `GET /v1/pbx/internal/` + `.../sip/info/` | Daily Trigger.dev job → updates `users.sip_extension` cache |
-| Stats reconciliation | `GET /v1/statistics/` | "Who answered" job: triggered by `notify_record`, queries stats, matches by call_start ±60min, resolves SIP → user |
+| `integration.webhook_start.url` | ~5s after call start | — |
+| `integration.webhook.url` | at hangup | `status`, `duration`, `file_id`, `link` (recording) |
 
-### Auth signing
+**Attribution arrives on both.** The at-call push already carries `custom_fields`
+with the UTMs *and* `project_id`, so the project is known seconds into the call —
+there is no need to wait for the call to end to identify or route a lead. Only
+outcome fields are exclusive to the after-call push.
 
-HMAC-SHA1 over `(method + sorted_query + md5(query))`, Base64'd. Implemented inline in `telephony-zadarma.signer.ts`. Same logic as the Render service; ~30 lines of TypeScript.
+### `project_id` is configuration, not derivation
 
-### Replacing the "who answered" workaround
+`project_id` is a hand-entered static value in
+`integration.webhook.custom_fields`, alongside hardcoded UTMs and Roistat macros
+(`{facebookClientId}`, `{roistatParam1..4}`, `{agent}`).
 
-Today's flow: webhook arrives → wait ~minutes → call `zadarma-signer.onrender.com/get-who-answered` → match call → return SIP.
+Two consequences:
 
-Rebuild flow:
-1. Webhook (`notify_record`) arrives → Activity inserted with `recording_url`
-2. BullMQ job scheduled +90 seconds
-3. Job queries Zadarma stats for the matching call (callee + ±60min window)
-4. Match found → update Activity's `answered_by_user_id` (resolved from cached SIP map)
-5. If no match yet → retry in 10 min, max 3 attempts
+- Adding or re-labelling a project is a **Roistat config change**, not a code change.
+- `utm_medium: "static_call_tracking"` / `"dynamic_call_tracking"` is a **typed
+  label, not a measurement**. Never infer the tracking mode from it.
 
-Recording URL stays valid for 30 min (Zadarma signed URLs default 1800s lifetime). Attached to Activity for playback in Twenty UI.
+Project codes: `ENS2301` ARTIMA · `ENS1901` Ioana Radu · `ENS2402` AVRAM IANCU ·
+`ENS2101` AVENEW BOTANICA · `ENS2501` ENSO LIVING · `ENSVI` Vânzări Imobiliare.
 
-### Click-to-call
+> The legacy `Calls Workflow` maps `ENS1901` to "NEWTON House Buiucani". That
+> label is **wrong** — `ENS1901` is Ioana Radu. Do not port that map.
 
-From a deal in Twenty, manager clicks "Call". Twenty:
-1. Validates manager has `sip_extension` set
-2. Calls `telephony-zadarma.click-to-call(manager.sip_extension, deal.person.phone_e164)`
-3. Zadarma rings manager's extension first, then bridges to prospect
-4. Creates an `interaction` row (`kind=outbound_call`) immediately, fills `recording_url` when `notify_record` arrives
+### Static vs dynamic
 
-## Moldcell PBX — black box, observed via Roistat
+133 scenarios: 124 static, 9 dynamic; 74 enabled. Dynamic is in real use —
+Artima.md Dynamic (641 calls), ENSO Living dynamic website (113), Ioana Radu
+dynamic call (108), Sarmizegetusa (9). Static attribution is channel-level;
+dynamic adds session/keyword depth via `visit_id`.
 
-No public API. The `binaagency.pbx.moldcell.md` portal is operator-side; we don't touch it.
+A short traffic sample will look static-only. It isn't.
 
-How we know about Moldcell calls:
-- Roistat substitutes Moldcell DIDs and captures the call event at the Roistat layer (regardless of which provider terminates the call)
-- For Roistat-attributed Moldcell calls → we get full webhook payload as if Zadarma fired it
-- For non-attributed Moldcell calls (direct dialing) → **invisible to CRM**. Acceptable for v1.
+### Number inventory and topology
 
-If non-attributed Moldcell observability matters later:
-- Call Moldcell business support (022 206 060) to ask about a partner API
-- Or configure Moldcell PBX dial-plan to fork incoming calls to a SIP endpoint we control (heavy)
+52 tracking numbers, **all `is_external: 1`** — ENSO's own numbers forwarded into
+Roistat, not rented from Roistat. 38 MD (+373), 14 RO (+40).
+`options.redirect.value` reveals the split:
 
-For now: assume Moldcell calls only enter CRM via Roistat-mediated paths.
+| Redirect value | Meaning |
+|---|---|
+| `341771@sip.zadarma.com` (39 scenarios) | RO — into Zadarma SIP |
+| `1@noneed.ru` (94 scenarios) | placeholder = no SIP redirect; MD numbers forwarded at operator level into the Moldcell PBX |
 
-## Provider routing decision matrix
+### ⚠️ Coverage gap — the largest source of call loss
 
-| Caller DID country | Provider | Roistat-tracked? | Recording source |
-|---|---|---|---|
-| +40 (RO) tracked | Zadarma | Yes | Roistat webhook payload `link` |
-| +40 (RO) direct | Zadarma | No | Zadarma `notify_record` |
-| +373 (MD) tracked | Moldcell | Yes | Roistat webhook payload `link` |
-| +373 (MD) direct | Moldcell | No | **invisible** (out of scope) |
+Of the **74 enabled** scenarios:
 
-## What we drop from the current setup
+| Destination | Scenarios | Calls |
+|---|---|---|
+| n8n (both hooks) | 39 | 1,521 |
+| **No webhook at all** | **30** | **2,141** |
+| RudderStack only | 5 | 864 |
 
-- `zadarma-signer.onrender.com` Render service — replaced by `telephony-zadarma` NestJS module
-- Upstash Redis call-dedup cache — replaced by Postgres `webhook_events(provider, external_id)` UNIQUE
-- 119-node `Calls Workflow for Attio` — replaced by 1 thin n8n receiver flow + Twenty's intake + reconciliation modules
-- Per-brand "Incoming Calls" flows (`Parents | ARTIMA Incoming Calls`, etc.) — consolidated into one intake path with brand resolved from Roistat `custom_fields.project_id`
-- Test flows (`test-pbx-event`, `TEST Incoming Calls`) — deleted
+**Only ~34% of tracked call volume on enabled scenarios even attempts to notify
+us.** The blind scenarios are high-volume channels: Google My Business
+botanica.newton.md (590), Facebook (466), Instagram (286), Marinacarnat (185),
+Newton.md (150) — mostly Newton Botanica. A further 10 of the 39 webhooked
+scenarios carry **no `project_id`**, so those calls arrive unattributed.
 
-## Open questions specific to telephony
+`readydvasbihce.dataplane.rudderstack.com` is an undocumented **RudderStack**
+destination taking 864 calls; it appears in no other project document.
 
-- **SIP extension naming convention** — Zadarma uses 3-4 digit extensions. We need a clear mapping doc: extension X = manager Y. Daily sync builds it, but the source of truth is Zadarma's PBX config.
-- **Moldcell extension visibility** — if managers have separate extensions for MD vs RO calls, do they want unified "who answered" or separate tracking?
-- **Direct line vs Roistat-tracked policy** — should ALL inbound calls be routed through Roistat substitution (= full attribution + observability), or are some direct numbers (e.g. ops/internal) intentionally outside Roistat?
+Repairing this is Roistat configuration (`calltracking/script/update`), not code —
+but it only pays off once Module B exists to receive the traffic.
+
+### Verification
+
+Roistat does not sign its callbacks. Verify by a secret baked into the CRM webhook
+path (`ENSO_ROISTAT_WEBHOOK_SECRET`) plus an IP allowlist — observed sender is
+`167.235.14.14`, UA `Roistat Bot`.
+
+## Legacy reality (measured 2026-08-25)
+
+### The live call pipeline is dead
+
+`Calls Workflow for Attio` (`vaqZSR5Z8KVTXrpI`, 127 nodes, **active**) is severed.
+Across the entire retained execution history, **every run stops after 4 of 124
+nodes and none reach Attio** — and every run is logged `success`, which is why
+nothing alerted.
+
+Cause: the chain is
+`Incoming Call → Code Normalization1 → Redis Save Initial1 → Code Normalization → If5 → …`.
+`Code Normalization` is a byte-identical copy of `Code Normalization1` but is fed
+the **Upstash SET response** `{"result":"OK"}`. Its source detection tests
+`json.query` and `json.body.body`, both miss, it `continue`s and returns `[]`.
+`If5` has exactly one inbound edge, so nothing else can reach the chain.
+
+Combined with the Roistat coverage gap, **net call capture is effectively zero**.
+Calls still ring and are answered — telephony is independent of this — but they
+leave no CRM trace and get no routing or sequence.
+
+### Port from the newer workflows, not the live one
+
+| Workflow | State | Why it matters |
+|---|---|---|
+| `Calls Workflow Missed Solution` (134n) | off, newest | The most mature design: MD grace period, PBX confirmation, retry ladder, missed-call poller with three anti-duplication guards, real terminal idempotency, synthetic-vs-real provenance |
+| `Calls Workflow for Attio new` (44n) | off | Redis-hash state (no read-modify-write race), adjacent-bucket correlation, ack-then-process (202) |
+| `Calls Workflow for Attio remake` (96n) | off | Intermediate step |
+
+`Missed Solution`'s CSV parsing is the **correct** one — `parts[1]`=call type,
+`parts[6]`=wait, `parts[7]`=talk — matching the official spec
+(`UID,type,client,account,via,start,wait,duration,record`). The live parser is
+wrong (treats `parts[6]` as talk, `parts[7]` as a status code) and infers
+"answered" from `account` being non-empty, which is **invalid**: a group or IVR
+appears in `account` even for unanswered calls.
+
+Provenance fields worth preserving in the new model: `_synthetic`, `_source`,
+`_synthetic_reason`, `delivery_source` — they distinguish a PBX-derived "missed"
+from an analytics-confirmed one.
+
+### Bugs not to port
+
+- Redis key `call_merge:<phone>` (phone only) → cross-call contamination. With the
+  dead `crm_sent` / `_finished_sources` / `already_sent` guards (read but never
+  written), effective behaviour is **one activity per phone per 20 minutes**.
+- Readiness asymmetry: MD required 2 events, RO required all 4.
+- PostHog switch with outputs 3 and 4 both `ENS2101` → **Sarmizegetusa unreachable**.
+- Fivetran nodes orphaned in every version — "analytical events flow live" is false.
+- No E.164 normalisation (8 different snippets). A local `0XXXXXXX` fails both
+  `startsWith('373')` and `startsWith('40')` → `country = null` → weakest path,
+  no brand routing.
+- Country derived from callee everywhere except one node that uses caller.
+- Entry webhook has **no authentication** (the one attempt compares the secret
+  against its own webhook URL).
+- RO has **no missed-call handling at all** — every fallback is gated
+  `country !== 'MD' → return []`.
+
+### What gets retired
+
+- `zadarma-signer.onrender.com` — folded into the CRM
+- Upstash Redis call-dedup — replaced by Postgres keyed on `callid`
+- The 127-node `Calls Workflow` and its three abandoned remakes
+- Per-brand "Incoming Calls" flows — one path, brand from `custom_fields.project_id`
+- Zapier in the Zadarma path (`zapier_first`/`zapier_second`)
+- Test flows (`test-pbx-event`, `TEST Incoming Calls`)
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `ENSO_MOLDCELL_PBX_BASE_URL` | `https://enso.pbx.moldcell.md` (path `/sys/crm_api.wcgp`) |
+| `ENSO_MOLDCELL_PBX_TOKEN` | CRM→PBX token; minted per connector in the cabinet |
+| `ENSO_MOLDCELL_CRM_TOKEN` | Echoed back as `crm_token` on every push; the only authenticity check |
+| `ENSO_ROISTAT_WEBHOOK_SECRET` | Baked into the Roistat webhook path |
+| `ROISTAT_API_KEY`, `ROISTAT_PROJECT_ID` | Roistat REST access (project 187275) |
+
+Set on Railway `twenty-server` (serves the endpoints) and `twenty-worker` (runs
+the PBX lookup jobs).
+
+## Rollout order
+
+1. **Module B** — the receiver + correlation + `inboundActivity`. Stops the data loss.
+2. **Repoint Roistat** at the CRM endpoint, then **repair the coverage gap** on the
+   30 blind enabled scenarios and add `project_id` to the 10 missing it.
+3. **Module A** — `contact` responder. Only after it is verified fast with a safe
+   fallback should per-number "auto-transfer to responsible" be enabled in the
+   cabinet, and only on numbers the n8n connector is not steering.
+4. **Click-to-call** via `makeCall`, replacing the `soon:true` placeholders in the
+   task/log surface.
+5. **`set_dnd` / `subscribeOnCalls`** wired to `isAvailableForRouting`, so CRM
+   presence and PBX call reception stop drifting apart.
+
+## Open questions
+
+- **Does the cabinet's "Адрес вашей CRM" field accept a full URL with a path?**
+  The placeholder suggests a bare domain. If it is domain-only, the PBX will POST
+  to a default path — and if that path is `/`, it collides with the frontend SPA
+  that `twenty-server` also serves.
+- **Where does the existing n8n Moldcell connector point?** The only n8n receivers
+  of PBX pushes are two inactive prototypes, so those pushes are currently
+  discarded.
+- **RO parity.** Zadarma has the same webhook family
+  (`notify_start`/`answer`/`end`/`record`); Module B should treat it as a second
+  provider rather than a special case, so RO finally gets missed-call handling.
+- **Do managers hold separate MD and RO extensions**, and should "who answered" be
+  unified across them?
+- **Should every inbound number be Roistat-tracked?** Untracked numbers are
+  attribution-blind but, once the PBX pushes are wired, no longer
+  *observation*-blind — which changes the old answer.

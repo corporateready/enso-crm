@@ -22,4 +22,5 @@ export const MESSAGE_QUEUE_PRIORITY = {
   [MessageQueue.ensoPersonMergeQueue]: 4,
   [MessageQueue.ensoCompanyEnrichmentQueue]: 4,
   [MessageQueue.ensoCompanyMergeQueue]: 4,
+  [MessageQueue.ensoTelephonyQueue]: 4,
 };
