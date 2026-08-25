@@ -4,6 +4,15 @@
 export type ResolveOpportunityFromActivityJobData = {
   workspaceId: string;
   activityId: string;
+  // Set when the inbound event itself already proves two-way engagement — an
+  // inbound call a manager picked up. ROUTING exists to find someone to make
+  // first contact; on an answered call that has already happened, so the deal
+  // opens straight in CONNECTED and skips routing entirely. Unanswered calls,
+  // forms and chat leads still route normally.
+  alreadyConnected?: {
+    // Whoever engaged, when we can identify them.
+    ownerMemberId?: string;
+  };
 };
 
 export type RouteOpportunityJobData = {

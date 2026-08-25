@@ -37,19 +37,31 @@ What's reachable from outside Moldcell/Zadarma/Roistat, and what we'd have to gl
 
 ## Moldcell Virtual PBX (MD numbers)
 
-- **No public API**. Marketing page only. Admin happens in the operator-side cabinet.
-- **Mobile app**: `md.moldcell.vats` (vats = ВАТС = "virtual PBX" in Russian).
-- **Underlying platform**: not disclosed. Likely 3CX-skinned or proprietary Asterisk variant.
-- **Customer admin URL today**: `binaagency.pbx.moldcell.md`.
-- **No webhook**, **no programmable routing**, **no recording API** documented publicly.
+> **CORRECTED 2026-08-25.** This section previously stated Moldcell had no public
+> API and concluded the PBX must stay a black box observed only via Roistat. That
+> was **wrong**, and it is why real-time routing was considered impossible.
+> Verified by downloading and reading the vendor spec. Canonical detail now lives
+> in `content/docs/integrations/telephony.md`.
 
-→ **Verdict**: This is the **integration gap**. We can't directly observe call events from Moldcell. Three options:
+- **Full documented REST API.** Moldcell ВАТС is a white-labelled **ITooLabs Communications Server**.
+- **Spec**: `https://itoolabstest.pbx.moldcell.md/media/admin/pdf/crm_rest_api.pdf` (17pp, RU only). Wiki: `https://wiki.pbx.moldcell.md/crm` (EN wiki is an empty stub).
+- **Our tenant**: `enso.pbx.moldcell.md` (not `binaagency…` — that was a stale/other tenant). Endpoint `POST /sys/crm_api.wcgp`.
+- **Auth**: HTTPS + one pre-shared token, bidirectional. CRM→PBX sends `token`; PBX→CRM pushes carry `crm_token`. No HMAC, no signing. Multiple API connectors per tenant, each with its own CRM address + token.
+- **PBX → CRM pushes** (all to one URL per connector, dispatch on `cmd`):
+  - `event` — real-time signalling: `INCOMING`/`ACCEPTED`/`COMPLETED`/`CANCELLED`/`OUTGOING`/`TRANSFERRED`, plus `direction`, `diversion`, and **`callid` stable across all legs**.
+  - `history` — at hangup: `status` (`Success`/`Missed`/`Cancel`/`Busy`/`NotAvailable`/`NotAllowed`/`NotFound`), `duration`, **`link` = recording URL**.
+  - `contact` — fires **while the phone is ringing**; we answer `{contact_name, responsible}` and the PBX can **auto-transfer to that manager** (enabled per number, with busy/no-answer fallback).
+- **CRM → PBX**: `makeCall` (click-to-dial), `accounts`/`groups` (user mapping), `history` (CSV: `UID,type,client,account,via,start,wait,duration,record`), `subscribeOnCalls`/`set_dnd`/`get_dnd`/`subscriptionStatus`.
+- Proven in practice: the legacy n8n stack already calls this API (`cmd=history`, `cmd=accounts`).
 
-1. **Roistat-as-proxy**: Roistat already substitutes the number in front of Moldcell DIDs and captures the call event (caller, status, recording link) regardless of where it terminates. So Roistat's webhook *is* our Moldcell event stream for marketing-tracked calls. ✅ Works today.
-2. **SIP-side instrumentation**: Configure Moldcell PBX to fork to our SIP endpoint via dial-plan rule, so we get RTP/INVITE events. Heavy. Avoid unless required.
-3. **Operator request**: Ask Moldcell whether they expose a partner API (3CX has Call Control API, BroadWorks has OCI). Worth a phone call — they list a corporate support line at 022 206 060.
+→ **Verdict**: Moldcell is the **call-truth source**, not a gap. It answers who is
+ringing, who should take it, who did, and where the recording is. Roistat is
+reduced to what only it knows: marketing attribution. Real-time routing is
+achievable via `contact`; "who answered" needs no polling, it arrives on
+`event ACCEPTED` / `history`.
 
-→ **Default**: option 1. Moldcell PBX stays a black box; Roistat is the event source.
+→ **Superseded**: the old "Roistat-as-proxy / stay a black box" default. SIP-side
+instrumentation and the operator partner-API phone call are both unnecessary.
 
 ## Where this leaves the integration picture
 
@@ -74,15 +86,32 @@ flowchart LR
   Ads --> R
   R -.substitutes.-> MC
   R -.substitutes.-> ZD
-  MC --> R
-  ZD --> R
-  R -- webhook --> CRM
-  ZD -- webhook --> CRM
+  R -- "webhook: attribution<br/>(start + after-call)" --> CRM
+  MC -- "event / history<br/>(call truth)" --> CRM
+  MC -. "contact (during ring)" .-> A
+  A -. "responsible" .-> MC
+  ZD -- "notify_* webhooks" --> CRM
+  CRM -- "makeCall / set_dnd" --> MC
   Web --> CRM
   Meta --> CRM
   CW -- webhook --> CRM
 
-  CRM[(enso-crm<br/>Next.js + Supabase)]
+  A[Module A<br/>real-time routing]
+  CRM[(enso-crm<br/>twenty-server + Postgres)]
 ```
 
-→ **Roistat is the single funnel for telephony-attributed events.** Zadarma's direct webhook covers RO calls without Roistat tagging (e.g. PBX-internal). Moldcell observation is fully delegated to Roistat. Forms, Meta lead ads, and Chatwoot post to the CRM directly.
+→ **Roistat and the PBX answer different questions.** Roistat is the funnel for
+*attribution* (campaign, UTM, `project_id`) and fires twice — at call start and
+at hangup. The **PBX is the source of call truth**: `event`/`history` push who
+rang, who answered, duration, and the recording, keyed on a stable `callid`.
+Moldcell observation is **no longer delegated to Roistat** — that was the
+corrected mistake above.
+
+→ **Two modules, deliberately separate.** Module A answers `contact` synchronously
+while the phone rings and writes nothing; post-call ingest is asynchronous and
+feeds the existing `inboundActivity` → routing pipeline. Zadarma is a second
+provider on the same shape, not a special case — which is how RO finally gets
+missed-call handling. Forms, Meta lead ads, and Chatwoot post to the CRM directly.
+
+→ Note: the CRM is **twenty-server + Postgres** (the Twenty fork), not
+Next.js + Supabase as an earlier draft of this diagram assumed.

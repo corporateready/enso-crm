@@ -16,8 +16,7 @@ import {
 const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
   'cef40992-41c4-4742-8b4c-234777a1b8c6';
 const OPPORTUNITY_OBJECT_METADATA_ID = 'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
-const CONSENT_EVENT_OBJECT_METADATA_ID =
-  'e4644363-2cb7-43d5-931e-8af41e583831';
+const CONSENT_EVENT_OBJECT_METADATA_ID = 'e4644363-2cb7-43d5-931e-8af41e583831';
 
 // Channel code → human label for the timeline summary line.
 const CHANNEL_LABEL: Record<string, string> = {
@@ -58,7 +57,11 @@ export class PersonTimelineService {
     activityId: string,
   ): Promise<void> {
     await this.run(workspaceId, async () => {
-      const activity = await this.find(workspaceId, 'inboundActivity', activityId);
+      const activity = await this.find(
+        workspaceId,
+        'inboundActivity',
+        activityId,
+      );
 
       if (
         !activity ||
@@ -127,7 +130,11 @@ export class PersonTimelineService {
     opportunityId: string,
   ): Promise<void> {
     await this.run(workspaceId, async () => {
-      const opportunity = await this.find(workspaceId, 'opportunity', opportunityId);
+      const opportunity = await this.find(
+        workspaceId,
+        'opportunity',
+        opportunityId,
+      );
 
       if (!opportunity || !isDefined(opportunity.pointOfContactId)) {
         return;
