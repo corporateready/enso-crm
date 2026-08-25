@@ -6,6 +6,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { Between } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
@@ -15,30 +16,74 @@ import {
 } from 'src/modules/enso/telephony/telephony.constants';
 import { type NormalizedCallEvent } from 'src/modules/enso/telephony/types/telephony.types';
 
+type ActorValue = { source: string; name: string; context?: object };
+
+type LinksValue = {
+  primaryLinkUrl: string;
+  primaryLinkLabel?: string | null;
+  secondaryLinks?: unknown;
+};
+
+// Every column this module reads or writes on the inboundActivity custom object.
+// It stands in for the generated entity class that custom objects do not have,
+// so the repository stays typed and a typo in a column name fails to compile.
 type InboundActivityRow = {
   id: string;
+  name?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  position: number;
+  createdBy?: ActorValue | null;
+  updatedBy?: ActorValue | null;
   sourceExternalId?: string | null;
   externalId?: string | null;
+  source?: string | null;
+  personId?: string | null;
+  projectId?: string | null;
+  opportunityId?: string | null;
+  isSynthetic?: boolean | null;
+  salesPickup?: boolean | null;
+  nonSalesPickupBy?: string | null;
+  callerE164?: string | null;
+  calleeDid?: string | null;
   callStatus?: string | null;
   durationS?: number | null;
+  recordingUrl?: LinksValue | null;
   occurredAt?: Date | string | null;
-  callerE164?: string | null;
-  status?: string | null;
+  ingestedAt?: Date | string | null;
+  // RAW_JSON column. Typed `unknown` so TypeORM's deep-partial treats it as
+  // an opaque value instead of recursing into its shape on write.
+  submittedPayload?: unknown;
+  roistatVisitId?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+  landingPage?: string | null;
+  referrer?: string | null;
+  googleClientId?: string | null;
+  ipAddress?: string | null;
+  city?: string | null;
+  country?: string | null;
+  fbclid?: string | null;
+  fbp?: string | null;
+  distinctId?: string | null;
+};
+
+export type CallIngestResult = {
+  activityId: string;
+  created: boolean;
+  callerE164?: string;
+  // Whether the row still needs a person and/or project before the lead
+  // pipeline can do anything with it.
+  needsIdentity: boolean;
 };
 
 // `inboundActivity` is a workspace-metadata custom object, so there is no
-// generated entity to type the repository against. Rather than passing `any`
-// around, declare the narrow surface this service actually uses.
-type InboundActivityRepository = {
-  findOne(options: object): Promise<InboundActivityRow | null | undefined>;
-  find(options: object): Promise<InboundActivityRow[]>;
-  insert(entity: Record<string, unknown>): Promise<unknown>;
-  update(
-    criteria: Record<string, unknown>,
-    patch: Record<string, unknown>,
-  ): Promise<unknown>;
-  maximum(field: string, criteria?: unknown): Promise<number | null>;
-};
+// generated entity class. The row shape above stands in for it, which keeps the
+// repository typed instead of passing `any` around.
+type InboundActivityRepository = WorkspaceRepository<InboundActivityRow>;
 
 @Injectable()
 export class CallIngestService {
@@ -56,13 +101,13 @@ export class CallIngestService {
   async ingest(
     workspaceId: string,
     event: NormalizedCallEvent,
-  ): Promise<{ activityId: string; created: boolean } | undefined> {
+  ): Promise<CallIngestResult | undefined> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const repository =
-          await this.globalWorkspaceOrmManager.getRepository<InboundActivityRepository>(
+          await this.globalWorkspaceOrmManager.getRepository<InboundActivityRow>(
             workspaceId,
             'inboundActivity',
             { shouldBypassPermissionChecks: true },
@@ -73,7 +118,13 @@ export class CallIngestService {
         if (isDefined(existing)) {
           await this.patchActivity(repository, existing, event);
 
-          return { activityId: existing.id, created: false };
+          return {
+            activityId: existing.id,
+            created: false,
+            callerE164: existing.callerE164 ?? event.callerE164,
+            needsIdentity:
+              !isDefined(existing.personId) || !isDefined(existing.projectId),
+          };
         }
 
         const activityId = await this.createActivity(
@@ -82,7 +133,78 @@ export class CallIngestService {
           event,
         );
 
-        return { activityId, created: true };
+        return {
+          activityId,
+          created: true,
+          callerE164: event.callerE164,
+          needsIdentity: true,
+        };
+      },
+      systemAuthContext,
+    );
+  }
+
+  // Attaches the resolved person and project. Returns true when the row is now
+  // complete enough for the lead pipeline AND has no opportunity yet — i.e. when
+  // it is worth enqueueing opportunity resolution.
+  async linkIdentity(
+    workspaceId: string,
+    activityId: string,
+    identity: { personId?: string; projectId?: string },
+  ): Promise<boolean> {
+    const systemAuthContext = buildSystemAuthContext(workspaceId);
+
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<InboundActivityRow>(
+            workspaceId,
+            'inboundActivity',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const existing = await repository.findOne({
+          where: { id: activityId },
+        });
+
+        if (!isDefined(existing)) {
+          return false;
+        }
+
+        const personId = existing.personId ?? identity.personId;
+        const projectId = existing.projectId ?? identity.projectId;
+
+        const patch: Record<string, unknown> = { updatedBy: SYSTEM_ACTOR };
+
+        if (!isDefined(existing.personId) && isDefined(identity.personId)) {
+          patch.personId = identity.personId;
+        }
+
+        if (!isDefined(existing.projectId) && isDefined(identity.projectId)) {
+          patch.projectId = identity.projectId;
+        }
+
+        if (Object.keys(patch).length > 1) {
+          // The label embeds the person and project, so it has to be rebuilt
+          // once identity is known — the update pre-hook that normally does this
+          // does not fire for raw-ORM writes.
+          const name = await this.inboundActivityNameService.computeName(
+            systemAuthContext,
+            { id: activityId, personId, projectId },
+          );
+
+          if (isDefined(name)) {
+            patch.name = name;
+          }
+
+          await repository.update({ id: activityId }, patch);
+        }
+
+        return (
+          isDefined(personId) &&
+          isDefined(projectId) &&
+          !isDefined(existing.opportunityId)
+        );
       },
       systemAuthContext,
     );
@@ -201,7 +323,11 @@ export class CallIngestService {
       status: event.isTerminal ? 'PROCESSED' : 'PENDING',
       ...this.outcomeFields(event),
       ...this.attributionFields(event),
-      submittedPayload: event.rawPayload ?? null,
+      // RAW_JSON safety net: keep the verbatim push so an unrecognised field
+      // can be recovered without replaying the provider.
+      ...(isDefined(event.rawPayload)
+        ? { submittedPayload: event.rawPayload }
+        : {}),
       position: (lastPosition ?? 0) + 1,
       createdBy: SYSTEM_ACTOR,
       updatedBy: SYSTEM_ACTOR,

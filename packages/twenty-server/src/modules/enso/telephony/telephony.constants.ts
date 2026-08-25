@@ -71,3 +71,60 @@ export const MOLDCELL_GROUP_LOGIN_PREFIX = 'g_';
 
 // Statuses that mean a human actually spoke to the caller.
 export const ANSWERED_CALL_STATUSES = ['ANSWERED', 'SALES_PICKUP'];
+
+// The two countries we operate in.
+export const MOLDOVA_DIAL_PREFIX = '373';
+export const ROMANIA_DIAL_PREFIX = '40';
+export const MOLDOVA_CALLING_CODE = '+373';
+export const ROMANIA_CALLING_CODE = '+40';
+export const MOLDOVA_COUNTRY_CODE = 'MD';
+export const ROMANIA_COUNTRY_CODE = 'RO';
+
+// Project resolution for calls Roistat does not track — which is the majority.
+// Roistat states the project code itself (configured per scenario), but a call
+// arriving on an untracked DID only gives us the PBX department that answered
+// and the number that was dialled, so those need an operator-maintained map.
+//
+// Both are JSON objects in env, e.g.
+//   ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP={"ARTIMA":"ENS2301","Avram Iancu":"ENS2402"}
+//   ENSO_TELEPHONY_PROJECT_BY_DID={"37376015220":"ENS2301"}
+// Values are project.code, which matches Roistat's project_id exactly.
+const parseProjectCodeMap = (
+  raw: string | undefined,
+  label: string,
+): Record<string, string> => {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== 'object' || parsed === null) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => typeof value === 'string')
+        .map(([key, value]) => [key, value as string]),
+    );
+  } catch {
+    // A malformed map must not take the whole intake path down; calls still land
+    // as activities, they just arrive without a project.
+    // eslint-disable-next-line no-console
+    console.warn(`Ignoring malformed ${label}`);
+
+    return {};
+  }
+};
+
+export const PROJECT_CODE_BY_PBX_GROUP = parseProjectCodeMap(
+  process.env.ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP,
+  'ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP',
+);
+
+export const PROJECT_CODE_BY_DID = parseProjectCodeMap(
+  process.env.ENSO_TELEPHONY_PROJECT_BY_DID,
+  'ENSO_TELEPHONY_PROJECT_BY_DID',
+);

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { IngestCallEventJob } from 'src/modules/enso/telephony/jobs/ingest-call-event.job';
+import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 
 // WORKER side of telephony intake: the ingest job and the services it needs.
@@ -12,6 +13,7 @@ import { CallIngestService } from 'src/modules/enso/telephony/services/call-inge
 @Module({
   providers: [
     CallIngestService,
+    CallIdentityService,
     InboundActivityNameService,
     IngestCallEventJob,
   ],

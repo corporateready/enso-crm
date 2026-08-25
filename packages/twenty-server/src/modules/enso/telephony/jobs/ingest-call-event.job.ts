@@ -1,12 +1,19 @@
 import { Logger } from '@nestjs/common';
 
+import { isDefined } from 'twenty-shared/utils';
+
+import { InjectMessageQueue } from 'src/engine/core-modules/message-queue/decorators/message-queue.decorator';
 import { Process } from 'src/engine/core-modules/message-queue/decorators/process.decorator';
 import { Processor } from 'src/engine/core-modules/message-queue/decorators/processor.decorator';
 import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queue.constants';
+import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
+import { type ResolveOpportunityFromActivityJobData } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
+import { ResolveOpportunityFromActivityJob } from 'src/modules/enso/lead-pipeline/jobs/resolve-opportunity-from-activity.job';
 import {
   deserializeCallEvent,
   type IngestCallEventJobData,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
+import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 
 // Telephony intake runs off the queue rather than inline in the controller: the
@@ -17,18 +24,21 @@ import { CallIngestService } from 'src/modules/enso/telephony/services/call-inge
 export class IngestCallEventJob {
   private readonly logger = new Logger(IngestCallEventJob.name);
 
-  constructor(private readonly callIngestService: CallIngestService) {}
+  constructor(
+    private readonly callIngestService: CallIngestService,
+    private readonly callIdentityService: CallIdentityService,
+    @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
+    private readonly leadPipelineQueueService: MessageQueueService,
+  ) {}
 
   @Process(IngestCallEventJob.name)
   async handle(data: IngestCallEventJobData): Promise<void> {
-    const { workspaceId, event } = data;
+    const { workspaceId, event: serialized } = data;
+    const event = deserializeCallEvent(serialized);
 
-    const result = await this.callIngestService.ingest(
-      workspaceId,
-      deserializeCallEvent(event),
-    );
+    const ingested = await this.callIngestService.ingest(workspaceId, event);
 
-    if (!result) {
+    if (!isDefined(ingested)) {
       this.logger.warn(
         `Telephony ingest produced no activity for ${event.externalId}`,
       );
@@ -36,13 +46,56 @@ export class IngestCallEventJob {
       return;
     }
 
-    // Opportunity resolution is intentionally NOT enqueued yet: it hard-requires
-    // personId + projectId, and identity resolution (find-or-create Person from
-    // the caller, project from the Roistat project code / PBX department) is the
-    // next increment. Until then calls land as visible activities without
-    // producing deals, which is the safe half of the behaviour.
+    if (!ingested.needsIdentity) {
+      return;
+    }
+
+    const personId = isDefined(ingested.callerE164)
+      ? await this.callIdentityService.resolvePersonId(
+          workspaceId,
+          ingested.callerE164,
+        )
+      : undefined;
+
+    const projectId = await this.callIdentityService.resolveProjectId(
+      workspaceId,
+      {
+        roistatProjectCode: event.attribution?.projectCode,
+        pbxGroupName: event.answeredByGroup,
+        calleeDid: event.calleeDid,
+      },
+    );
+
+    const shouldResolveOpportunity = await this.callIngestService.linkIdentity(
+      workspaceId,
+      ingested.activityId,
+      { personId, projectId },
+    );
+
+    if (!shouldResolveOpportunity) {
+      // A call with no resolvable project still lands as a visible activity; it
+      // just cannot become a deal, because the pipeline keys dedup and routing
+      // on (person, project). Most untracked-DID calls end up here until the
+      // PBX-department / DID project map is filled in.
+      this.logger.log(
+        `Activity ${ingested.activityId} not ready for opportunity resolution (person=${isDefined(personId)}, project=${isDefined(projectId)})`,
+      );
+
+      return;
+    }
+
+    // Raw-ORM writes bypass the createOne POST hook that normally starts the
+    // pipeline, so the handoff is explicit here.
+    await this.leadPipelineQueueService.add<ResolveOpportunityFromActivityJobData>(
+      ResolveOpportunityFromActivityJob.name,
+      { workspaceId, activityId: ingested.activityId },
+      // One resolution attempt per activity; the job itself is idempotent on
+      // opportunityId, but this keeps redelivered pushes from queueing repeats.
+      { id: `enso-telephony-resolve:${ingested.activityId}` },
+    );
+
     this.logger.log(
-      `Telephony ingest ${result.created ? 'created' : 'updated'} activity ${result.activityId}`,
+      `Enqueued opportunity resolution for activity ${ingested.activityId}`,
     );
   }
 }
