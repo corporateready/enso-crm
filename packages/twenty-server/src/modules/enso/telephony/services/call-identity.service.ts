@@ -9,11 +9,13 @@ import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspac
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
+  ANSWERED_OWNER_FALLBACK_EMAIL,
   type CallEntryPoint,
   ENTRY_POINT_BY_DID,
   ENTRY_POINT_BY_PBX_GROUP,
   ENTRY_POINT_BY_ROISTAT_SCENARIO,
   MOLDOVA_CALLING_CODE,
+  PBX_LOGIN_TO_MEMBER_EMAIL,
   MOLDOVA_COUNTRY_CODE,
   MOLDOVA_DIAL_PREFIX,
   ROMANIA_CALLING_CODE,
@@ -38,6 +40,8 @@ type PersonRow = {
 };
 
 type ProjectRow = { id: string; code?: string | null };
+
+type WorkspaceMemberRow = { id: string; userEmail?: string | null };
 
 // Custom/standard objects are reached by metadata name, so the row shapes above
 // stand in for the generated entity classes.
@@ -262,5 +266,41 @@ export class CallIdentityService {
     }
 
     return { projectId: projectRow.id, entryPoint };
+  }
+
+  // Map the PBX login that answered onto a CRM workspace member, so an answered
+  // call can be owned by the person who actually took it. Falls back to a
+  // configured owner, because a CONNECTED deal with nobody on it is worse than
+  // one parked on a known person.
+  async resolveAnsweredOwnerMemberId(
+    workspaceId: string,
+    pbxLogin: string | undefined,
+  ): Promise<string | undefined> {
+    const mappedEmail = isDefined(pbxLogin)
+      ? PBX_LOGIN_TO_MEMBER_EMAIL[pbxLogin]
+      : undefined;
+
+    const email = mappedEmail ?? ANSWERED_OWNER_FALLBACK_EMAIL;
+
+    if (!isDefined(email) || !email) {
+      return undefined;
+    }
+
+    const repository =
+      await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
+        workspaceId,
+        'workspaceMember',
+        { shouldBypassPermissionChecks: true },
+      );
+
+    const member = await repository.findOne({ where: { userEmail: email } });
+
+    if (!isDefined(member)) {
+      this.logger.warn(`No workspace member found for email ${email}`);
+
+      return undefined;
+    }
+
+    return member.id;
   }
 }

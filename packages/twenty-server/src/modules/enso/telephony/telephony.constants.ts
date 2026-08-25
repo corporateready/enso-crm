@@ -182,3 +182,40 @@ export const ENTRY_POINT_BY_ROISTAT_SCENARIO = parseEntryPointMap(
   process.env.ENSO_TELEPHONY_PROJECT_BY_ROISTAT_SCENARIO,
   'ENSO_TELEPHONY_PROJECT_BY_ROISTAT_SCENARIO',
 );
+
+// PBX login -> CRM workspace member email. The PBX knows its users by login
+// (`anatol_rosior`) and stores personal gmail addresses, which do not match the
+// @enso.ro accounts in the CRM, so the two sides need an explicit map:
+//   ENSO_TELEPHONY_PBX_LOGIN_TO_MEMBER_EMAIL={"anatol_rosior":"anatol@enso.ro"}
+export const PBX_LOGIN_TO_MEMBER_EMAIL = ((): Record<string, string> => {
+  const raw = process.env.ENSO_TELEPHONY_PBX_LOGIN_TO_MEMBER_EMAIL;
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== 'object' || parsed === null) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => typeof value === 'string')
+        .map(([key, value]) => [key, value as string]),
+    );
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn('Ignoring malformed ENSO_TELEPHONY_PBX_LOGIN_TO_MEMBER_EMAIL');
+
+    return {};
+  }
+})();
+
+// Owner for an answered call whose PBX login maps to nobody. Without it such a
+// deal would sit in CONNECTED unowned; during rollout it usefully parks
+// everything on one person who can verify the flow end to end.
+export const ANSWERED_OWNER_FALLBACK_EMAIL =
+  process.env.ENSO_TELEPHONY_ANSWERED_OWNER_FALLBACK_EMAIL;

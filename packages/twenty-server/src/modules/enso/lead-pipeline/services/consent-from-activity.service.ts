@@ -133,7 +133,9 @@ export class ConsentFromActivityService {
           }
 
           const consentedAt =
-            activity.occurredAt ?? activity.createdAt ?? new Date().toISOString();
+            activity.occurredAt ??
+            activity.createdAt ??
+            new Date().toISOString();
 
           granted = {
             personId: activity.personId,

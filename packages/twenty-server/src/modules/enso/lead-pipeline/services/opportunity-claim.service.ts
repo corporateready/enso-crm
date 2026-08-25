@@ -70,7 +70,11 @@ export class OpportunityClaimService {
 
       // Person-level stickiness (returning human → same manager).
       if (isDefined(opportunity.pointOfContactId)) {
-        await this.upsertPersonAssignment(workspaceId, authContext, opportunity);
+        await this.upsertPersonAssignment(
+          workspaceId,
+          authContext,
+          opportunity,
+        );
       }
 
       // Company-level stickiness (B2B account → same manager for any contact),
@@ -165,7 +169,12 @@ export class OpportunityClaimService {
   // claim. Idempotent; on a new/changed owner, emits an account-assigned event.
   private async upsertCompanyAssignment(
     workspaceId: string,
-    opportunity: { id: string; ownerId: string; projectId: string; companyId: string },
+    opportunity: {
+      id: string;
+      ownerId: string;
+      projectId: string;
+      companyId: string;
+    },
   ): Promise<void> {
     const assignmentRepository =
       await this.globalWorkspaceOrmManager.getRepository<any>(
@@ -266,7 +275,12 @@ export class OpportunityClaimService {
   // became the account owner for the company on this project.
   private async recordAccountAssignedEvent(
     workspaceId: string,
-    opportunity: { id: string; ownerId: string; projectId: string; companyId: string },
+    opportunity: {
+      id: string;
+      ownerId: string;
+      projectId: string;
+      companyId: string;
+    },
   ): Promise<void> {
     try {
       const managerName = await this.lookupMemberName(

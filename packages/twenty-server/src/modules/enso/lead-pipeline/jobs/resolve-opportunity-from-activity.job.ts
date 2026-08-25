@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 
+import { isDefined } from 'twenty-shared/utils';
+
 import { InjectMessageQueue } from 'src/engine/core-modules/message-queue/decorators/message-queue.decorator';
 import { Process } from 'src/engine/core-modules/message-queue/decorators/process.decorator';
 import { Processor } from 'src/engine/core-modules/message-queue/decorators/processor.decorator';
@@ -41,7 +43,10 @@ export class ResolveOpportunityFromActivityJob {
 
     // Freeze the person's first-touch attribution from the earliest activity
     // (runs for every activity, incl. organic/no-project; best-effort).
-    await this.personFirstTouchService.applyFromActivity(authContext, activityId);
+    await this.personFirstTouchService.applyFromActivity(
+      authContext,
+      activityId,
+    );
     // Surface the inbound activity on the person's timeline (best-effort).
     await this.personTimelineService.recordInboundActivity(
       workspaceId,
@@ -57,9 +62,20 @@ export class ResolveOpportunityFromActivityJob {
     const result = await this.opportunityResolutionService.resolveFromActivity(
       authContext,
       activityId,
+      { alreadyConnected: data.alreadyConnected },
     );
 
     if (!result || !result.created) {
+      return;
+    }
+
+    // Routing exists to find someone to make first contact. An answered call
+    // already had it, so the deal is CONNECTED and there is nothing to route.
+    if (isDefined(data.alreadyConnected)) {
+      this.logger.log(
+        `Opportunity ${result.opportunityId} opened CONNECTED from an answered call; skipping routing`,
+      );
+
       return;
     }
 

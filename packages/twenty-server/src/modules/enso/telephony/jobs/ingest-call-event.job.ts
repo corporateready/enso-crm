@@ -14,6 +14,7 @@ import {
   type IngestCallEventJobData,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
 import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
+import { ANSWERED_CALL_STATUSES } from 'src/modules/enso/telephony/telephony.constants';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 
 // Telephony intake runs off the queue rather than inline in the controller: the
@@ -97,18 +98,46 @@ export class IngestCallEventJob {
       return;
     }
 
+    // Hold opportunity resolution until the call's outcome is known. The stage a
+    // deal opens in depends on whether anyone picked up, and a deal created at
+    // ring time would be stuck in ROUTING before we could know. The activity is
+    // already visible from the first signal, so nothing is hidden meanwhile.
+    if (!event.isTerminal) {
+      return;
+    }
+
+    const answered = isDefined(event.callStatus)
+      ? ANSWERED_CALL_STATUSES.includes(event.callStatus)
+      : false;
+
+    // An answered inbound call is two-way engagement, so it opens CONNECTED and
+    // never routes. An unanswered one is exactly what ROUTING is for.
+    const alreadyConnected = answered
+      ? {
+          ownerMemberId:
+            await this.callIdentityService.resolveAnsweredOwnerMemberId(
+              workspaceId,
+              event.answeredByLogin,
+            ),
+        }
+      : undefined;
+
     // Raw-ORM writes bypass the createOne POST hook that normally starts the
     // pipeline, so the handoff is explicit here.
     await this.leadPipelineQueueService.add<ResolveOpportunityFromActivityJobData>(
       ResolveOpportunityFromActivityJob.name,
-      { workspaceId, activityId: ingested.activityId },
+      {
+        workspaceId,
+        activityId: ingested.activityId,
+        ...(isDefined(alreadyConnected) ? { alreadyConnected } : {}),
+      },
       // One resolution attempt per activity; the job itself is idempotent on
       // opportunityId, but this keeps redelivered pushes from queueing repeats.
       { id: `enso-telephony-resolve:${ingested.activityId}` },
     );
 
     this.logger.log(
-      `Enqueued opportunity resolution for activity ${ingested.activityId}`,
+      `Enqueued opportunity resolution for activity ${ingested.activityId} (${answered ? 'answered → CONNECTED' : 'unanswered → ROUTING'})`,
     );
   }
 }

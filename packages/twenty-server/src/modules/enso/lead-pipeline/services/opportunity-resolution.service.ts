@@ -26,8 +26,7 @@ import { isWorkEmail } from 'src/utils/is-work-email';
 
 // Workspace-specific object metadata ids (single prod workspace) for timeline
 // linkedObjectMetadataId — so attach events can link to the deal / company.
-const OPPORTUNITY_OBJECT_METADATA_ID =
-  'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
+const OPPORTUNITY_OBJECT_METADATA_ID = 'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
 const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
   'cef40992-41c4-4742-8b4c-234777a1b8c6';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
@@ -82,6 +81,7 @@ export class OpportunityResolutionService {
   async resolveFromActivity(
     authContext: WorkspaceAuthContext,
     activityId: string,
+    options?: { alreadyConnected?: { ownerMemberId?: string } },
   ): Promise<ResolutionResult | null> {
     const workspaceId = authContext.workspace?.id;
 
@@ -95,222 +95,250 @@ export class OpportunityResolutionService {
     // deal; the owner is pinged AFTER the workspace-context block (best-effort).
     let reengagementNotify: { managerId: string } | null = null;
 
-    const result = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const activityRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'inboundActivity',
-            { shouldBypassPermissionChecks: true },
+    const result =
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const activityRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'inboundActivity',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const activity: ActivityRow | null = await activityRepository.findOne(
+            {
+              where: { id: activityId },
+            },
           );
 
-        const activity: ActivityRow | null = await activityRepository.findOne({
-          where: { id: activityId },
-        });
+          if (!activity) {
+            return null;
+          }
 
-        if (!activity) {
-          return null;
-        }
+          // Guards: don't create deals for test/junk data, leads with no identity,
+          // or activities already linked to a deal (idempotency).
+          if (activity.isSynthetic === true) {
+            this.logger.log(
+              `Activity ${activityId} is synthetic — no opportunity.`,
+            );
 
-        // Guards: don't create deals for test/junk data, leads with no identity,
-        // or activities already linked to a deal (idempotency).
-        if (activity.isSynthetic === true) {
-          this.logger.log(
-            `Activity ${activityId} is synthetic — no opportunity.`,
+            return null;
+          }
+
+          if (!isDefined(activity.personId) || !isDefined(activity.projectId)) {
+            this.logger.warn(
+              `Activity ${activityId} missing person/project — cannot resolve a deal.`,
+            );
+
+            return null;
+          }
+
+          if (isDefined(activity.opportunityId)) {
+            return { opportunityId: activity.opportunityId, created: false };
+          }
+
+          const opportunityRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'opportunity',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          // Determine B2B/B2C up front — it drives the dedup key. B2B = the contact
+          // is linked to a company (work-email domain). Race-safe: if the
+          // company-link job hasn't written person.companyId yet, fall back to a
+          // read-only company-by-domain lookup, so (company × project) account
+          // dedup is reliable from the first deal.
+          const personRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'person',
+              { shouldBypassPermissionChecks: true },
+            );
+          const person = await personRepository.findOne({
+            where: { id: activity.personId },
+          });
+          const companyId = await this.resolveCompanyId(workspaceId, person);
+          // clientType label is always derived (harmless). The (company × project)
+          // DEDUP behavior is gated by the master flag so it's a clean kill-switch:
+          // off → falls back to the original (person × project) dedup.
+          const clientType = isDefined(companyId) ? 'B2B' : 'B2C';
+          const dedupByCompany =
+            isDefined(companyId) && isCompanyAutomationEnabled();
+
+          // Dedup over OPEN deals (any age; closed deals let a fresh inquiry open a
+          // new one). B2B → (company × project): a NEW contact from the same company
+          // attaches to the account's open deal. B2C → (person × project), as before.
+          const existing = await opportunityRepository.findOne({
+            where: dedupByCompany
+              ? {
+                  companyId,
+                  projectId: activity.projectId,
+                  stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
+                }
+              : {
+                  pointOfContactId: activity.personId,
+                  projectId: activity.projectId,
+                  stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
+                },
+            order: { createdAt: 'DESC' },
+          });
+
+          if (existing) {
+            await activityRepository.update(
+              { id: activity.id },
+              { opportunityId: existing.id },
+            );
+
+            // Re-engagement: refresh the LAST-touch attribution snapshot (first-touch
+            // stays frozen) + bump the counter. Best-effort — a failure here must not
+            // undo the attach above.
+            try {
+              await opportunityRepository.update(
+                { id: existing.id },
+                {
+                  lastTrafficType: coerceTrafficType(activity.trafficType),
+                  lastUtmSource: activity.utmSource ?? null,
+                  lastUtmMedium: activity.utmMedium ?? null,
+                  lastUtmCampaign: activity.utmCampaign ?? null,
+                  lastUtmContent: activity.utmContent ?? null,
+                  lastUtmTerm: activity.utmTerm ?? null,
+                  lastTouchAt: new Date().toISOString(),
+                  reengagementCount: (existing.reengagementCount ?? 0) + 1,
+                  // A parked deal whose contact has now actually been spoken to is
+                  // connected — leaving it in ROUTING would queue it for a first
+                  // contact that already happened.
+                  ...(isDefined(options?.alreadyConnected) &&
+                  existing.stage === 'ROUTING'
+                    ? {
+                        stage: 'CONNECTED',
+                        ...(isDefined(options.alreadyConnected.ownerMemberId)
+                          ? {
+                              ownerId: options.alreadyConnected.ownerMemberId,
+                            }
+                          : {}),
+                      }
+                    : {}),
+                  updatedBy: SYSTEM_ACTOR,
+                },
+              );
+            } catch (error) {
+              this.logger.warn(
+                `Last-touch update failed for deal ${existing.id}: ${(error as Error).message}`,
+              );
+            }
+
+            // Rich timeline: surface the attach on the deal (and company/person),
+            // linking the actual inbound activity + the contact.
+            await this.recordAttachEvent(
+              workspaceId,
+              existing,
+              { id: activity.id, name: activity.name },
+              activity.personId,
+              dedupByCompany,
+              companyId,
+            );
+
+            // Ping the owner only when the deal is already claimed (out of ROUTING
+            // with an owner) — during ROUTING the routing flow already notifies.
+            if (isDefined(existing.ownerId) && existing.stage !== 'ROUTING') {
+              reengagementNotify = { managerId: existing.ownerId };
+            }
+
+            this.logger.log(
+              `Activity ${activityId} attached to existing opportunity ${existing.id} (${dedupByCompany ? 'B2B account' : 're-engagement'}).`,
+            );
+
+            return { opportunityId: existing.id, created: false };
+          }
+
+          const source = mapOpportunitySource(activity.kind);
+
+          const name = await this.opportunityNameService.computeName(
+            authContext,
+            {
+              personId: activity.personId,
+              projectId: activity.projectId,
+              source,
+            },
           );
 
-          return null;
-        }
-
-        if (!isDefined(activity.personId) || !isDefined(activity.projectId)) {
-          this.logger.warn(
-            `Activity ${activityId} missing person/project — cannot resolve a deal.`,
+          const lastPosition = await opportunityRepository.maximum(
+            'position',
+            undefined,
           );
 
-          return null;
-        }
+          // m2Requested is a single requested size; seed both ends of the initial
+          // range (m2Final stays null until confirmed).
+          const m2 = isDefined(activity.m2Requested)
+            ? activity.m2Requested
+            : undefined;
 
-        if (isDefined(activity.opportunityId)) {
-          return { opportunityId: activity.opportunityId, created: false };
-        }
+          // Generate the id app-side so we don't depend on parsing the driver's
+          // InsertResult to get it back.
+          const opportunityId = randomUUID();
 
-        const opportunityRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'opportunity',
-            { shouldBypassPermissionChecks: true },
-          );
+          const alreadyConnected = options?.alreadyConnected;
+          const connectedOwnerId = alreadyConnected?.ownerMemberId;
 
-        // Determine B2B/B2C up front — it drives the dedup key. B2B = the contact
-        // is linked to a company (work-email domain). Race-safe: if the
-        // company-link job hasn't written person.companyId yet, fall back to a
-        // read-only company-by-domain lookup, so (company × project) account
-        // dedup is reliable from the first deal.
-        const personRepository =
-          await this.globalWorkspaceOrmManager.getRepository<any>(
-            workspaceId,
-            'person',
-            { shouldBypassPermissionChecks: true },
-          );
-        const person = await personRepository.findOne({
-          where: { id: activity.personId },
-        });
-        const companyId = await this.resolveCompanyId(workspaceId, person);
-        // clientType label is always derived (harmless). The (company × project)
-        // DEDUP behavior is gated by the master flag so it's a clean kill-switch:
-        // off → falls back to the original (person × project) dedup.
-        const clientType = isDefined(companyId) ? 'B2B' : 'B2C';
-        const dedupByCompany =
-          isDefined(companyId) && isCompanyAutomationEnabled();
+          await opportunityRepository.insert({
+            id: opportunityId,
+            // An answered inbound call is connected on arrival; everything else
+            // starts in ROUTING so a manager can be found for it.
+            stage: isDefined(alreadyConnected) ? 'CONNECTED' : 'ROUTING',
+            ...(isDefined(connectedOwnerId)
+              ? { ownerId: connectedOwnerId }
+              : {}),
+            pipelineState: 'ACTIVE',
+            routingCount: 0,
+            source,
+            projectId: activity.projectId,
+            pointOfContactId: activity.personId,
+            // B2B/B2C classification + link the account (company) on B2B deals.
+            clientType,
+            ...(isDefined(companyId) ? { companyId } : {}),
+            // Frozen first-touch attribution snapshot (immutable on the deal).
+            utmSource: activity.utmSource ?? null,
+            utmMedium: activity.utmMedium ?? null,
+            utmCampaign: activity.utmCampaign ?? null,
+            utmContent: activity.utmContent ?? null,
+            utmTerm: activity.utmTerm ?? null,
+            firstTrafficType: coerceTrafficType(activity.trafficType),
+            firstLandingPage: activity.landingPage ?? null,
+            roistatVisitId: activity.roistatVisitId ?? null,
+            ...(isDefined(m2) ? { m2Min: m2, m2Max: m2 } : {}),
+            position: (lastPosition ?? 0) + 1,
+            createdBy: SYSTEM_ACTOR,
+            updatedBy: SYSTEM_ACTOR,
+            ...(isDefined(name) ? { name } : {}),
+          });
 
-        // Dedup over OPEN deals (any age; closed deals let a fresh inquiry open a
-        // new one). B2B → (company × project): a NEW contact from the same company
-        // attaches to the account's open deal. B2C → (person × project), as before.
-        const existing = await opportunityRepository.findOne({
-          where: dedupByCompany
-            ? {
-                companyId,
-                projectId: activity.projectId,
-                stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
-              }
-            : {
-                pointOfContactId: activity.personId,
-                projectId: activity.projectId,
-                stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
-              },
-          order: { createdAt: 'DESC' },
-        });
-
-        if (existing) {
           await activityRepository.update(
             { id: activity.id },
-            { opportunityId: existing.id },
+            { opportunityId },
           );
 
-          // Re-engagement: refresh the LAST-touch attribution snapshot (first-touch
-          // stays frozen) + bump the counter. Best-effort — a failure here must not
-          // undo the attach above.
-          try {
-            await opportunityRepository.update(
-              { id: existing.id },
-              {
-                lastTrafficType: coerceTrafficType(activity.trafficType),
-                lastUtmSource: activity.utmSource ?? null,
-                lastUtmMedium: activity.utmMedium ?? null,
-                lastUtmCampaign: activity.utmCampaign ?? null,
-                lastUtmContent: activity.utmContent ?? null,
-                lastUtmTerm: activity.utmTerm ?? null,
-                lastTouchAt: new Date().toISOString(),
-                reengagementCount: (existing.reengagementCount ?? 0) + 1,
-                updatedBy: SYSTEM_ACTOR,
-              },
-            );
-          } catch (error) {
-            this.logger.warn(
-              `Last-touch update failed for deal ${existing.id}: ${(error as Error).message}`,
-            );
-          }
-
-          // Rich timeline: surface the attach on the deal (and company/person),
-          // linking the actual inbound activity + the contact.
-          await this.recordAttachEvent(
-            workspaceId,
-            existing,
-            { id: activity.id, name: activity.name },
-            activity.personId,
-            dedupByCompany,
+          // Rich provenance on the timeline: a B2B/B2C deal opened from this inbound
+          // activity, by ENSO CRM. Replaces the generic "created by" row.
+          await this.recordCreatedEvent(workspaceId, {
+            opportunityId,
+            clientType,
             companyId,
-          );
-
-          // Ping the owner only when the deal is already claimed (out of ROUTING
-          // with an owner) — during ROUTING the routing flow already notifies.
-          if (isDefined(existing.ownerId) && existing.stage !== 'ROUTING') {
-            reengagementNotify = { managerId: existing.ownerId };
-          }
+            personId: activity.personId,
+            source,
+            activityId: activity.id,
+            activityName: activity.name,
+            dealName: name,
+          });
 
           this.logger.log(
-            `Activity ${activityId} attached to existing opportunity ${existing.id} (${dedupByCompany ? 'B2B account' : 're-engagement'}).`,
+            `Created ${clientType} opportunity ${opportunityId} from activity ${activityId}.`,
           );
 
-          return { opportunityId: existing.id, created: false };
-        }
-
-        const source = mapOpportunitySource(activity.kind);
-
-        const name = await this.opportunityNameService.computeName(
-          authContext,
-          {
-            personId: activity.personId,
-            projectId: activity.projectId,
-            source,
-          },
-        );
-
-        const lastPosition = await opportunityRepository.maximum(
-          'position',
-          undefined,
-        );
-
-        // m2Requested is a single requested size; seed both ends of the initial
-        // range (m2Final stays null until confirmed).
-        const m2 = isDefined(activity.m2Requested)
-          ? activity.m2Requested
-          : undefined;
-
-        // Generate the id app-side so we don't depend on parsing the driver's
-        // InsertResult to get it back.
-        const opportunityId = randomUUID();
-
-        await opportunityRepository.insert({
-          id: opportunityId,
-          stage: 'ROUTING',
-          pipelineState: 'ACTIVE',
-          routingCount: 0,
-          source,
-          projectId: activity.projectId,
-          pointOfContactId: activity.personId,
-          // B2B/B2C classification + link the account (company) on B2B deals.
-          clientType,
-          ...(isDefined(companyId) ? { companyId } : {}),
-          // Frozen first-touch attribution snapshot (immutable on the deal).
-          utmSource: activity.utmSource ?? null,
-          utmMedium: activity.utmMedium ?? null,
-          utmCampaign: activity.utmCampaign ?? null,
-          utmContent: activity.utmContent ?? null,
-          utmTerm: activity.utmTerm ?? null,
-          firstTrafficType: coerceTrafficType(activity.trafficType),
-          firstLandingPage: activity.landingPage ?? null,
-          roistatVisitId: activity.roistatVisitId ?? null,
-          ...(isDefined(m2) ? { m2Min: m2, m2Max: m2 } : {}),
-          position: (lastPosition ?? 0) + 1,
-          createdBy: SYSTEM_ACTOR,
-          updatedBy: SYSTEM_ACTOR,
-          ...(isDefined(name) ? { name } : {}),
-        });
-
-        await activityRepository.update({ id: activity.id }, { opportunityId });
-
-        // Rich provenance on the timeline: a B2B/B2C deal opened from this inbound
-        // activity, by ENSO CRM. Replaces the generic "created by" row.
-        await this.recordCreatedEvent(workspaceId, {
-          opportunityId,
-          clientType,
-          companyId,
-          personId: activity.personId,
-          source,
-          activityId: activity.id,
-          activityName: activity.name,
-          dealName: name,
-        });
-
-        this.logger.log(
-          `Created ${clientType} opportunity ${opportunityId} from activity ${activityId}.`,
-        );
-
-        return { opportunityId, created: true };
-      },
-      systemAuthContext,
-    );
+          return { opportunityId, created: true };
+        },
+        systemAuthContext,
+      );
 
     if (isDefined(reengagementNotify) && isDefined(result)) {
       try {
