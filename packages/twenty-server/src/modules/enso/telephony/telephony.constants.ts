@@ -82,17 +82,62 @@ export const ROMANIA_COUNTRY_CODE = 'RO';
 
 // Project resolution for calls Roistat does not track — which is the majority.
 // Roistat states the project code itself (configured per scenario), but a call
-// arriving on an untracked DID only gives us the PBX department that answered
-// and the number that was dialled, so those need an operator-maintained map.
+// arriving on an untracked DID only gives us the PBX department that took it and
+// the number that was dialled, so those need an operator-maintained map.
 //
-// Both are JSON objects in env, e.g.
-//   ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP={"ARTIMA":"ENS2301","Avram Iancu":"ENS2402"}
+// An entry point carries TWO independent facts, and collapsing them loses
+// information: the *project* the lead belongs to, and the *queue* that should
+// handle it. TRIUMF Support and TRIUMF Sales are the same project (ENS2101 —
+// AVENEW and TRIUMF are one development) but must not reach the same people,
+// and a support call is not a sales lead at all.
+//
+// Env JSON, accepting a shorthand and a full form:
+//   ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP={
+//     "ARTIMA": "ENS2301",
+//     "TRIUMF Support": { "project": "ENS2101", "queue": "support", "lead": false },
+//     "TRIUMF Sales":   { "project": "ENS2101", "queue": "sales" }
+//   }
 //   ENSO_TELEPHONY_PROJECT_BY_DID={"37376015220":"ENS2301"}
-// Values are project.code, which matches Roistat's project_id exactly.
-const parseProjectCodeMap = (
+// A bare string means "this project, default queue, is a lead". `lead: false`
+// logs the call but never creates an opportunity.
+export type CallEntryPoint = {
+  // project.code — matches Roistat's project_id exactly.
+  project: string;
+  // Which team should handle it. Distinguishes destinations inside one project.
+  queue?: string;
+  // Whether this entry point produces a sales lead. Defaults to true.
+  lead: boolean;
+};
+
+const parseEntryPoint = (value: unknown): CallEntryPoint | undefined => {
+  if (typeof value === 'string') {
+    return value ? { project: value, lead: true } : undefined;
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const project = record.project;
+
+  if (typeof project !== 'string' || !project) {
+    return undefined;
+  }
+
+  return {
+    project,
+    ...(typeof record.queue === 'string' && record.queue
+      ? { queue: record.queue }
+      : {}),
+    lead: record.lead !== false,
+  };
+};
+
+const parseEntryPointMap = (
   raw: string | undefined,
   label: string,
-): Record<string, string> => {
+): Record<string, CallEntryPoint> => {
   if (!raw) {
     return {};
   }
@@ -104,11 +149,13 @@ const parseProjectCodeMap = (
       return {};
     }
 
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter(([, value]) => typeof value === 'string')
-        .map(([key, value]) => [key, value as string]),
-    );
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .map(([key, value]) => [key, parseEntryPoint(value)] as const)
+      .filter(
+        (entry): entry is [string, CallEntryPoint] => entry[1] !== undefined,
+      );
+
+    return Object.fromEntries(entries);
   } catch {
     // A malformed map must not take the whole intake path down; calls still land
     // as activities, they just arrive without a project.
@@ -119,12 +166,19 @@ const parseProjectCodeMap = (
   }
 };
 
-export const PROJECT_CODE_BY_PBX_GROUP = parseProjectCodeMap(
+export const ENTRY_POINT_BY_PBX_GROUP = parseEntryPointMap(
   process.env.ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP,
   'ENSO_TELEPHONY_PROJECT_BY_PBX_GROUP',
 );
 
-export const PROJECT_CODE_BY_DID = parseProjectCodeMap(
+export const ENTRY_POINT_BY_DID = parseEntryPointMap(
   process.env.ENSO_TELEPHONY_PROJECT_BY_DID,
   'ENSO_TELEPHONY_PROJECT_BY_DID',
+);
+
+// Roistat scenarios need the same treatment: two scenarios can share a project
+// but belong to different teams. Keyed on the Roistat scenario/marker name.
+export const ENTRY_POINT_BY_ROISTAT_SCENARIO = parseEntryPointMap(
+  process.env.ENSO_TELEPHONY_PROJECT_BY_ROISTAT_SCENARIO,
+  'ENSO_TELEPHONY_PROJECT_BY_ROISTAT_SCENARIO',
 );

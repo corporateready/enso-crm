@@ -9,11 +9,13 @@ import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspac
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
+  type CallEntryPoint,
+  ENTRY_POINT_BY_DID,
+  ENTRY_POINT_BY_PBX_GROUP,
+  ENTRY_POINT_BY_ROISTAT_SCENARIO,
   MOLDOVA_CALLING_CODE,
   MOLDOVA_COUNTRY_CODE,
   MOLDOVA_DIAL_PREFIX,
-  PROJECT_CODE_BY_DID,
-  PROJECT_CODE_BY_PBX_GROUP,
   ROMANIA_CALLING_CODE,
   ROMANIA_COUNTRY_CODE,
   ROMANIA_DIAL_PREFIX,
@@ -197,31 +199,50 @@ export class CallIdentityService {
     return id;
   }
 
-  // Project resolution, in confidence order. Roistat states the project code
-  // outright (it is configured per scenario), which is exact. For the majority
-  // of calls — those on DIDs Roistat does not track — the only signals are the
-  // PBX department that took the call and the DID that was dialled, both of
-  // which need an operator-maintained map.
-  async resolveProjectId(
+  // Resolve the entry point: which project the lead belongs to, which queue
+  // should handle it, and whether it is a sales lead at all.
+  //
+  // Confidence order. Roistat states the project code outright (it is configured
+  // per scenario), so it wins on attribution — but a scenario override can still
+  // set the queue, because two scenarios sharing a project may belong to
+  // different teams. For the majority of calls, on DIDs Roistat does not track,
+  // the only signals are the PBX department that took the call and the DID.
+  async resolveEntryPoint(
     workspaceId: string,
     signals: {
       roistatProjectCode?: string;
+      roistatScenario?: string;
       pbxGroupName?: string;
       calleeDid?: string;
     },
-  ): Promise<string | undefined> {
-    const code =
-      signals.roistatProjectCode ??
-      (isDefined(signals.pbxGroupName)
-        ? PROJECT_CODE_BY_PBX_GROUP[signals.pbxGroupName]
-        : undefined) ??
-      (isDefined(signals.calleeDid)
-        ? PROJECT_CODE_BY_DID[digitsOnly(signals.calleeDid)]
-        : undefined);
+  ): Promise<{ projectId: string; entryPoint: CallEntryPoint } | undefined> {
+    const fromScenario = isDefined(signals.roistatScenario)
+      ? ENTRY_POINT_BY_ROISTAT_SCENARIO[signals.roistatScenario]
+      : undefined;
 
-    if (!isDefined(code)) {
+    const fromGroup = isDefined(signals.pbxGroupName)
+      ? ENTRY_POINT_BY_PBX_GROUP[signals.pbxGroupName]
+      : undefined;
+
+    const fromDid = isDefined(signals.calleeDid)
+      ? ENTRY_POINT_BY_DID[digitsOnly(signals.calleeDid)]
+      : undefined;
+
+    const mapped = fromScenario ?? fromGroup ?? fromDid;
+
+    // Roistat's own project code is the most reliable attribution, but it says
+    // nothing about the queue, so keep any queue the mapped entry point carries.
+    const project = signals.roistatProjectCode ?? mapped?.project;
+
+    if (!isDefined(project)) {
       return undefined;
     }
+
+    const entryPoint: CallEntryPoint = {
+      project,
+      ...(isDefined(mapped?.queue) ? { queue: mapped.queue } : {}),
+      lead: mapped?.lead ?? true,
+    };
 
     const repository =
       await this.globalWorkspaceOrmManager.getRepository<ProjectRow>(
@@ -230,14 +251,16 @@ export class CallIdentityService {
         { shouldBypassPermissionChecks: true },
       );
 
-    const project = await repository.findOne({ where: { code } });
+    const projectRow = await repository.findOne({
+      where: { code: entryPoint.project },
+    });
 
-    if (!isDefined(project)) {
-      this.logger.warn(`No project found for code ${code}`);
+    if (!isDefined(projectRow)) {
+      this.logger.warn(`No project found for code ${entryPoint.project}`);
 
       return undefined;
     }
 
-    return project.id;
+    return { projectId: projectRow.id, entryPoint };
   }
 }

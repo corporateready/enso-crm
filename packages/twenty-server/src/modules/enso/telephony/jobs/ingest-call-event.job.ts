@@ -57,10 +57,11 @@ export class IngestCallEventJob {
         )
       : undefined;
 
-    const projectId = await this.callIdentityService.resolveProjectId(
+    const resolved = await this.callIdentityService.resolveEntryPoint(
       workspaceId,
       {
         roistatProjectCode: event.attribution?.projectCode,
+        roistatScenario: event.roistatScenario,
         pbxGroupName: event.answeredByGroup,
         calleeDid: event.calleeDid,
       },
@@ -69,7 +70,7 @@ export class IngestCallEventJob {
     const shouldResolveOpportunity = await this.callIngestService.linkIdentity(
       workspaceId,
       ingested.activityId,
-      { personId, projectId },
+      { personId, projectId: resolved?.projectId },
     );
 
     if (!shouldResolveOpportunity) {
@@ -78,7 +79,19 @@ export class IngestCallEventJob {
       // on (person, project). Most untracked-DID calls end up here until the
       // PBX-department / DID project map is filled in.
       this.logger.log(
-        `Activity ${ingested.activityId} not ready for opportunity resolution (person=${isDefined(personId)}, project=${isDefined(projectId)})`,
+        `Activity ${ingested.activityId} not ready for opportunity resolution (person=${isDefined(personId)}, project=${isDefined(resolved)})`,
+      );
+
+      return;
+    }
+
+    // Two entry points can share a project but belong to different teams —
+    // TRIUMF Support and TRIUMF Sales are both ENS2101. A support call is a real
+    // call worth logging, but it is not a sales lead, so it stops here rather
+    // than entering dedup and routing.
+    if (resolved?.entryPoint.lead === false) {
+      this.logger.log(
+        `Activity ${ingested.activityId} is not lead-generating (queue=${resolved.entryPoint.queue ?? 'default'})`,
       );
 
       return;

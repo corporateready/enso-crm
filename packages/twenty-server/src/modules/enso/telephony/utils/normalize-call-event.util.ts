@@ -236,6 +236,7 @@ export const normalizeRoistatCall = (
     eventKey: hasOutcome ? 'roistat:after-call' : 'roistat:at-call',
     isAuthoritativeOutcome: hasOutcome,
     callerE164: normalizeE164(push.caller, push.callee),
+    roistatScenario: String(push.marker ?? '').trim() || undefined,
     calleeDid: digitsOnly(push.callee) || undefined,
     occurredAt: parseRoistatTimestamp(push.date),
     callStatus: ROISTAT_STATUS_TO_CALL_STATUS[status],

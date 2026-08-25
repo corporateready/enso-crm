@@ -143,6 +143,10 @@ export type NormalizedCallEvent = {
   // PBX login of whoever the call reached (may be a group — not proof of pickup).
   answeredByLogin?: string;
   answeredByGroup?: string;
+  // Roistat's source marker. The webhook does not carry the scenario name, so
+  // this is the closest available scenario identifier and is what the
+  // scenario-level entry-point map is keyed on.
+  roistatScenario?: string;
   // Attribution — Roistat only.
   attribution?: {
     roistatVisitId?: string;
