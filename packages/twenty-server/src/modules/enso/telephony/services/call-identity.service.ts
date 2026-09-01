@@ -15,7 +15,6 @@ import {
   ENTRY_POINT_BY_PBX_GROUP,
   ENTRY_POINT_BY_ROISTAT_SCENARIO,
   MOLDOVA_CALLING_CODE,
-  PBX_LOGIN_TO_MEMBER_EMAIL,
   MOLDOVA_COUNTRY_CODE,
   MOLDOVA_DIAL_PREFIX,
   ROMANIA_CALLING_CODE,
@@ -41,7 +40,12 @@ type PersonRow = {
 
 type ProjectRow = { id: string; code?: string | null };
 
-type WorkspaceMemberRow = { id: string; userEmail?: string | null };
+type WorkspaceMemberRow = {
+  id: string;
+  userEmail?: string | null;
+  // Set per member in the CRM UI; the only reliable link to a PBX account.
+  pbxLogin?: string | null;
+};
 
 // Custom/standard objects are reached by metadata name, so the row shapes above
 // stand in for the generated entity classes.
@@ -268,24 +272,21 @@ export class CallIdentityService {
     return { projectId: projectRow.id, entryPoint };
   }
 
-  // Map the PBX login that answered onto a CRM workspace member, so an answered
-  // call can be owned by the person who actually took it. Falls back to a
-  // configured owner, because a CONNECTED deal with nobody on it is worse than
-  // one parked on a known person.
+  // Map the PBX login that answered onto a CRM workspace member.
+  //
+  // The two systems share no implicit key: PBX accounts carry personal gmail
+  // addresses rather than @enso.ro ones (and several carry none at all), the
+  // realName ordering is inconsistent, and workspaceMember has neither a phone
+  // nor an extension. So the link is stated explicitly on the member record via
+  // `pbxLogin`, which is exact and editable per person in the CRM.
+  //
+  // Falls back to a configured owner, because a CONNECTED deal with nobody on it
+  // is worse than one parked on a known person — and the PBX reports a group
+  // rather than a login whenever a department took the call.
   async resolveAnsweredOwnerMemberId(
     workspaceId: string,
     pbxLogin: string | undefined,
   ): Promise<string | undefined> {
-    const mappedEmail = isDefined(pbxLogin)
-      ? PBX_LOGIN_TO_MEMBER_EMAIL[pbxLogin]
-      : undefined;
-
-    const email = mappedEmail ?? ANSWERED_OWNER_FALLBACK_EMAIL;
-
-    if (!isDefined(email) || !email) {
-      return undefined;
-    }
-
     const repository =
       await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
         workspaceId,
@@ -293,14 +294,37 @@ export class CallIdentityService {
         { shouldBypassPermissionChecks: true },
       );
 
-    const member = await repository.findOne({ where: { userEmail: email } });
+    if (isDefined(pbxLogin) && pbxLogin) {
+      const byLogin = await repository.findOne({ where: { pbxLogin } });
 
-    if (!isDefined(member)) {
-      this.logger.warn(`No workspace member found for email ${email}`);
+      if (isDefined(byLogin)) {
+        return byLogin.id;
+      }
+
+      this.logger.warn(
+        `No workspace member has pbxLogin "${pbxLogin}" — falling back`,
+      );
+    }
+
+    if (
+      !isDefined(ANSWERED_OWNER_FALLBACK_EMAIL) ||
+      !ANSWERED_OWNER_FALLBACK_EMAIL
+    ) {
+      return undefined;
+    }
+
+    const fallback = await repository.findOne({
+      where: { userEmail: ANSWERED_OWNER_FALLBACK_EMAIL },
+    });
+
+    if (!isDefined(fallback)) {
+      this.logger.warn(
+        `Fallback owner ${ANSWERED_OWNER_FALLBACK_EMAIL} is not a workspace member`,
+      );
 
       return undefined;
     }
 
-    return member.id;
+    return fallback.id;
   }
 }
