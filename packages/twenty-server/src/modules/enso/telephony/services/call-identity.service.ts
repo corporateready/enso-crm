@@ -7,6 +7,7 @@ import { ILike } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
   ANSWERED_OWNER_FALLBACK_EMAIL,
@@ -90,20 +91,27 @@ export class CallIdentityService {
     workspaceId: string,
     callerE164: string,
   ): Promise<string | undefined> {
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<PersonRow>(
-        workspaceId,
-        'person',
-        { shouldBypassPermissionChecks: true },
-      );
+    // Every workspace-ORM call must run inside a workspace context; obtaining a
+    // repository outside one throws.
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<PersonRow>(
+            workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
 
-    const existing = await this.findPersonByPhone(repository, callerE164);
+        const existing = await this.findPersonByPhone(repository, callerE164);
 
-    if (isDefined(existing)) {
-      return existing.id;
-    }
+        if (isDefined(existing)) {
+          return existing.id;
+        }
 
-    return this.createPerson(repository, callerE164);
+        return this.createPerson(repository, callerE164);
+      },
+      buildSystemAuthContext(workspaceId),
+    );
   }
 
   // Phone storage in this workspace is genuinely inconsistent: some rows hold a
@@ -252,16 +260,20 @@ export class CallIdentityService {
       lead: mapped?.lead ?? true,
     };
 
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<ProjectRow>(
-        workspaceId,
-        'project',
-        { shouldBypassPermissionChecks: true },
-      );
+    const projectRow =
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const repository =
+            await this.globalWorkspaceOrmManager.getRepository<ProjectRow>(
+              workspaceId,
+              'project',
+              { shouldBypassPermissionChecks: true },
+            );
 
-    const projectRow = await repository.findOne({
-      where: { code: entryPoint.project },
-    });
+          return repository.findOne({ where: { code: entryPoint.project } });
+        },
+        buildSystemAuthContext(workspaceId),
+      );
 
     if (!isDefined(projectRow)) {
       this.logger.warn(`No project found for code ${entryPoint.project}`);
@@ -287,44 +299,49 @@ export class CallIdentityService {
     workspaceId: string,
     pbxLogin: string | undefined,
   ): Promise<string | undefined> {
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
-        workspaceId,
-        'workspaceMember',
-        { shouldBypassPermissionChecks: true },
-      );
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
+            workspaceId,
+            'workspaceMember',
+            { shouldBypassPermissionChecks: true },
+          );
 
-    if (isDefined(pbxLogin) && pbxLogin) {
-      const byLogin = await repository.findOne({ where: { pbxLogin } });
+        if (isDefined(pbxLogin) && pbxLogin) {
+          const byLogin = await repository.findOne({ where: { pbxLogin } });
 
-      if (isDefined(byLogin)) {
-        return byLogin.id;
-      }
+          if (isDefined(byLogin)) {
+            return byLogin.id;
+          }
 
-      this.logger.warn(
-        `No workspace member has pbxLogin "${pbxLogin}" — falling back`,
-      );
-    }
+          this.logger.warn(
+            `No workspace member has pbxLogin "${pbxLogin}" — falling back`,
+          );
+        }
 
-    if (
-      !isDefined(ANSWERED_OWNER_FALLBACK_EMAIL) ||
-      !ANSWERED_OWNER_FALLBACK_EMAIL
-    ) {
-      return undefined;
-    }
+        if (
+          !isDefined(ANSWERED_OWNER_FALLBACK_EMAIL) ||
+          !ANSWERED_OWNER_FALLBACK_EMAIL
+        ) {
+          return undefined;
+        }
 
-    const fallback = await repository.findOne({
-      where: { userEmail: ANSWERED_OWNER_FALLBACK_EMAIL },
-    });
+        const fallback = await repository.findOne({
+          where: { userEmail: ANSWERED_OWNER_FALLBACK_EMAIL },
+        });
 
-    if (!isDefined(fallback)) {
-      this.logger.warn(
-        `Fallback owner ${ANSWERED_OWNER_FALLBACK_EMAIL} is not a workspace member`,
-      );
+        if (!isDefined(fallback)) {
+          this.logger.warn(
+            `Fallback owner ${ANSWERED_OWNER_FALLBACK_EMAIL} is not a workspace member`,
+          );
 
-      return undefined;
-    }
+          return undefined;
+        }
 
-    return fallback.id;
+        return fallback.id;
+      },
+      buildSystemAuthContext(workspaceId),
+    );
   }
 }
