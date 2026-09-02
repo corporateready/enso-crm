@@ -38,7 +38,8 @@ const NEW_OPTION = {
   id: randomUUID(),
   value: 'OBSERVED',
   label: 'Observed',
-  color: 'turquoise',
+  // Distinct from CORPORATE_GSM's turquoise so the two read apart in a table.
+  color: 'purple',
 };
 
 const gql = async (query, variables) => {
