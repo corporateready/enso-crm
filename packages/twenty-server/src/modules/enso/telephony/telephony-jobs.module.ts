@@ -1,8 +1,13 @@
 import { Module } from '@nestjs/common';
 
+import { FileStorageModule } from 'src/engine/core-modules/file-storage/file-storage.module';
+import { SecureHttpClientModule } from 'src/engine/core-modules/secure-http-client/secure-http-client.module';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
+import { ArchiveCallRecordingJob } from 'src/modules/enso/telephony/jobs/archive-call-recording.job';
 import { IngestCallEventJob } from 'src/modules/enso/telephony/jobs/ingest-call-event.job';
 import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
+import { CallRecordingArchiveService } from 'src/modules/enso/telephony/services/call-recording-archive.service';
+import { OutboundCallIngestService } from 'src/modules/enso/telephony/services/outbound-call-ingest.service';
 import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number.service';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 
@@ -12,12 +17,16 @@ import { CallIngestService } from 'src/modules/enso/telephony/services/call-inge
 // is re-provided here (rather than imported) because raw-ORM inserts bypass the
 // create resolver, so the computed label has to be materialized by hand.
 @Module({
+  imports: [FileStorageModule, SecureHttpClientModule],
   providers: [
     CallIngestService,
+    OutboundCallIngestService,
     PbxNumberService,
     CallIdentityService,
+    CallRecordingArchiveService,
     InboundActivityNameService,
     IngestCallEventJob,
+    ArchiveCallRecordingJob,
   ],
 })
 export class TelephonyJobsModule {}

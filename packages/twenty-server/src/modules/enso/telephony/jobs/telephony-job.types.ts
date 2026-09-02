@@ -12,6 +12,21 @@ export type IngestCallEventJobData = {
   event: SerializedCallEvent;
 };
 
+export type ArchiveCallRecordingJobData = {
+  workspaceId: string;
+  // The PBX url the audio is fetched from. Kept on the activity too, as
+  // provenance for the archived copy.
+  recordingUrl: string;
+  objectNameSingular: 'inboundActivity' | 'outboundActivity';
+  activityId: string;
+  // Used only to label the attachment with the time of the call.
+  occurredAtIso?: string;
+  // 1-based. The PBX writes the recording after the call ends, so the first
+  // attempt legitimately finds nothing; the job re-enqueues itself with a delay
+  // until this hits RECORDING_FETCH_RETRIES.
+  attempt?: number;
+};
+
 export const serializeCallEvent = (
   event: NormalizedCallEvent,
 ): SerializedCallEvent => {

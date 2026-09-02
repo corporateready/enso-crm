@@ -8,6 +8,10 @@ import {
   parseRoistatTimestamp,
   splitPbxLogin,
 } from 'src/modules/enso/telephony/utils/normalize-call-event.util';
+import {
+  CALL_STATUS_TO_OUTBOUND_OUTCOME,
+  MOLDCELL_STATUS_TO_CALL_STATUS,
+} from 'src/modules/enso/telephony/telephony.constants';
 
 describe('normalizeE164', () => {
   it('should prefix international Moldovan and Romanian numbers', () => {
@@ -283,33 +287,38 @@ describe('normalizeRoistatCall', () => {
 });
 
 describe('outbound calls', () => {
-  // Observed live: a manager dialling out arrived as `type: OUTGOING,
-  // direction: out` and was filed as an INCOMING_CALL, which would inflate lead
-  // counts and create a Person for someone we called.
-  it('should skip an outbound event push', () => {
-    expect(
-      normalizeMoldcellEvent({
-        cmd: 'event',
-        type: 'OUTGOING',
-        direction: 'out',
-        callid: 'c1',
-        phone: '37369743418',
-      }),
-    ).toBeUndefined();
+  // Direction decides which object the call becomes. Getting it wrong is the bug
+  // observed live: a manager dialling out arrived as `type: OUTGOING,
+  // direction: out` and was filed as an INCOMING_CALL, inflating lead counts and
+  // creating a Person for someone we called.
+  it('should mark an outbound event push as outbound', () => {
+    const event = normalizeMoldcellEvent({
+      cmd: 'event',
+      type: 'OUTGOING',
+      direction: 'out',
+      callid: 'c1',
+      phone: '37369743418',
+      telnum: '37376040824',
+    });
+
+    expect(event?.direction).toBe('out');
+    // OUTGOING fires as the call is placed, so it approximates the start.
+    expect(event?.occurredAt).toBeDefined();
+    expect(event?.callerE164).toBe('+37369743418');
   });
 
-  it('should skip an event marked out even when the type is a state name', () => {
+  it('should mark an event as outbound even when the type is a state name', () => {
     expect(
       normalizeMoldcellEvent({
         cmd: 'event',
         type: 'COMPLETED',
         direction: 'out',
         callid: 'c1',
-      }),
-    ).toBeUndefined();
+      })?.direction,
+    ).toBe('out');
   });
 
-  it('should skip an outbound history push', () => {
+  it('should mark an outbound history push as outbound', () => {
     // On `history` the direction lives in `type` itself, not in `direction`.
     expect(
       normalizeMoldcellHistory({
@@ -317,19 +326,48 @@ describe('outbound calls', () => {
         type: 'out',
         status: 'Success',
         callid: 'c1',
-      }),
-    ).toBeUndefined();
+      })?.direction,
+    ).toBe('out');
   });
 
-  it('should still accept inbound pushes', () => {
+  // Outbound has no `diversion`, so the manager's own direct number is the only
+  // country hint available for a nationally-formatted destination.
+  it('should promote a national destination using telnum as the country hint', () => {
+    expect(
+      normalizeMoldcellHistory({
+        cmd: 'history',
+        type: 'out',
+        status: 'Success',
+        callid: 'c1',
+        phone: '069453003',
+        telnum: '37376040824',
+      })?.callerE164,
+    ).toBe('+37369453003');
+  });
+
+  // On outbound there is no "who answered" — the login IS the manager who
+  // dialled, which is what attributes the touch.
+  it('should attribute an outbound call to the dialling manager', () => {
+    expect(
+      normalizeMoldcellEvent({
+        cmd: 'event',
+        type: 'OUTGOING',
+        direction: 'out',
+        callid: 'c1',
+        user: 'denis_vasiliev@enso.pbx.moldcell.md',
+      })?.answeredByLogin,
+    ).toBe('denis_vasiliev');
+  });
+
+  it('should still mark inbound pushes as inbound', () => {
     expect(
       normalizeMoldcellEvent({
         cmd: 'event',
         type: 'INCOMING',
         direction: 'in',
         callid: 'c1',
-      }),
-    ).toBeDefined();
+      })?.direction,
+    ).toBe('in');
 
     expect(
       normalizeMoldcellHistory({
@@ -337,8 +375,15 @@ describe('outbound calls', () => {
         type: 'in',
         status: 'Success',
         callid: 'c1',
-      }),
-    ).toBeDefined();
+      })?.direction,
+    ).toBe('in');
+
+    // Roistat only ever tracks inbound, and a `contact` push only fires for an
+    // arriving call — neither must ever be routed to the outbound leg.
+    expect(normalizeRoistatCall({ id: 'r1' })?.direction).toBe('in');
+    expect(
+      normalizeMoldcellContact({ cmd: 'contact', callid: 'c1' })?.direction,
+    ).toBe('in');
   });
 });
 
@@ -443,5 +488,52 @@ describe('which pushes can decide a call outcome', () => {
     expect(
       normalizeMoldcellContact({ cmd: 'contact', callid: 'c1' })?.isTerminal,
     ).toBe(false);
+  });
+});
+
+// The outbound leg translates the phone-system vocabulary into the
+// manager-achievement vocabulary, so an observed PBX call and a hand-logged one
+// read the same. Every callStatus the normalizer can produce must map, or the
+// outbound row silently loses its outcome.
+describe('CALL_STATUS_TO_OUTBOUND_OUTCOME', () => {
+  it('should map every status the Moldcell normalizer can produce', () => {
+    const produced = new Set([
+      ...Object.values(MOLDCELL_STATUS_TO_CALL_STATUS),
+      // `event CANCELLED` sets this directly, without going through the map.
+      'ABANDONED',
+    ]);
+
+    for (const status of produced) {
+      expect(CALL_STATUS_TO_OUTBOUND_OUTCOME[status]).toBeDefined();
+    }
+  });
+
+  it('should collapse every unreachable phone-system status to NO_ANSWER', () => {
+    // From the manager's side there is no difference between "nobody picked up",
+    // "we gave up" and "the network refused" — the touch simply did not land.
+    expect(CALL_STATUS_TO_OUTBOUND_OUTCOME.UNANSWERED).toBe('NO_ANSWER');
+    expect(CALL_STATUS_TO_OUTBOUND_OUTCOME.ABANDONED).toBe('NO_ANSWER');
+    expect(CALL_STATUS_TO_OUTBOUND_OUTCOME.CONGESTION).toBe('NO_ANSWER');
+  });
+
+  it('should treat an answered call as REACHED and keep BUSY distinct', () => {
+    expect(CALL_STATUS_TO_OUTBOUND_OUTCOME.ANSWERED).toBe('REACHED');
+    expect(CALL_STATUS_TO_OUTBOUND_OUTCOME.BUSY).toBe('BUSY');
+  });
+
+  it('should only use outcomes the outboundActivity field accepts', () => {
+    // The SELECT options, verified against the live workspace metadata.
+    const allowed = [
+      'REACHED',
+      'NO_ANSWER',
+      'BUSY',
+      'VOICEMAIL',
+      'WRONG_NUMBER',
+      'CALLBACK_REQUESTED',
+    ];
+
+    for (const outcome of Object.values(CALL_STATUS_TO_OUTBOUND_OUTCOME)) {
+      expect(allowed).toContain(outcome);
+    }
   });
 });

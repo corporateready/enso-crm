@@ -5,4 +5,5 @@ export type OutboundRequestSource =
   | 'dittofeed-sync'
   | 'dittofeed-admin'
   | 'sms-md'
-  | 'meta-graph';
+  | 'meta-graph'
+  | 'moldcell-pbx';

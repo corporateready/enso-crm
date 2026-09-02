@@ -122,6 +122,10 @@ export type NormalizedCallEvent = {
   // `<provider>:<id>` — idempotency + correlation key, stored in sourceExternalId.
   externalId: string;
   provider: 'moldcell' | 'roistat';
+  // Which leg of the phone system this is. Inbound becomes an inboundActivity
+  // (and may become a lead); outbound becomes an outboundActivity and never
+  // enters the lead pipeline — a manager dialling out is not a new lead.
+  direction: 'in' | 'out';
   // Distinguishes the several pushes that share one externalId (an INCOMING
   // event, a COMPLETED event and a history push all carry the same `callid`).
   // Used for queue-level dedup, so two different pushes about one call cannot
@@ -131,9 +135,11 @@ export type NormalizedCallEvent = {
   // Moldcell `history` and the Roistat after-call slot. A non-authoritative
   // event must not overwrite outcome fields an authoritative one already set.
   isAuthoritativeOutcome: boolean;
-  // E.164 caller, e.g. "+37368879173".
+  // The REMOTE party in E.164, e.g. "+37368879173" — the caller on an inbound
+  // call, the number we dialled on an outbound one. (Named for the inbound case,
+  // which is the majority and the only one the lead pipeline sees.)
   callerE164?: string;
-  // The DID that was dialled.
+  // The DID that was dialled. Inbound only — an outbound push has no `diversion`.
   calleeDid?: string;
   occurredAt?: Date;
   // Terminal outcome, if this event carries one.
@@ -143,6 +149,9 @@ export type NormalizedCallEvent = {
   // PBX login of whoever the call reached (may be a group — not proof of pickup).
   answeredByLogin?: string;
   answeredByGroup?: string;
+  // The PBX-side number this call used: the DID for inbound, the manager's own
+  // direct number for outbound. Only ever informational (`telnum` on the push).
+  pbxTelnum?: string;
   // Roistat's source marker. The webhook does not carry the scenario name, so
   // this is the closest available scenario identifier and is what the
   // scenario-level entry-point map is keyed on.
