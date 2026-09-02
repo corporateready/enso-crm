@@ -141,8 +141,9 @@ export const parseRoistatTimestamp = (value: unknown): Date | undefined => {
 //
 // The two commands disagree on where direction lives: on `event` it is
 // `direction` (in/out) with `type` naming the state, while on `history` `type`
-// itself is in/out. Outbound handling is a separate leg (outboundActivity) and
-// is not built yet, so for now these are skipped rather than mis-filed.
+// itself is in/out. So direction is normalized here once, and the ingest job
+// routes on it: inbound → inboundActivity + lead pipeline, outbound →
+// outboundActivity (a logged touch, never a lead).
 const isOutboundDirection = (value: unknown): boolean =>
   String(value ?? '')
     .trim()
@@ -164,10 +165,10 @@ export const normalizeMoldcellEvent = (
   }
 
   const type = String(push.type ?? '').toUpperCase();
-
-  if (isOutboundDirection(push.direction) || type === MOLDCELL_EVENT_OUTGOING) {
-    return undefined;
-  }
+  const direction: 'in' | 'out' =
+    isOutboundDirection(push.direction) || type === MOLDCELL_EVENT_OUTGOING
+      ? 'out'
+      : 'in';
 
   const { login, isGroup } = splitPbxLogin(push.user);
 
@@ -180,20 +181,34 @@ export const normalizeMoldcellEvent = (
   return {
     externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${callId}`,
     provider: 'moldcell',
+    direction,
     eventKey: `moldcell:event:${type || 'UNKNOWN'}`,
     // `event` never carries duration/recording, and `history` is the real
     // outcome record, so an event must not clobber what history established.
     isAuthoritativeOutcome: false,
-    callerE164: normalizeE164(push.phone, push.diversion),
+    // On an outbound push `phone` is the number we dialled and there is no
+    // `diversion`, so the country hint has to come from the manager's own
+    // direct number — same country by construction.
+    callerE164: normalizeE164(push.phone, push.diversion ?? push.telnum),
     calleeDid: digitsOnly(push.diversion) || undefined,
-    // The push carries no timestamp. Only INCOMING approximates the call START
-    // (it fires while the phone rings); COMPLETED/CANCELLED fire at the END, so
+    pbxTelnum: digitsOnly(push.telnum) || undefined,
+    // The push carries no timestamp. Only INCOMING/OUTGOING approximate the call
+    // START (they fire as it is placed); COMPLETED/CANCELLED fire at the END, so
     // stamping them with "now" would move occurredAt to the wrong end of the
     // call and corrupt the correlation window.
-    occurredAt: type === MOLDCELL_EVENT_INCOMING ? new Date() : undefined,
+    occurredAt:
+      type === MOLDCELL_EVENT_INCOMING || type === MOLDCELL_EVENT_OUTGOING
+        ? new Date()
+        : undefined,
     callStatus: type === MOLDCELL_EVENT_CANCELLED ? 'ABANDONED' : undefined,
-    answeredByLogin:
-      type === MOLDCELL_EVENT_ACCEPTED && !isGroup ? login : undefined,
+    // Inbound: only an ACCEPTED push proves an individual took the call.
+    // Outbound: there is nobody to "answer" — the login IS the manager who
+    // dialled, which is what the outbound leg attributes the touch to.
+    answeredByLogin: isGroup
+      ? undefined
+      : direction === 'out' || type === MOLDCELL_EVENT_ACCEPTED
+        ? login
+        : undefined,
     answeredByGroup: isGroup
       ? (push.groupRealName ?? login)
       : (push.groupRealName ?? undefined),
@@ -211,9 +226,7 @@ export const normalizeMoldcellHistory = (
     return undefined;
   }
 
-  if (isOutboundDirection(push.type)) {
-    return undefined;
-  }
+  const direction: 'in' | 'out' = isOutboundDirection(push.type) ? 'out' : 'in';
 
   const { login, isGroup } = splitPbxLogin(push.user);
   const status = String(push.status ?? '').trim();
@@ -221,14 +234,18 @@ export const normalizeMoldcellHistory = (
   return {
     externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${callId}`,
     provider: 'moldcell',
+    direction,
     eventKey: 'moldcell:history',
     isAuthoritativeOutcome: true,
-    callerE164: normalizeE164(push.phone, push.diversion),
+    callerE164: normalizeE164(push.phone, push.diversion ?? push.telnum),
     calleeDid: digitsOnly(push.diversion) || undefined,
+    pbxTelnum: digitsOnly(push.telnum) || undefined,
     occurredAt: parseMoldcellTimestamp(push.start),
     callStatus: MOLDCELL_STATUS_TO_CALL_STATUS[status],
     durationS: toDurationSeconds(push.duration),
     recordingUrl: String(push.link ?? '').trim() || undefined,
+    // Inbound: who the call reached (a group here is NOT proof of a pickup).
+    // Outbound: the manager who placed it, which is never a group.
     answeredByLogin: isGroup ? undefined : login,
     answeredByGroup: isGroup
       ? (push.groupRealName ?? login)
@@ -258,6 +275,8 @@ export const normalizeRoistatCall = (
   return {
     externalId: `${ROISTAT_EXTERNAL_ID_PREFIX}:${callId}`,
     provider: 'roistat',
+    // Roistat only ever tracks inbound calls to its tracking numbers.
+    direction: 'in',
     eventKey: hasOutcome ? 'roistat:after-call' : 'roistat:at-call',
     isAuthoritativeOutcome: hasOutcome,
     callerE164: normalizeE164(push.caller, push.callee),
@@ -317,6 +336,8 @@ export const normalizeMoldcellContact = (
   return {
     externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${callId}`,
     provider: 'moldcell',
+    // `contact` fires only for an arriving inbound call.
+    direction: 'in',
     eventKey: 'moldcell:contact',
     isAuthoritativeOutcome: false,
     callerE164: normalizeE164(push.phone, diversion),

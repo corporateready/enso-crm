@@ -3,13 +3,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
 import { isDefined } from 'twenty-shared/utils';
-import { ILike } from 'typeorm';
+import { ILike, Not, In } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number.service';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
-import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import {
+  CLOSED_OPPORTUNITY_STAGES,
+  SYSTEM_ACTOR,
+} from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
   ANSWERED_OWNER_FALLBACK_EMAIL,
   type CallEntryPoint,
@@ -42,6 +45,13 @@ type PersonRow = {
 };
 
 type ProjectRow = { id: string; code?: string | null };
+
+type OpportunityRow = {
+  id: string;
+  name?: string | null;
+  stage?: string | null;
+  pointOfContactId?: string | null;
+};
 
 type WorkspaceMemberRow = {
   id: string;
@@ -333,6 +343,77 @@ export class CallIdentityService {
     }
 
     return { projectId: projectRow.id, entryPoint };
+  }
+
+  // The deal an outbound call belongs to, when that is unambiguous.
+  //
+  // An outbound call carries no project signal at all: there is no DID, no
+  // department and no Roistat record — just a manager and a number. So the deal
+  // can only come from the contact, and only when there is exactly ONE open one.
+  // Guessing among several would attach a call to the wrong deal, which is worse
+  // than leaving it on the contact alone.
+  async resolveSingleOpenOpportunityId(
+    workspaceId: string,
+    personId: string,
+  ): Promise<string | undefined> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<OpportunityRow>(
+            workspaceId,
+            'opportunity',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const open = await repository.find({
+          where: {
+            pointOfContactId: personId,
+            stage: Not(In([...CLOSED_OPPORTUNITY_STAGES])),
+          },
+        });
+
+        if (open.length !== 1) {
+          return undefined;
+        }
+
+        return open[0].id;
+      },
+      buildSystemAuthContext(workspaceId),
+    );
+  }
+
+  // Exact PBX-login → workspaceMember lookup, with no fallback. Used by the
+  // outbound leg, where attributing one manager's call to another because a
+  // login is unmapped would be a straight-up wrong record.
+  async resolveMemberIdByPbxLogin(
+    workspaceId: string,
+    pbxLogin: string | undefined,
+  ): Promise<string | undefined> {
+    if (!isDefined(pbxLogin) || !pbxLogin) {
+      return undefined;
+    }
+
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
+            workspaceId,
+            'workspaceMember',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const byLogin = await repository.findOne({ where: { pbxLogin } });
+
+        if (!isDefined(byLogin)) {
+          this.logger.warn(`No workspace member has pbxLogin "${pbxLogin}"`);
+
+          return undefined;
+        }
+
+        return byLogin.id;
+      },
+      buildSystemAuthContext(workspaceId),
+    );
   }
 
   // Map the PBX login that answered onto a CRM workspace member.

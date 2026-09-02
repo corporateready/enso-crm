@@ -78,6 +78,67 @@ export const ROISTAT_STATUS_TO_CALL_STATUS: Record<string, string> = {
   TORTURE: 'ABANDONED',
 };
 
+// Normalized callStatus -> outboundActivity.outcome SELECT.
+//
+// The two objects speak different vocabularies on purpose. inboundActivity
+// records what the PHONE SYSTEM saw (ANSWERED / ABANDONED / CONGESTION);
+// outboundActivity records what the MANAGER achieved (REACHED / NO_ANSWER /
+// BUSY), the same vocabulary a hand-logged call uses — so an observed PBX call
+// and a manually logged one read identically in the timeline. There is no
+// "abandoned" outcome for an outbound call: we hung up or nobody picked up, and
+// that is NO_ANSWER either way.
+export const CALL_STATUS_TO_OUTBOUND_OUTCOME: Record<string, string> = {
+  ANSWERED: 'REACHED',
+  SALES_PICKUP: 'REACHED',
+  UNANSWERED: 'NO_ANSWER',
+  ABANDONED: 'NO_ANSWER',
+  CONGESTION: 'NO_ANSWER',
+  BUSY: 'BUSY',
+  VOICEMAIL: 'VOICEMAIL',
+};
+
+// How long after pressing "Call via PBX" a PBX push may still be recognised as
+// that click. makeCall returns its own CallID with no documented guarantee that
+// it matches the `callid` on the pushes, so the CRM-initiated row is adopted on
+// (manager, remote number, recency). Generous enough to cover a manager who
+// takes their time answering their own leg, short enough that a second call to
+// the same person is never mistaken for the first.
+export const CRM_INITIATED_ADOPTION_WINDOW_MS = Number(
+  process.env.ENSO_TELEPHONY_CRM_CALL_ADOPTION_MS ?? 5 * 60 * 1000,
+);
+
+// Recording archival. The PBX keeps recordings for about a week and — verified —
+// serves them over an UNAUTHENTICATED url, so anyone holding the link can listen
+// to the call. Copying the audio into the workspace's own file storage fixes both:
+// the recording outlives the PBX's retention and is only reachable through a
+// signed CRM url.
+export const ARCHIVE_RECORDINGS =
+  process.env.ENSO_TELEPHONY_ARCHIVE_RECORDINGS !== 'false';
+
+// Hard ceiling on a single downloaded recording. A ~3 KB/s mono MP3 means 20 MB
+// is roughly a two-hour call; anything larger is a bug or an abuse, not a call.
+export const RECORDING_MAX_BYTES = Number(
+  process.env.ENSO_TELEPHONY_RECORDING_MAX_BYTES ?? 20 * 1024 * 1024,
+);
+
+export const RECORDING_FETCH_TIMEOUT_MS = Number(
+  process.env.ENSO_TELEPHONY_RECORDING_TIMEOUT_MS ?? 30 * 1000,
+);
+
+// The PBX finishes writing the audio only after the call ends, so fetching the
+// instant `history` lands is a guaranteed miss on a short call.
+export const RECORDING_INITIAL_DELAY_MS = Number(
+  process.env.ENSO_TELEPHONY_RECORDING_INITIAL_DELAY_MS ?? 20 * 1000,
+);
+
+// A recording is written by the PBX after the call ends, and `history` can
+// arrive before the file is flushed. Retrying a few times with a delay costs
+// nothing and avoids permanently losing the audio to a race.
+export const RECORDING_FETCH_RETRIES = 3;
+export const RECORDING_RETRY_DELAY_MS = Number(
+  process.env.ENSO_TELEPHONY_RECORDING_RETRY_DELAY_MS ?? 60 * 1000,
+);
+
 // PBX group logins are `g_<uuid>@<tenant>`; a real employee is `<login>@<tenant>`.
 // A group in the answered-by column means "rang a department", not "a person
 // answered", so it must never be treated as a sales pickup.

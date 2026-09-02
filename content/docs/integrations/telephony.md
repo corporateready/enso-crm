@@ -103,6 +103,46 @@ Downstream is unchanged: `inboundActivity(kind=INCOMING_CALL)` →
 [lead pipeline](../systems/lead-pipeline) → Person → Company → Opportunity →
 [routing](../systems/routing) → claim.
 
+### Module C — Outbound (post-call, no UI dependency)
+
+The PBX reports outbound calls with the **same** `event`/`history` commands, only
+with `type=out` / `direction=out`. So anything placed through the PBX is captured
+whatever placed it: the CRM's own click-to-call, the Moldcell mobile app, a desk
+phone, a softphone. The only call we cannot see is one made from a personal
+handset on a personal SIM.
+
+Outbound is a **separate object and a separate path**:
+
+- Writes `outboundActivity(channel=CALL)`, never `inboundActivity`, and **never
+  enters the lead pipeline** — a manager dialling a number is not a new lead.
+- The contact is **looked up, never created**. We called a number; that says
+  nothing about whether the number belongs in the CRM. An unknown number still
+  logs the call, just without a person link.
+- `loggedVia` distinguishes how the touch reached us: `CRM_INITIATED` (a button
+  pressed here), `OBSERVED` (through the PBX from anywhere else), `MANUAL_LOG`
+  (invisible to us, typed in), `CORPORATE_GSM` (recording SIM).
+- Outcome uses the **manager-achievement** vocabulary (`REACHED` / `NO_ANSWER` /
+  `BUSY`), not the phone-system vocabulary inbound uses (`ANSWERED` /
+  `ABANDONED` / `CONGESTION`), so an observed call and a hand-logged one read
+  identically.
+- The deal is attached only when the contact has **exactly one open**
+  opportunity. An outbound call carries no DID, no department and no Roistat
+  record, so the contact is the only signal; guessing among several deals is
+  worse than leaving the call on the contact.
+
+### Recordings are copied into the CRM, not linked
+
+The PBX keeps a recording for roughly a week, and — verified against a live
+recording — serves it over an **unauthenticated URL**: anyone who ever sees the
+link can listen to the call. So every recording is downloaded into the
+workspace's own file storage and attached to the activity (`attachment`,
+`fileCategory=AUDIO`). The PBX link stays on the activity as provenance; the
+attachment is the durable, access-controlled copy.
+
+The download runs as its own job, re-enqueued with a delay: the PBX writes the
+audio *after* the call ends, so `history` regularly arrives before the file
+exists. Giving up loses the durable copy, never the call.
+
 ### Why this collapses the legacy complexity
 
 Every hard mechanism in the legacy stack is a workaround for *polling instead of
@@ -276,6 +316,8 @@ from an analytics-confirmed one.
 | `ENSO_MOLDCELL_CRM_TOKEN` | Echoed back as `crm_token` on every push; the only authenticity check |
 | `ENSO_ROISTAT_WEBHOOK_SECRET` | Baked into the Roistat webhook path |
 | `ROISTAT_API_KEY`, `ROISTAT_PROJECT_ID` | Roistat REST access (project 187275) |
+| `ENSO_TELEPHONY_ARCHIVE_RECORDINGS` | `false` disables copying recordings into CRM storage (default on) |
+| `ENSO_TELEPHONY_RECORDING_MAX_BYTES` | Per-recording ceiling (default 20 MB ≈ a two-hour call) |
 
 Set on Railway `twenty-server` (serves the endpoints) and `twenty-worker` (runs
 the PBX lookup jobs).
@@ -288,9 +330,14 @@ the PBX lookup jobs).
 3. **Module A** — `contact` responder. Only after it is verified fast with a safe
    fallback should per-number "auto-transfer to responsible" be enabled in the
    cabinet, and only on numbers the n8n connector is not steering.
-4. **Click-to-call** via `makeCall`, replacing the `soon:true` placeholders in the
-   task/log surface.
-5. **`set_dnd` / `subscribeOnCalls`** wired to `isAvailableForRouting`, so CRM
+4. **Module C** — outbound ingest. No UI dependency: it captures calls placed
+   from the Moldcell app and desk phones as soon as it ships.
+5. **Click-to-call** via `makeCall`, replacing the `soon:true` placeholders in the
+   task/log surface. `makeCall` IS the two-legged callback ("Request callback"):
+   the PBX rings the manager first, then connects the client, and no SIP device
+   is required. There is no browser-audio option and no app deep link — both were
+   checked and neither exists outside ITooLabs' own first-party widgets.
+6. **`set_dnd` / `subscribeOnCalls`** wired to `isAvailableForRouting`, so CRM
    presence and PBX call reception stop drifting apart.
 
 ## Open questions
