@@ -51,8 +51,10 @@ type InboundActivityRow = {
   recordingUrl?: LinksValue | null;
   occurredAt?: Date | string | null;
   ingestedAt?: Date | string | null;
-  // RAW_JSON column. Typed `unknown` so TypeORM's deep-partial treats it as
-  // an opaque value instead of recursing into its shape on write.
+  // RAW_JSON column, keyed by eventKey so each push about a call is preserved
+  // rather than the last one winning — that is how an undocumented field on any
+  // one command stays visible. Typed `unknown` so TypeORM's deep-partial treats
+  // it as opaque instead of recursing into its shape on write.
   submittedPayload?: unknown;
   roistatVisitId?: string | null;
   utmSource?: string | null;
@@ -326,7 +328,7 @@ export class CallIngestService {
       // RAW_JSON safety net: keep the verbatim push so an unrecognised field
       // can be recovered without replaying the provider.
       ...(isDefined(event.rawPayload)
-        ? { submittedPayload: event.rawPayload }
+        ? { submittedPayload: { [event.eventKey]: event.rawPayload } }
         : {}),
       position: (lastPosition ?? 0) + 1,
       createdBy: SYSTEM_ACTOR,
@@ -403,6 +405,19 @@ export class CallIngestService {
     // occurredAt to the end of the call.
     if (event.isAuthoritativeOutcome && isDefined(event.occurredAt)) {
       patch.occurredAt = event.occurredAt;
+    }
+
+    if (isDefined(event.rawPayload)) {
+      const existingPayload =
+        typeof existing.submittedPayload === 'object' &&
+        existing.submittedPayload !== null
+          ? (existing.submittedPayload as Record<string, unknown>)
+          : {};
+
+      patch.submittedPayload = {
+        ...existingPayload,
+        [event.eventKey]: event.rawPayload,
+      };
     }
 
     if (this.isIndividualPickup(event)) {

@@ -1,5 +1,6 @@
 import {
   normalizeE164,
+  normalizeMoldcellContact,
   normalizeMoldcellEvent,
   normalizeMoldcellHistory,
   normalizeRoistatCall,
@@ -338,5 +339,53 @@ describe('outbound calls', () => {
         callid: 'c1',
       }),
     ).toBeDefined();
+  });
+});
+
+describe('normalizeMoldcellContact', () => {
+  it('should record the push without claiming any outcome', () => {
+    // `contact` carries no status at all, so it must never look terminal or
+    // authoritative — otherwise it would decide a deal's stage.
+    const event = normalizeMoldcellContact({
+      cmd: 'contact',
+      phone: '37360177070',
+      callid: 'IQD2TQ3R7S000035',
+    });
+
+    expect(event?.eventKey).toBe('moldcell:contact');
+    expect(event?.isTerminal).toBe(false);
+    expect(event?.isAuthoritativeOutcome).toBe(false);
+    expect(event?.callStatus).toBeUndefined();
+    expect(event?.callerE164).toBe('+37360177070');
+  });
+
+  it('should share the call id space with the other commands', () => {
+    // All pushes about one call must correlate onto a single activity.
+    const contact = normalizeMoldcellContact({ cmd: 'contact', callid: 'c1' });
+    const history = normalizeMoldcellHistory({ cmd: 'history', callid: 'c1' });
+
+    expect(contact?.externalId).toBe(history?.externalId);
+    expect(contact?.eventKey).not.toBe(history?.eventKey);
+  });
+
+  it('should pick up a diversion if the PBX sends one, undocumented or not', () => {
+    // The spec lists only cmd/phone/callid/crm_token, but live pushes have
+    // already been seen carrying undocumented extras.
+    const event = normalizeMoldcellContact({
+      cmd: 'contact',
+      phone: '068879173',
+      callid: 'c1',
+      diversion: '37376015220',
+    } as Parameters<typeof normalizeMoldcellContact>[0]);
+
+    expect(event?.calleeDid).toBe('37376015220');
+    // And the DID then serves as the country hint for a national number.
+    expect(event?.callerE164).toBe('+37368879173');
+  });
+
+  it('should return undefined without a callid', () => {
+    expect(
+      normalizeMoldcellContact({ cmd: 'contact', phone: '37360177070' }),
+    ).toBeUndefined();
   });
 });

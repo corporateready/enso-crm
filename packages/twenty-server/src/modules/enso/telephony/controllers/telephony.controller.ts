@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   HttpCode,
+  Logger,
   Param,
   Post,
   UnauthorizedException,
@@ -29,6 +30,7 @@ import {
   TELEPHONY_WORKSPACE_ID,
 } from 'src/modules/enso/telephony/telephony.constants';
 import {
+  type MoldcellContactPush,
   type MoldcellContactResponse,
   type MoldcellEventPush,
   type MoldcellHistoryPush,
@@ -37,6 +39,7 @@ import {
   type RoistatCallWebhook,
 } from 'src/modules/enso/telephony/types/telephony.types';
 import {
+  normalizeMoldcellContact,
   normalizeMoldcellEvent,
   normalizeMoldcellHistory,
   normalizeRoistatCall,
@@ -55,6 +58,8 @@ import {
 // all, so its secret rides in the path.
 @Controller()
 export class TelephonyController {
+  private readonly logger = new Logger(TelephonyController.name);
+
   constructor(
     @InjectMessageQueue(MessageQueue.ensoTelephonyQueue)
     private readonly messageQueueService: MessageQueueService,
@@ -74,9 +79,23 @@ export class TelephonyController {
     const cmd = String(body?.cmd ?? '').toLowerCase();
 
     if (cmd === 'contact') {
-      // Fires while the phone is ringing. Returning no `responsible` is the
-      // deliberate fallback: the PBX then applies its own dial plan, so a call
-      // is never delayed or dropped by us. Route-to-owner lands with Module A.
+      // Fires while the phone is ringing. Record it — it is the earliest signal
+      // for a call, and its real payload shape is undocumented — but never let
+      // that affect the response: a slow or failed answer here delays a live
+      // call. So recording is best-effort and the reply is always the same.
+      try {
+        await this.enqueue(
+          normalizeMoldcellContact(body as MoldcellContactPush),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Could not record contact push: ${(error as Error).message}`,
+        );
+      }
+
+      // Returning no `responsible` is the deliberate fallback: the PBX then
+      // applies its own dial plan, so a call is never delayed or dropped by us.
+      // Route-to-owner lands with Module A.
       return {};
     }
 
