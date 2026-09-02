@@ -19,6 +19,13 @@ export const ROISTAT_WEBHOOK_SECRET = process.env.ENSO_ROISTAT_WEBHOOK_SECRET;
 
 export const MOLDCELL_CRM_API_PATH = '/sys/crm_api.wcgp';
 
+// Ceiling on a CRM→PBX command. A manager is watching a button spin, and
+// `makeCall` only ASKS the PBX to start ringing — it does not wait for the call
+// — so this should be short.
+export const PBX_COMMAND_TIMEOUT_MS = Number(
+  process.env.ENSO_TELEPHONY_PBX_COMMAND_TIMEOUT_MS ?? 8 * 1000,
+);
+
 // Hard ceiling on the synchronous `contact` answer. The PBX is holding a ringing
 // call while it waits, so exceeding this is worse than not answering at all: we
 // give up and let the dial plan take over rather than delay the caller.

@@ -12,7 +12,6 @@ import {
   IconMail,
   IconPhone,
   IconSend,
-  IconWorld,
   type IconComponent,
 } from 'twenty-ui/display';
 import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
@@ -25,6 +24,7 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type PageLayoutWidget } from '@/page-layout/types/PageLayoutWidget';
+import { CALL_VIA_PBX } from '@/settings/notifications/graphql/mutations/callViaPbx';
 import { SEND_PERSON_SMS } from '@/settings/notifications/graphql/mutations/sendPersonSms';
 import { SEND_RECORD_EMAIL } from '@/settings/notifications/graphql/mutations/sendRecordEmail';
 import { SEND_TASK_EMAIL } from '@/settings/notifications/graphql/mutations/sendTaskEmail';
@@ -156,6 +156,9 @@ type ActionConfig = {
   loggedVia?: string;
   opensComposer?: boolean;
   opensEmailComposer?: boolean;
+  // Asks the PBX to place the call. Needs the manager's PBX login, so it is
+  // disabled for anyone whose workspaceMember.pbxLogin is unset.
+  callsViaPbx?: boolean;
   buildHref?: (context: LinkContext) => string | undefined;
 };
 
@@ -175,6 +178,9 @@ type ChannelSurface = {
   outcomes: string[];
   waitingStatus?: string;
   dealDispositionNote?: boolean;
+  // Calls need two things said out loud: how the PBX button actually behaves,
+  // and that the call is recorded for both parties.
+  callNotice?: boolean;
 };
 
 type PersonForLinks = {
@@ -244,9 +250,18 @@ const getChannelSurface = (
     case 'CALL':
       return {
         onSystemLabel: 'On system · contact, duration & recording captured',
+        // One button, not two. The PBX has exactly ONE origination command
+        // (`makeCall`) and it is a two-legged callback: it rings the MANAGER
+        // first, then bridges the contact. So "call from web" and "request a
+        // callback" were always the same mechanism — and there is no
+        // browser-audio option to build the first one out of.
         onSystem: [
-          { label: 'Call from web', Icon: IconWorld, soon: true },
-          { label: 'Request callback', Icon: IconPhone, soon: true },
+          {
+            label: 'Call via PBX',
+            Icon: IconPhone,
+            callsViaPbx: true,
+            loggedVia: 'CRM_INITIATED',
+          },
         ],
         offSystemLabel: 'Off system · you dial, we time it, then log it',
         offSystem: [
@@ -260,6 +275,7 @@ const getChannelSurface = (
         ],
         outcomes: CALL_OUTCOMES,
         dealDispositionNote: true,
+        callNotice: true,
       };
     case 'WHATSAPP':
       return {
@@ -539,12 +555,17 @@ export const TaskActionsWidget = ({
   const { record: memberRecord } = useFindOneRecord({
     objectNameSingular: 'workspaceMember',
     objectRecordId: currentMemberId,
-    recordGqlFields: { id: true, hasRecordingGsm: true },
+    recordGqlFields: { id: true, hasRecordingGsm: true, pbxLogin: true },
     skip: !isDefined(currentMemberId),
   });
   const hasRecordingGsm =
     (memberRecord as { hasRecordingGsm?: boolean } | undefined)
       ?.hasRecordingGsm === true;
+  // The explicit CRM↔PBX link. Without it the PBX has no idea whose phone to
+  // ring, so click-to-call cannot work for this manager.
+  const hasPbxLogin =
+    ((memberRecord as { pbxLogin?: string } | undefined)?.pbxLogin ?? '') !==
+    '';
 
   const { enqueueSuccessSnackBar, enqueueErrorSnackBar } = useSnackBar();
   const [sendTaskToMyPhone, { loading: isSendingToPhone }] = useMutation<{
@@ -568,6 +589,17 @@ export const TaskActionsWidget = ({
     sendRecordEmail: { success: boolean; error?: string | null };
   }>(SEND_RECORD_EMAIL);
   const isSendingEmail = isSendingTaskEmail || isSendingRecordEmail;
+
+  // Click-to-call. Returns the outboundActivity the attempt was logged against,
+  // so the outcome click below updates THAT row instead of writing a second one.
+  const [callViaPbx, { loading: isPlacingCall }] = useMutation<{
+    callViaPbx: {
+      success: boolean;
+      error?: string | null;
+      activityId?: string | null;
+    };
+  }>(CALL_VIA_PBX);
+  const [pbxActivityId, setPbxActivityId] = useState<string | null>(null);
 
   // Corporate-SMS compose modal. Task mode: the alias is the deal's project brand
   // (server-determined, read-only). Object mode: a touch targets the PERSON, so
@@ -826,17 +858,63 @@ export const TaskActionsWidget = ({
       return;
     }
 
+    if (action.callsViaPbx === true) {
+      void handleCallViaPbx();
+
+      return;
+    }
+
     handleOpen(action.buildHref?.(linkContext));
 
     if (isDefined(action.loggedVia)) {
       setPendingLoggedVia(action.loggedVia);
     }
 
+    // Switching to another action abandons the PBX attempt as the thing being
+    // logged; without this, an outcome picked after "Call manually" would be
+    // stamped onto the earlier PBX row instead of the manual touch.
+    setPbxActivityId(null);
+
     if (action.startsTimer === true) {
       setCallDurationS(null);
       setCallStartedAt(Date.now());
       setNow(Date.now());
     }
+  };
+
+  // The PBX rings the MANAGER first and only then bridges the contact, so the
+  // snackbar has to tell them to answer their own phone — otherwise it reads as
+  // "we are dialling the client now" and they let it ring out.
+  // No CRM-side timer here: the PBX reports the real duration and the recording.
+  const handleCallViaPbx = async () => {
+    if (isPlacingCall || !isDefined(personId)) {
+      return;
+    }
+
+    const result = await callViaPbx({
+      variables: {
+        personId,
+        opportunityId: opportunityId ?? null,
+        taskId: taskId ?? null,
+      },
+    });
+    const outcome = result.data?.callViaPbx;
+
+    if (outcome?.success !== true) {
+      enqueueErrorSnackBar({
+        message: outcome?.error ?? 'Could not place the call',
+      });
+
+      return;
+    }
+
+    enqueueSuccessSnackBar({
+      message: 'Answer your phone — we’ll connect you',
+    });
+    setPendingLoggedVia('CRM_INITIATED');
+    setPbxActivityId(outcome.activityId ?? null);
+    setCallStartedAt(null);
+    setCallDurationS(null);
   };
 
   const handleSendSms = async () => {
@@ -984,22 +1062,34 @@ export const TaskActionsWidget = ({
     setIsSaving(true);
 
     try {
-      await createOutboundActivity({
-        ...(isDefined(channel) ? { channel } : {}),
-        loggedVia: pendingLoggedVia,
-        body: notes,
-        // The touch's own disposition — recorded on the activity itself so a
-        // standalone touch (no task) still captures its outcome, not only the task.
-        outcome,
-        occurredAt: new Date().toISOString(),
-        ...(isDefined(taskId) ? { taskId } : {}),
-        ...(isDefined(callDurationS) ? { durationS: callDurationS } : {}),
-        ...(isDefined(opportunityId) ? { opportunityId } : {}),
-        ...(isDefined(personId) ? { personId } : {}),
-        ...(isDefined(currentWorkspaceMember?.id)
-          ? { performedById: currentWorkspaceMember.id }
-          : {}),
-      });
+      if (isDefined(pbxActivityId)) {
+        // The call was placed through the PBX, which already logged the attempt
+        // (and whose pushes fill in duration and recording). Stamping the
+        // outcome onto that row is the whole point — creating another would log
+        // one call twice.
+        await updateOneRecord({
+          objectNameSingular: 'outboundActivity',
+          idToUpdate: pbxActivityId,
+          updateOneRecordInput: { outcome, body: notes },
+        });
+      } else {
+        await createOutboundActivity({
+          ...(isDefined(channel) ? { channel } : {}),
+          loggedVia: pendingLoggedVia,
+          body: notes,
+          // The touch's own disposition — recorded on the activity itself so a
+          // standalone touch (no task) still captures its outcome, not only the task.
+          outcome,
+          occurredAt: new Date().toISOString(),
+          ...(isDefined(taskId) ? { taskId } : {}),
+          ...(isDefined(callDurationS) ? { durationS: callDurationS } : {}),
+          ...(isDefined(opportunityId) ? { opportunityId } : {}),
+          ...(isDefined(personId) ? { personId } : {}),
+          ...(isDefined(currentWorkspaceMember?.id)
+            ? { performedById: currentWorkspaceMember.id }
+            : {}),
+        });
+      }
 
       // Whenever a task is linked (its own surface, or one selected in object
       // mode), stamp its reachability outcome — feeds the sequence/cadence.
@@ -1014,6 +1104,7 @@ export const TaskActionsWidget = ({
       setNotes('');
       setCallStartedAt(null);
       setCallDurationS(null);
+      setPbxActivityId(null);
       setPendingLoggedVia('MANUAL_LOG');
     } finally {
       setIsSaving(false);
@@ -1026,8 +1117,13 @@ export const TaskActionsWidget = ({
     const isClickable =
       isDeepLink ||
       action.opensComposer === true ||
-      action.opensEmailComposer === true;
-    const isDisabled = action.soon === true || (isDeepLink && !isDefined(href));
+      action.opensEmailComposer === true ||
+      action.callsViaPbx === true;
+    const isDisabled =
+      action.soon === true ||
+      (isDeepLink && !isDefined(href)) ||
+      (action.callsViaPbx === true &&
+        (!hasPbxLogin || !isDefined(personId) || isPlacingCall));
 
     const onClick = isClickable ? () => handleActionClick(action) : undefined;
 
@@ -1080,6 +1176,7 @@ export const TaskActionsWidget = ({
     setSelectedOutcome(null);
     setCallStartedAt(null);
     setCallDurationS(null);
+    setPbxActivityId(null);
     setPendingLoggedVia('MANUAL_LOG');
   };
 
@@ -1091,6 +1188,7 @@ export const TaskActionsWidget = ({
     setSelectedOutcome(null);
     setCallStartedAt(null);
     setCallDurationS(null);
+    setPbxActivityId(null);
     setPendingLoggedVia('MANUAL_LOG');
     if (!isDefined(id)) {
       setSelectedChannel(null);
@@ -1103,6 +1201,7 @@ export const TaskActionsWidget = ({
     setSelectedOutcome(null);
     setCallStartedAt(null);
     setCallDurationS(null);
+    setPbxActivityId(null);
   };
 
   return (
@@ -1206,6 +1305,14 @@ export const TaskActionsWidget = ({
                 {onSystemActions.map((action) => renderAction(action, true))}
               </StyledRow>
             </StyledSection>
+          )}
+
+          {surface.callNotice === true && (
+            <StyledSectionLabel>
+              {hasPbxLogin
+                ? 'Call via PBX rings your phone first, then connects them. Both parties hear a recording notice.'
+                : 'Call via PBX needs your PBX login on your member record — ask an admin to set it.'}
+            </StyledSectionLabel>
           )}
 
           {surface.offSystem.length > 0 && (

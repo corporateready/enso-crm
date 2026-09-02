@@ -332,11 +332,32 @@ the PBX lookup jobs).
    cabinet, and only on numbers the n8n connector is not steering.
 4. **Module C** — outbound ingest. No UI dependency: it captures calls placed
    from the Moldcell app and desk phones as soon as it ships.
-5. **Click-to-call** via `makeCall`, replacing the `soon:true` placeholders in the
-   task/log surface. `makeCall` IS the two-legged callback ("Request callback"):
-   the PBX rings the manager first, then connects the client, and no SIP device
-   is required. There is no browser-audio option and no app deep link — both were
-   checked and neither exists outside ITooLabs' own first-party widgets.
+5. **Click-to-call** via `makeCall` — shipped as ONE button, not two.
+
+   `makeCall` is the only origination command the PBX exposes, and it is a
+   two-legged callback: documented verbatim as "сначала звонок на телефон
+   менеджера, а потом соединит его с клиентом" — it rings the **manager** first,
+   then bridges the client. So "call from web" and "request a callback" were
+   always the same mechanism, and the button says so ("your phone rings first").
+
+   What does NOT exist, both checked:
+   - **Browser audio.** WebRTC lives only inside ITooLabs' own first-party
+     amoCRM / Kommo / Bitrix24 widgets. There is no JS SDK and no public
+     endpoint; the cabinet's own WebRTC speaks a proprietary JSON-over-WebSocket
+     protocol, not SIP. A desk-phone-free call needs an *installed* SIP client.
+   - **A Moldcell app deep link.** Verified absent via Play, the App Store /
+     iTunes lookup, `assetlinks.json`, AASA, the ITooLabs wiki, and other
+     resellers. It is also unnecessary: the app's own «Перезвонить через АТС» IS
+     the `makeCall` pattern, and calls placed in the app are captured by Module C
+     anyway.
+
+   No SIP device is required for `makeCall` either — where the manager's leg
+   rings is their own «Приём звонков» setting. Cost caveat: it is billed as two
+   legs, and the manager's leg is billed as outbound if it forwards to an
+   external mobile.
+
+   Gated on `workspaceMember.pbxLogin`: without it the PBX has no idea whose
+   phone to ring, so the button is disabled with that reason shown.
 6. **`set_dnd` / `subscribeOnCalls`** wired to `isAvailableForRouting`, so CRM
    presence and PBX call reception stop drifting apart.
 
