@@ -144,7 +144,9 @@ export class CallRecordingArchiveService {
   }
 
   // Idempotency is per activity rather than per url: one call has exactly one
-  // recording, and the same `history` push can be redelivered.
+  // recording, and the same `history` push can be redelivered. Narrowed to AUDIO
+  // so a file somebody attached to the activity by hand does not read as "the
+  // recording is already here".
   private async isAlreadyArchived(
     workspaceId: string,
     target: RecordingTarget,
@@ -159,7 +161,7 @@ export class CallRecordingArchiveService {
           );
 
         const existing = await repository.findOne({
-          where: this.targetColumns(target),
+          where: { ...this.targetColumns(target), fileCategory: 'AUDIO' },
         });
 
         return isDefined(existing);

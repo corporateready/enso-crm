@@ -267,6 +267,14 @@ export class IngestCallEventJob {
       return;
     }
 
+    // PBX recordings only. Roistat's after-call slot carries a link to the SAME
+    // audio in Roistat's own storage, and every Roistat-tracked call is also a
+    // PBX call — so archiving both would race two jobs onto one activity and
+    // spend retries on a store we have no credentials for.
+    if (event.provider !== 'moldcell') {
+      return;
+    }
+
     await this.telephonyQueueService.add<ArchiveCallRecordingJobData>(
       ArchiveCallRecordingJob.name,
       {
