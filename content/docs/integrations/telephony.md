@@ -143,6 +143,16 @@ The download runs as its own job, re-enqueued with a delay: the PBX writes the
 audio *after* the call ends, so `history` regularly arrives before the file
 exists. Giving up loses the durable copy, never the call.
 
+**Requires object storage.** The archiver runs on `twenty-worker` and the
+download is served by `twenty-server` — separate Railway deployments with
+separate filesystems. Under `STORAGE_TYPE=local` the worker writes the audio
+where the server cannot read it, and an unmounted Railway filesystem is wiped on
+every deploy, so the result is attachment rows that look real and never play.
+Archival is therefore gated on `STORAGE_TYPE=s3` and stays off until a bucket is
+configured (`STORAGE_S3_NAME`, `STORAGE_S3_ENDPOINT`, `STORAGE_S3_REGION`,
+`STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`) — which the CRM needs
+anyway for any attachment or avatar to survive a deploy.
+
 ### Why this collapses the legacy complexity
 
 Every hard mechanism in the legacy stack is a workaround for *polling instead of
@@ -316,7 +326,7 @@ from an analytics-confirmed one.
 | `ENSO_MOLDCELL_CRM_TOKEN` | Echoed back as `crm_token` on every push; the only authenticity check |
 | `ENSO_ROISTAT_WEBHOOK_SECRET` | Baked into the Roistat webhook path |
 | `ROISTAT_API_KEY`, `ROISTAT_PROJECT_ID` | Roistat REST access (project 187275) |
-| `ENSO_TELEPHONY_ARCHIVE_RECORDINGS` | `false` disables copying recordings into CRM storage (default on) |
+| `ENSO_TELEPHONY_ARCHIVE_RECORDINGS` | Recording archival. Defaults ON only under `STORAGE_TYPE=s3`; `true` forces it, `false` disables it |
 | `ENSO_TELEPHONY_RECORDING_MAX_BYTES` | Per-recording ceiling (default 20 MB ≈ a two-hour call) |
 
 Set on Railway `twenty-server` (serves the endpoints) and `twenty-worker` (runs

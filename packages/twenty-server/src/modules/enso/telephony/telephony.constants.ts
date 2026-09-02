@@ -119,8 +119,23 @@ export const CRM_INITIATED_ADOPTION_WINDOW_MS = Number(
 // to the call. Copying the audio into the workspace's own file storage fixes both:
 // the recording outlives the PBX's retention and is only reachable through a
 // signed CRM url.
+//
+// Gated on OBJECT storage, and this is not a preference — it is a correctness
+// requirement. The archiver runs on the WORKER and the download is served by the
+// SERVER, which are separate deployments with separate filesystems. Under
+// STORAGE_TYPE=local the worker would write the audio where the server cannot
+// read it (and Railway wipes an unmounted filesystem on every deploy), producing
+// attachment rows that look real and never play — strictly worse than no
+// attachment. Set ENSO_TELEPHONY_ARCHIVE_RECORDINGS=true to override, but ONLY
+// where server and worker genuinely share a filesystem.
+const STORAGE_IS_OBJECT_STORE =
+  (process.env.STORAGE_TYPE ?? '').toUpperCase().replace('-', '_') === 'S_3' ||
+  (process.env.STORAGE_TYPE ?? '').toLowerCase() === 's3';
+
 export const ARCHIVE_RECORDINGS =
-  process.env.ENSO_TELEPHONY_ARCHIVE_RECORDINGS !== 'false';
+  process.env.ENSO_TELEPHONY_ARCHIVE_RECORDINGS === 'true' ||
+  (STORAGE_IS_OBJECT_STORE &&
+    process.env.ENSO_TELEPHONY_ARCHIVE_RECORDINGS !== 'false');
 
 // Hard ceiling on a single downloaded recording. A ~3 KB/s mono MP3 means 20 MB
 // is roughly a two-hour call; anything larger is a bug or an abuse, not a call.
