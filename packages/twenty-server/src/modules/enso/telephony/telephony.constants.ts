@@ -22,6 +22,13 @@ export const MOLDCELL_CRM_API_PATH = '/sys/crm_api.wcgp';
 // Hard ceiling on the synchronous `contact` answer. The PBX is holding a ringing
 // call while it waits, so exceeding this is worse than not answering at all: we
 // give up and let the dial plan take over rather than delay the caller.
+// How stale a learned number's lastSeenAt may get before it is refreshed. One
+// call produces several pushes, so without a throttle every call would rewrite
+// the row a handful of times for no gain.
+export const PBX_NUMBER_REFRESH_INTERVAL_MS = Number(
+  process.env.ENSO_TELEPHONY_PBX_NUMBER_REFRESH_MS ?? 60 * 60 * 1000,
+);
+
 export const CONTACT_RESPONSE_BUDGET_MS = Number(
   process.env.ENSO_TELEPHONY_CONTACT_BUDGET_MS ?? 1200,
 );

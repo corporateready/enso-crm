@@ -6,6 +6,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { ILike } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number.service';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
@@ -83,6 +84,7 @@ export class CallIdentityService {
 
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+    private readonly pbxNumberService: PbxNumberService,
   ) {}
 
   // Find the caller, or create them. A call from an unknown number is still a
@@ -266,11 +268,30 @@ export class CallIdentityService {
       ? ENTRY_POINT_BY_DID[digitsOnly(signals.calleeDid)]
       : undefined;
 
-    const mapped = fromScenario ?? fromGroup ?? fromDid;
+    // The learned dial plan. A `contact` push carries the dialled number but no
+    // department, so this is what lets a ringing call resolve its project at
+    // all; and it stays correct as numbers are added in the PBX, because it is
+    // learned from the pushes rather than configured by hand.
+    const learned = isDefined(signals.calleeDid)
+      ? await this.pbxNumberService.lookup(
+          workspaceId,
+          digitsOnly(signals.calleeDid),
+        )
+      : undefined;
 
-    // Roistat's own project code is the most reliable attribution, but it says
-    // nothing about the queue, so keep any queue the mapped entry point carries.
-    const project = signals.roistatProjectCode ?? mapped?.project;
+    const fromLearnedGroup = isDefined(learned?.pbxGroup)
+      ? ENTRY_POINT_BY_PBX_GROUP[learned.pbxGroup]
+      : undefined;
+
+    // An override is a deliberate decision about this one number, so it beats
+    // every derived answer, including Roistat's.
+    const override = learned?.projectCodeOverride;
+
+    const mapped = fromScenario ?? fromGroup ?? fromLearnedGroup ?? fromDid;
+
+    // Roistat's own project code is the most reliable derived attribution, but it
+    // says nothing about the queue, so keep any queue the mapped entry carries.
+    const project = override ?? signals.roistatProjectCode ?? mapped?.project;
 
     // Nothing recognised this call at all — distinct from a recognised entry
     // point that deliberately produces no lead, which we still want to report.
