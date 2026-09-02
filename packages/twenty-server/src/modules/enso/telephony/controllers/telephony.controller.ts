@@ -20,11 +20,13 @@ import { MessageQueueService } from 'src/engine/core-modules/message-queue/servi
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 import { IngestCallEventJob } from 'src/modules/enso/telephony/jobs/ingest-call-event.job';
+import { TelephonyContactService } from 'src/modules/enso/telephony/services/telephony-contact.service';
 import {
   type IngestCallEventJobData,
   serializeCallEvent,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
 import {
+  CONTACT_RESPONSE_BUDGET_MS,
   MOLDCELL_CRM_TOKEN,
   ROISTAT_WEBHOOK_SECRET,
   TELEPHONY_WORKSPACE_ID,
@@ -63,6 +65,7 @@ export class TelephonyController {
   constructor(
     @InjectMessageQueue(MessageQueue.ensoTelephonyQueue)
     private readonly messageQueueService: MessageQueueService,
+    private readonly contactService: TelephonyContactService,
   ) {}
 
   // The PBX posts `event`, `history` and `contact` to this single address and
@@ -93,10 +96,10 @@ export class TelephonyController {
         );
       }
 
-      // Returning no `responsible` is the deliberate fallback: the PBX then
-      // applies its own dial plan, so a call is never delayed or dropped by us.
-      // Route-to-owner lands with Module A.
-      return {};
+      // Route-to-owner. Bounded by a hard budget and wrapped: any failure or
+      // overrun answers with no `responsible`, which makes the PBX fall back to
+      // its own dial plan. A ringing caller must never wait on us.
+      return this.resolveContactWithinBudget(body as MoldcellContactPush);
     }
 
     if (cmd === 'event') {
@@ -137,6 +140,39 @@ export class TelephonyController {
     await this.enqueue(event);
 
     return { ok: true };
+  }
+
+  private async resolveContactWithinBudget(
+    body: MoldcellContactPush,
+  ): Promise<MoldcellContactResponse> {
+    if (!isNonEmptyString(TELEPHONY_WORKSPACE_ID)) {
+      return {};
+    }
+
+    const diversion = (body as { diversion?: unknown }).diversion;
+
+    // Deliberately not Promise.all: the lookup keeps running if it loses the
+    // race, but its result is discarded — we simply stop waiting.
+    const timeout = new Promise<MoldcellContactResponse>((resolve) =>
+      setTimeout(() => resolve({}), CONTACT_RESPONSE_BUDGET_MS),
+    );
+
+    try {
+      return await Promise.race([
+        this.contactService.resolveContact(
+          TELEPHONY_WORKSPACE_ID,
+          body.phone,
+          diversion,
+        ),
+        timeout,
+      ]);
+    } catch (error) {
+      this.logger.warn(
+        `contact lookup failed, deferring to the PBX dial plan: ${(error as Error).message}`,
+      );
+
+      return {};
+    }
   }
 
   private async enqueue(event: NormalizedCallEvent | undefined): Promise<void> {

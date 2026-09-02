@@ -19,6 +19,13 @@ export const ROISTAT_WEBHOOK_SECRET = process.env.ENSO_ROISTAT_WEBHOOK_SECRET;
 
 export const MOLDCELL_CRM_API_PATH = '/sys/crm_api.wcgp';
 
+// Hard ceiling on the synchronous `contact` answer. The PBX is holding a ringing
+// call while it waits, so exceeding this is worse than not answering at all: we
+// give up and let the dial plan take over rather than delay the caller.
+export const CONTACT_RESPONSE_BUDGET_MS = Number(
+  process.env.ENSO_TELEPHONY_CONTACT_BUDGET_MS ?? 1200,
+);
+
 // Prefixes keep the two providers' id spaces apart inside the single
 // `sourceExternalId` column, which is our correlation + idempotency key.
 export const MOLDCELL_EXTERNAL_ID_PREFIX = 'moldcell';
