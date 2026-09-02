@@ -433,9 +433,11 @@ export class CallIngestService {
     }
 
     // Drop keys with no value so a later, sparser event cannot blank out data an
-    // earlier one already established.
+    // earlier one already established. Only `undefined` counts as "no value":
+    // a deliberate `null` is how a column gets cleared, and treating the two
+    // alike silently discarded the nonSalesPickupBy reset below.
     for (const key of Object.keys(patch)) {
-      if (!isDefined(patch[key])) {
+      if (patch[key] === undefined) {
         delete patch[key];
       }
     }

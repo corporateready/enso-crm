@@ -100,17 +100,16 @@ export class IngestCallEventJob {
       return;
     }
 
-    // Hold opportunity resolution until the call's outcome is known. The stage a
-    // deal opens in depends on whether anyone picked up, and a deal created at
-    // ring time would be stuck in ROUTING before we could know. The activity is
-    // already visible from the first signal, so nothing is hidden meanwhile.
-    if (!event.isTerminal) {
+    // Hold opportunity resolution until the call's outcome is actually known.
+    // Being terminal is not enough: `event COMPLETED` ends the call but carries
+    // no status, so acting on it opened every answered call in ROUTING — the
+    // stage for a call nobody took. `history` (and `event CANCELLED`, which does
+    // imply ABANDONED) are the pushes that can decide, so we wait for one.
+    if (!event.isTerminal || !isDefined(event.callStatus)) {
       return;
     }
 
-    const answered = isDefined(event.callStatus)
-      ? ANSWERED_CALL_STATUSES.includes(event.callStatus)
-      : false;
+    const answered = ANSWERED_CALL_STATUSES.includes(event.callStatus);
 
     // An answered inbound call is two-way engagement, so it opens CONNECTED and
     // never routes. An unanswered one is exactly what ROUTING is for.
