@@ -231,7 +231,7 @@ export class CallIdentityService {
       pbxGroupName?: string;
       calleeDid?: string;
     },
-  ): Promise<{ projectId: string; entryPoint: CallEntryPoint } | undefined> {
+  ): Promise<{ projectId?: string; entryPoint: CallEntryPoint } | undefined> {
     const fromScenario = isDefined(signals.roistatScenario)
       ? ENTRY_POINT_BY_ROISTAT_SCENARIO[signals.roistatScenario]
       : undefined;
@@ -250,15 +250,23 @@ export class CallIdentityService {
     // nothing about the queue, so keep any queue the mapped entry point carries.
     const project = signals.roistatProjectCode ?? mapped?.project;
 
-    if (!isDefined(project)) {
+    // Nothing recognised this call at all — distinct from a recognised entry
+    // point that deliberately produces no lead, which we still want to report.
+    if (!isDefined(project) && !isDefined(mapped)) {
       return undefined;
     }
 
     const entryPoint: CallEntryPoint = {
-      project,
+      ...(isDefined(project) ? { project } : {}),
       ...(isDefined(mapped?.queue) ? { queue: mapped.queue } : {}),
       lead: mapped?.lead ?? true,
     };
+
+    // A known non-lead entry point (an internal or test department) need not
+    // belong to a project; there is nothing to look up.
+    if (!isDefined(entryPoint.project)) {
+      return { entryPoint };
+    }
 
     const projectRow =
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -278,7 +286,7 @@ export class CallIdentityService {
     if (!isDefined(projectRow)) {
       this.logger.warn(`No project found for code ${entryPoint.project}`);
 
-      return undefined;
+      return { entryPoint };
     }
 
     return { projectId: projectRow.id, entryPoint };
