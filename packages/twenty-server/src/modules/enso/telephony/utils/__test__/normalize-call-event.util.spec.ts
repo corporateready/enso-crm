@@ -389,3 +389,59 @@ describe('normalizeMoldcellContact', () => {
     ).toBeUndefined();
   });
 });
+
+describe('which pushes can decide a call outcome', () => {
+  // The job may only create a deal from a push that knows the outcome. Being
+  // terminal is not enough: `event COMPLETED` ends the call but carries no
+  // status, and acting on it opened every answered call in ROUTING — the stage
+  // meant for a call nobody took.
+  it('should end the call on COMPLETED but report no status', () => {
+    const event = normalizeMoldcellEvent({
+      cmd: 'event',
+      type: 'COMPLETED',
+      callid: 'c1',
+    });
+
+    expect(event?.isTerminal).toBe(true);
+    expect(event?.callStatus).toBeUndefined();
+  });
+
+  it('should let CANCELLED decide, since it implies nobody answered', () => {
+    const event = normalizeMoldcellEvent({
+      cmd: 'event',
+      type: 'CANCELLED',
+      callid: 'c1',
+    });
+
+    expect(event?.isTerminal).toBe(true);
+    expect(event?.callStatus).toBe('ABANDONED');
+  });
+
+  it('should let history decide an answered call', () => {
+    const event = normalizeMoldcellHistory({
+      cmd: 'history',
+      type: 'in',
+      status: 'Success',
+      callid: 'c1',
+    });
+
+    expect(event?.isTerminal).toBe(true);
+    expect(event?.callStatus).toBe('ANSWERED');
+  });
+
+  it('should not let the ring-time pushes decide anything', () => {
+    for (const type of ['INCOMING', 'ACCEPTED']) {
+      const event = normalizeMoldcellEvent({
+        cmd: 'event',
+        type,
+        callid: 'c1',
+      });
+
+      expect(event?.isTerminal).toBe(false);
+    }
+
+    expect(
+      normalizeMoldcellContact({ cmd: 'contact', callid: 'c1' })?.isTerminal,
+    ).toBe(false);
+  });
+});
