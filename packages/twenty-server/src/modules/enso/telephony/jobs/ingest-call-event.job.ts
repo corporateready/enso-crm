@@ -14,6 +14,7 @@ import {
   type IngestCallEventJobData,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
 import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
+import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number.service';
 import { ANSWERED_CALL_STATUSES } from 'src/modules/enso/telephony/telephony.constants';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 
@@ -28,6 +29,7 @@ export class IngestCallEventJob {
   constructor(
     private readonly callIngestService: CallIngestService,
     private readonly callIdentityService: CallIdentityService,
+    private readonly pbxNumberService: PbxNumberService,
     @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
     private readonly leadPipelineQueueService: MessageQueueService,
   ) {}
@@ -59,6 +61,15 @@ export class IngestCallEventJob {
             ingested.callerE164,
           )
         : undefined;
+
+    // Teach the dial plan from this push. `event` carries both the dialled
+    // number and the department, which is the only place the two appear
+    // together — a `contact` push has the number but no department.
+    await this.pbxNumberService.learn(
+      workspaceId,
+      event.calleeDid,
+      event.answeredByGroup,
+    );
 
     const resolved = await this.callIdentityService.resolveEntryPoint(
       workspaceId,
