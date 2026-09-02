@@ -3,6 +3,7 @@ import {
   MOLDCELL_EVENT_CANCELLED,
   MOLDCELL_EVENT_COMPLETED,
   MOLDCELL_EVENT_INCOMING,
+  MOLDCELL_EVENT_OUTGOING,
   MOLDCELL_EXTERNAL_ID_PREFIX,
   MOLDCELL_GROUP_LOGIN_PREFIX,
   MOLDCELL_STATUS_TO_CALL_STATUS,
@@ -132,6 +133,20 @@ export const parseRoistatTimestamp = (value: unknown): Date | undefined => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
+// Outbound calls must not become inbound activities: a manager dialling out
+// would otherwise be filed as a lead, inflating counts and creating a Person for
+// someone we called. Observed live — `type: OUTGOING, direction: out` from a
+// manager's own call landed as an INCOMING_CALL.
+//
+// The two commands disagree on where direction lives: on `event` it is
+// `direction` (in/out) with `type` naming the state, while on `history` `type`
+// itself is in/out. Outbound handling is a separate leg (outboundActivity) and
+// is not built yet, so for now these are skipped rather than mis-filed.
+const isOutboundDirection = (value: unknown): boolean =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase() === 'out';
+
 const toDurationSeconds = (value: unknown): number | undefined => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
 
@@ -148,6 +163,11 @@ export const normalizeMoldcellEvent = (
   }
 
   const type = String(push.type ?? '').toUpperCase();
+
+  if (isOutboundDirection(push.direction) || type === MOLDCELL_EVENT_OUTGOING) {
+    return undefined;
+  }
+
   const { login, isGroup } = splitPbxLogin(push.user);
 
   // CANCELLED means the caller hung up before anyone picked up. COMPLETED means
@@ -187,6 +207,10 @@ export const normalizeMoldcellHistory = (
   const callId = String(push.callid ?? '').trim();
 
   if (!callId) {
+    return undefined;
+  }
+
+  if (isOutboundDirection(push.type)) {
     return undefined;
   }
 

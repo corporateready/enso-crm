@@ -280,3 +280,63 @@ describe('normalizeRoistatCall', () => {
     expect(roistat?.externalId).not.toBe(moldcell?.externalId);
   });
 });
+
+describe('outbound calls', () => {
+  // Observed live: a manager dialling out arrived as `type: OUTGOING,
+  // direction: out` and was filed as an INCOMING_CALL, which would inflate lead
+  // counts and create a Person for someone we called.
+  it('should skip an outbound event push', () => {
+    expect(
+      normalizeMoldcellEvent({
+        cmd: 'event',
+        type: 'OUTGOING',
+        direction: 'out',
+        callid: 'c1',
+        phone: '37369743418',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('should skip an event marked out even when the type is a state name', () => {
+    expect(
+      normalizeMoldcellEvent({
+        cmd: 'event',
+        type: 'COMPLETED',
+        direction: 'out',
+        callid: 'c1',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('should skip an outbound history push', () => {
+    // On `history` the direction lives in `type` itself, not in `direction`.
+    expect(
+      normalizeMoldcellHistory({
+        cmd: 'history',
+        type: 'out',
+        status: 'Success',
+        callid: 'c1',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('should still accept inbound pushes', () => {
+    expect(
+      normalizeMoldcellEvent({
+        cmd: 'event',
+        type: 'INCOMING',
+        direction: 'in',
+        callid: 'c1',
+      }),
+    ).toBeDefined();
+
+    expect(
+      normalizeMoldcellHistory({
+        cmd: 'history',
+        type: 'in',
+        status: 'Success',
+        callid: 'c1',
+      }),
+    ).toBeDefined();
+  });
+});

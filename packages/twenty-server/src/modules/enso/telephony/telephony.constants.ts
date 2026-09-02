@@ -101,8 +101,11 @@ export const ROMANIA_COUNTRY_CODE = 'RO';
 // A bare string means "this project, default queue, is a lead". `lead: false`
 // logs the call but never creates an opportunity.
 export type CallEntryPoint = {
-  // project.code — matches Roistat's project_id exactly.
-  project: string;
+  // project.code — matches Roistat's project_id exactly. Optional, because an
+  // entry point can be deliberately marked non-lead without belonging to any
+  // project (an internal or test department), and inventing a project for those
+  // would put junk in the attribution.
+  project?: string;
   // Which team should handle it. Distinguishes destinations inside one project.
   queue?: string;
   // Whether this entry point produces a sales lead. Defaults to true.
@@ -120,13 +123,17 @@ const parseEntryPoint = (value: unknown): CallEntryPoint | undefined => {
 
   const record = value as Record<string, unknown>;
   const project = record.project;
+  const hasProject = typeof project === 'string' && project !== '';
 
-  if (typeof project !== 'string' || !project) {
+  // An entry with no project is only meaningful when it explicitly opts out of
+  // lead creation. Requiring `lead: false` there keeps a typo'd or half-filled
+  // entry from silently becoming a project-less "lead".
+  if (!hasProject && record.lead !== false) {
     return undefined;
   }
 
   return {
-    project,
+    ...(hasProject ? { project } : {}),
     ...(typeof record.queue === 'string' && record.queue
       ? { queue: record.queue }
       : {}),
