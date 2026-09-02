@@ -11,6 +11,7 @@ import {
   ROISTAT_STATUS_TO_CALL_STATUS,
 } from 'src/modules/enso/telephony/telephony.constants';
 import {
+  type MoldcellContactPush,
   type MoldcellEventPush,
   type MoldcellHistoryPush,
   type NormalizedCallEvent,
@@ -288,5 +289,41 @@ export const normalizeRoistatCall = (
     },
     rawPayload: push,
     isTerminal: hasOutcome,
+  };
+};
+
+// `contact` fires the moment an inbound call arrives, while the phone is still
+// ringing, and is the earliest signal we get for a call. It is recorded for two
+// reasons: it completes the picture of a call, and its true payload shape is
+// undocumented — the spec lists only cmd/phone/callid/crm_token, but live
+// pushes have already been observed carrying undocumented extras (telnum_name).
+// Whether it also carries the dialled DID or the department decides whether
+// route-to-owner can know the project during the ring.
+//
+// Never terminal and never authoritative: it carries no outcome at all.
+export const normalizeMoldcellContact = (
+  push: MoldcellContactPush,
+): NormalizedCallEvent | undefined => {
+  const callId = String(push.callid ?? '').trim();
+
+  if (!callId) {
+    return undefined;
+  }
+
+  // `diversion` is not documented on this command; read it opportunistically so
+  // that if the PBX does send it, the country hint and project both improve.
+  const diversion = (push as { diversion?: unknown }).diversion;
+
+  return {
+    externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${callId}`,
+    provider: 'moldcell',
+    eventKey: 'moldcell:contact',
+    isAuthoritativeOutcome: false,
+    callerE164: normalizeE164(push.phone, diversion),
+    calleeDid: digitsOnly(diversion) || undefined,
+    // Fires on arrival, so its receive time approximates the call start.
+    occurredAt: new Date(),
+    rawPayload: push,
+    isTerminal: false,
   };
 };
