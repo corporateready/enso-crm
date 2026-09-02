@@ -33,6 +33,7 @@ type PhonesValue = {
 
 type PersonRow = {
   id: string;
+  name?: { firstName?: string | null; lastName?: string | null } | null;
   phones?: PhonesValue | null;
   position: number;
   createdBy?: ActorValue | null;
@@ -109,6 +110,27 @@ export class CallIdentityService {
         }
 
         return this.createPerson(repository, callerE164);
+      },
+      buildSystemAuthContext(workspaceId),
+    );
+  }
+
+  // Read-only variant for the synchronous `contact` responder, which answers
+  // while the phone is ringing and must never create anything.
+  async lookupPersonByPhone(
+    workspaceId: string,
+    callerE164: string,
+  ): Promise<PersonRow | undefined> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<PersonRow>(
+            workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        return this.findPersonByPhone(repository, callerE164);
       },
       buildSystemAuthContext(workspaceId),
     );
