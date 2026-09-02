@@ -128,9 +128,11 @@ export const CRM_INITIATED_ADOPTION_WINDOW_MS = Number(
 // attachment rows that look real and never play — strictly worse than no
 // attachment. Set ENSO_TELEPHONY_ARCHIVE_RECORDINGS=true to override, but ONLY
 // where server and worker genuinely share a filesystem.
+// STORAGE_TYPE is accepted in several spellings (the server itself snake-cases
+// it: `s3`, `S3` and `S_3` all mean the same driver), so normalize the same way.
 const STORAGE_IS_OBJECT_STORE =
-  (process.env.STORAGE_TYPE ?? '').toUpperCase().replace('-', '_') === 'S_3' ||
-  (process.env.STORAGE_TYPE ?? '').toLowerCase() === 's3';
+  (process.env.STORAGE_TYPE ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase() ===
+  'S3';
 
 export const ARCHIVE_RECORDINGS =
   process.env.ENSO_TELEPHONY_ARCHIVE_RECORDINGS === 'true' ||
