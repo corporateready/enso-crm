@@ -65,6 +65,9 @@ export class FlatPageLayoutWidgetTypeValidatorService {
       TASKS: validateSimpleRecordPageWidgetForCreation(
         WidgetConfigurationType.TASKS,
       ),
+      // The task action surface renders purely by widget type; its row carries
+      // an unrelated (but valid) configuration, so there is nothing to check.
+      TASK_ACTIONS: () => [],
       NOTES: validateSimpleRecordPageWidgetForCreation(
         WidgetConfigurationType.NOTES,
       ),
@@ -119,6 +122,7 @@ export class FlatPageLayoutWidgetTypeValidatorService {
       TASKS: validateSimpleRecordPageWidgetForUpdate(
         WidgetConfigurationType.TASKS,
       ),
+      TASK_ACTIONS: () => [],
       NOTES: validateSimpleRecordPageWidgetForUpdate(
         WidgetConfigurationType.NOTES,
       ),

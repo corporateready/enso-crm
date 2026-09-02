@@ -38,6 +38,14 @@ const SOURCE_LABEL: Record<string, string> = {
 const EMAIL_CHANNELS = ['email'] as const;
 const PHONE_CHANNELS = ['sms', 'whatsapp', 'call'] as const;
 
+type GrantedConsent = {
+  personId: string;
+  projectId: string;
+  channels: string[];
+  source: string;
+  consentedAt: string;
+};
+
 @Injectable()
 export class ConsentFromActivityService {
   private readonly logger = new Logger(ConsentFromActivityService.name);
@@ -63,13 +71,10 @@ export class ConsentFromActivityService {
 
     // Captured inside the workspace-context block; the append-only events are
     // emitted AFTER it (each event opens its own context — avoid nesting).
-    let granted: {
-      personId: string;
-      projectId: string;
-      channels: string[];
-      source: string;
-      consentedAt: string;
-    } | null = null;
+    // The assertion preserves the declared type: control-flow analysis cannot
+    // see the assignment inside the closure, so a bare `null` initializer would
+    // narrow this to `null` for the rest of the method.
+    let granted: GrantedConsent | null = null as GrantedConsent | null;
 
     try {
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -214,17 +219,16 @@ export class ConsentFromActivityService {
     // Append-only audit log: one GRANTED event per channel, linked to the
     // activity as evidence. Best-effort, emitted outside the write context.
     if (isDefined(granted)) {
-      const grantedNonNull = granted as NonNullable<typeof granted>;
       let firstEventId: string | null = null;
 
-      for (const channel of grantedNonNull.channels) {
+      for (const channel of granted.channels) {
         const eventId = await this.consentEventService.record(workspaceId, {
-          personId: grantedNonNull.personId,
-          projectId: grantedNonNull.projectId,
+          personId: granted.personId,
+          projectId: granted.projectId,
           channel,
           action: 'GRANTED',
-          source: grantedNonNull.source,
-          occurredAt: grantedNonNull.consentedAt,
+          source: granted.source,
+          occurredAt: granted.consentedAt,
           inboundActivityId: activityId,
           actor: { source: 'SYSTEM', name: 'ENSO CRM', context: {} },
         });
@@ -237,14 +241,14 @@ export class ConsentFromActivityService {
       // One aggregated row on the person's main timeline for the whole grant.
       if (isDefined(firstEventId)) {
         await this.personTimelineService.recordConsentChange(workspaceId, {
-          personId: grantedNonNull.personId,
-          projectId: grantedNonNull.projectId,
+          personId: granted.personId,
+          projectId: granted.projectId,
           consentEventId: firstEventId,
           action: 'GRANTED',
-          channels: grantedNonNull.channels,
-          detail: SOURCE_LABEL[grantedNonNull.source] ?? grantedNonNull.source,
+          channels: granted.channels,
+          detail: SOURCE_LABEL[granted.source] ?? granted.source,
           auto: true,
-          happensAt: grantedNonNull.consentedAt,
+          happensAt: granted.consentedAt,
         });
       }
     }
