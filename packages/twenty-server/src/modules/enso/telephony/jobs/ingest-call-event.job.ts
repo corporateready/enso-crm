@@ -47,16 +47,18 @@ export class IngestCallEventJob {
       return;
     }
 
-    if (!ingested.needsIdentity) {
-      return;
-    }
-
-    const personId = isDefined(ingested.callerE164)
-      ? await this.callIdentityService.resolvePersonId(
-          workspaceId,
-          ingested.callerE164,
-        )
-      : undefined;
+    // Resolve the caller only when the row still lacks identity — but never
+    // return early on that. One call arrives as several pushes: an earlier
+    // non-terminal event fills person+project, and the later terminal one is the
+    // only push that can decide the deal's stage. Short-circuiting here meant no
+    // call ever produced a deal.
+    const personId =
+      ingested.needsIdentity && isDefined(ingested.callerE164)
+        ? await this.callIdentityService.resolvePersonId(
+            workspaceId,
+            ingested.callerE164,
+          )
+        : undefined;
 
     const resolved = await this.callIdentityService.resolveEntryPoint(
       workspaceId,

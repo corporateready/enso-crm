@@ -407,6 +407,10 @@ export class CallIngestService {
 
     if (this.isIndividualPickup(event)) {
       patch.salesPickup = true;
+      // An earlier push recorded the department the call rang through. Now that a
+      // person is known to have taken it, that value would read as "a non-sales
+      // party answered", which is no longer true.
+      patch.nonSalesPickupBy = null;
     }
 
     if (event.isTerminal) {
