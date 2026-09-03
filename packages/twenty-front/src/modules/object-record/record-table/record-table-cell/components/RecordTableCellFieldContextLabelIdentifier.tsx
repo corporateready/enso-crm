@@ -55,6 +55,9 @@ export const RecordTableCellFieldContextLabelIdentifier = ({
     fieldDefinitionByFieldMetadataItemId[recordField.fieldMetadataItemId];
 
   const navigate = useNavigateApp();
+  // Not state: the click timestamp is only read inside the handler to time
+  // the double-click, and must never trigger a re-render.
+  // oxlint-disable-next-line twenty/no-state-useref
   const lastChipClickTimestampRef = useRef<number | null>(null);
 
   // Double-click on the name opens the record in full page (a single click

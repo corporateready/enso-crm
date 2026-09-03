@@ -33,6 +33,9 @@ export const RecordTableTr = forwardRef<HTMLDivElement, RecordTableTrProps>(
 
     const navigate = useNavigateApp();
 
+    // Not state: the click timestamp is only read inside the handler to time
+    // the double-click, and must never trigger a re-render.
+    // oxlint-disable-next-line twenty/no-state-useref
     const lastPrimaryClickTimestampRef = useRef<number | null>(null);
 
     const openRecordInFullPage = (event: React.MouseEvent<HTMLDivElement>) => {

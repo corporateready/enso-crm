@@ -711,8 +711,13 @@ export const ChatwootConversationEmbed = () => {
 
   // Keep the latest selection + loaders in refs so the socket handler can use
   // them without tearing down and reopening the socket on every change.
+  // Not state — the whole point is to avoid re-rendering: re-running this
+  // effect would tear down and reopen the socket on every selection change.
+  // oxlint-disable-next-line twenty/no-state-useref
   const selectedIdRef = useRef<string | null>(null);
+  // oxlint-disable-next-line twenty/no-state-useref
   const loadMessagesRef = useRef(loadMessages);
+  // oxlint-disable-next-line twenty/no-state-useref
   const loadConversationsRef = useRef(loadConversations);
 
   useEffect(() => {
@@ -1021,7 +1026,9 @@ export const ChatwootConversationEmbed = () => {
               <StyledBubble $incoming={message.incoming}>
                 {message.content}
                 {message.attachments.map((attachment) =>
-                  !isDefined(attachment.dataUrl) ? null : attachment.external ? (
+                  !isDefined(
+                    attachment.dataUrl,
+                  ) ? null : attachment.external ? (
                     // External share (e.g. an Instagram reel/story) — the proxy
                     // can't serve it, so open the original URL in a new tab.
                     <StyledExternalLink
