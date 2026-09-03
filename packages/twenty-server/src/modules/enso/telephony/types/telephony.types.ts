@@ -171,6 +171,9 @@ export type NormalizedCallEvent = {
     utmCampaign?: string;
     utmContent?: string;
     utmTerm?: string;
+    // Derived from utm_medium — Roistat has no traffic-type concept, but the
+    // deal copies this onto its first/last-touch snapshot.
+    trafficType?: string;
     landingPage?: string;
     referrer?: string;
     googleClientId?: string;

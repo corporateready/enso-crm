@@ -63,6 +63,7 @@ type InboundActivityRow = {
   utmCampaign?: string | null;
   utmContent?: string | null;
   utmTerm?: string | null;
+  trafficType?: string | null;
   landingPage?: string | null;
   referrer?: string | null;
   googleClientId?: string | null;
@@ -596,6 +597,7 @@ export class CallIngestService {
       utmCampaign: attribution.utmCampaign,
       utmContent: attribution.utmContent,
       utmTerm: attribution.utmTerm,
+      trafficType: attribution.trafficType,
       landingPage: attribution.landingPage,
       referrer: attribution.referrer,
       googleClientId: attribution.googleClientId,

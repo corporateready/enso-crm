@@ -264,6 +264,68 @@ export const normalizeMoldcellHistory = (
   };
 };
 
+// Roistat delivers attribution through TWO different slots and which one a field
+// lands in is a per-scenario configuration choice, not a property of the field:
+//
+//   - `custom_fields` is the configurable payload. Static scenarios put ENFORCED
+//     values here — a static number has no visitor session, so its UTMs are set
+//     once in Roistat against the scenario (that is how `project_id` already
+//     reaches us).
+//   - top level is where Roistat's own session-derived values appear on dynamic
+//     scenarios (landing_page, referrer, ip, google_client_id...).
+//
+// Reading only one slot silently drops whichever type is configured the other
+// way, so every field is read from custom_fields first, then the top level.
+const pickAttribution = (
+  push: RoistatCallWebhook,
+  custom: Record<string, string | undefined>,
+  key: string,
+): string | undefined => {
+  const fromCustom = custom[key];
+
+  if (typeof fromCustom === 'string' && fromCustom.trim()) {
+    return fromCustom.trim();
+  }
+
+  const fromTop = (push as Record<string, unknown>)[key];
+
+  if (typeof fromTop === 'string' && fromTop.trim()) {
+    return fromTop.trim();
+  }
+
+  return typeof fromTop === 'number' ? String(fromTop) : undefined;
+};
+
+// Roistat has no traffic-type concept, but the deal copies `trafficType` onto its
+// first/last-touch snapshot, so a call with UTMs would otherwise arrive with the
+// UTMs present and the traffic type blank. Derived from the medium the same way
+// the Lead Ads intake already labels its rows (utm_medium=paid_social → PAID),
+// so a call and a lead ad describing the same campaign read alike.
+const deriveTrafficType = (
+  medium: string | undefined,
+  source: string | undefined,
+): string | undefined => {
+  const m = (medium ?? '').toLowerCase();
+
+  if (!m) {
+    // No medium at all: a bare source is still a referral of some kind, but
+    // claiming a type from it would be a guess.
+    return isNonEmptyTrimmed(source) ? 'OTHER' : undefined;
+  }
+
+  if (/cpc|ppc|paid|cpm|display|banner|retarget/.test(m)) return 'PAID';
+  if (/organic|seo/.test(m)) return 'ORGANIC';
+  if (/social|smm/.test(m)) return 'SOCIAL';
+  if (/email|newsletter|mail/.test(m)) return 'EMAIL';
+  if (/referr?al|referrer|partner/.test(m)) return 'REFERRAL';
+  if (/none|direct/.test(m)) return 'DIRECT';
+
+  return 'OTHER';
+};
+
+const isNonEmptyTrimmed = (value: string | undefined): boolean =>
+  typeof value === 'string' && value.trim() !== '';
+
 export const normalizeRoistatCall = (
   push: RoistatCallWebhook,
 ): NormalizedCallEvent | undefined => {
@@ -294,28 +356,44 @@ export const normalizeRoistatCall = (
     callStatus: ROISTAT_STATUS_TO_CALL_STATUS[status],
     durationS: toDurationSeconds(push.duration),
     recordingUrl: String(push.link ?? '').trim() || undefined,
-    attribution: {
-      // Null for static tracking, populated for dynamic.
-      roistatVisitId: push.visit_id ? String(push.visit_id) : undefined,
-      // Roistat injects this per scenario; it is our project signal.
-      projectCode: custom.project_id,
-      utmSource: custom.utm_source,
-      utmMedium: custom.utm_medium,
-      utmCampaign: custom.utm_campaign,
-      utmContent: custom.utm_content,
-      utmTerm: custom.utm_term,
-      landingPage: push.landing_page ?? undefined,
-      referrer: push.referrer ?? undefined,
-      googleClientId: push.google_client_id ?? undefined,
-      ipAddress: push.ip ?? undefined,
-      city: push.city ?? undefined,
-      country: push.country ?? undefined,
-      fbclid: custom.fbc,
-      fbp: custom.fbp,
-      distinctId: custom.posthog_id,
-    },
+    attribution: buildRoistatAttribution(push, custom),
     rawPayload: push,
     isTerminal: hasOutcome,
+  };
+};
+
+// Both tracking types, one shape. Static scenarios carry enforced UTMs in
+// `custom_fields`; dynamic ones carry session-derived values, mostly top level.
+const buildRoistatAttribution = (
+  push: RoistatCallWebhook,
+  custom: Record<string, string | undefined>,
+): NonNullable<NormalizedCallEvent['attribution']> => {
+  const pick = (key: string) => pickAttribution(push, custom, key);
+
+  const utmSource = pick('utm_source');
+  const utmMedium = pick('utm_medium');
+
+  return {
+    // Null on static tracking (no visitor session), set on dynamic — which is
+    // how we can tell the two apart after the fact.
+    roistatVisitId: push.visit_id ? String(push.visit_id) : undefined,
+    // Roistat injects this per scenario; it is our project signal.
+    projectCode: pick('project_id'),
+    utmSource,
+    utmMedium,
+    utmCampaign: pick('utm_campaign'),
+    utmContent: pick('utm_content'),
+    utmTerm: pick('utm_term'),
+    trafficType: deriveTrafficType(utmMedium, utmSource),
+    landingPage: pick('landing_page'),
+    referrer: pick('referrer'),
+    googleClientId: pick('google_client_id'),
+    ipAddress: pick('ip'),
+    city: pick('city'),
+    country: pick('country'),
+    fbclid: pick('fbc'),
+    fbp: pick('fbp'),
+    distinctId: pick('posthog_id'),
   };
 };
 
