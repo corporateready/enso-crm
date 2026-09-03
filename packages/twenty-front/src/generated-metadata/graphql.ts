@@ -1872,6 +1872,24 @@ export type GetAuthorizationUrlForSsoInput = {
   workspaceInviteHash?: InputMaybe<Scalars['String']>;
 };
 
+export type GoogleChatNotificationPreference = {
+  __typename?: 'GoogleChatNotificationPreference';
+  enabled: Scalars['Boolean'];
+  event: Scalars['String'];
+};
+
+export type GoogleChatTestResult = {
+  __typename?: 'GoogleChatTestResult';
+  error?: Maybe<Scalars['String']>;
+  success: Scalars['Boolean'];
+};
+
+export type GoogleChatWebhookSettings = {
+  __typename?: 'GoogleChatWebhookSettings';
+  isConfigured: Scalars['Boolean'];
+  maskedWebhookUrl?: Maybe<Scalars['String']>;
+};
+
 /** Order by options for graph widgets */
 export enum GraphOrderBy {
   FIELD_ASC = 'FIELD_ASC',
@@ -2408,6 +2426,7 @@ export type Mutation = {
   deleteEmailGroupChannel: MessageChannel;
   deleteEmailingDomain: Scalars['Boolean'];
   deleteFrontComponent: FrontComponent;
+  deleteGoogleChatWebhookUrl: Scalars['Boolean'];
   deleteManyNavigationMenuItems: Array<NavigationMenuItem>;
   deleteNavigationMenuItem: NavigationMenuItem;
   deleteOneAgent: Agent;
@@ -2478,8 +2497,17 @@ export type Mutation = {
   saveImapSmtpCaldavAccount: ImapSmtpCaldavConnectionSuccess;
   sendChatMessage: SendChatMessageResult;
   sendEmail: SendEmailOutput;
+  sendGoogleChatTestNotification: GoogleChatTestResult;
   sendInvitations: SendInvitations;
+  sendPersonSms: GoogleChatTestResult;
+  sendRecordEmail: GoogleChatTestResult;
+  sendRecordSms: GoogleChatTestResult;
+  sendTaskEmail: GoogleChatTestResult;
+  sendTaskSms: GoogleChatTestResult;
+  sendTaskToMyPhone: GoogleChatTestResult;
   setEnterpriseKey: EnterpriseLicenseInfoDto;
+  setGoogleChatWebhookUrl: GoogleChatWebhookSettings;
+  setNotificationPreference: Array<GoogleChatNotificationPreference>;
   setResourceCreditSubscriptionPrice: BillingUpdate;
   signIn: AvailableWorkspacesAndAccessTokens;
   signUp: AvailableWorkspacesAndAccessTokens;
@@ -3200,8 +3228,61 @@ export type MutationSendInvitationsArgs = {
 };
 
 
+export type MutationSendPersonSmsArgs = {
+  alias?: InputMaybe<Scalars['String']>;
+  message: Scalars['String'];
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+  taskId?: InputMaybe<Scalars['String']>;
+};
+
+
+export type MutationSendRecordEmailArgs = {
+  body: Scalars['String'];
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+  subject: Scalars['String'];
+};
+
+
+export type MutationSendRecordSmsArgs = {
+  message: Scalars['String'];
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+};
+
+
+export type MutationSendTaskEmailArgs = {
+  body: Scalars['String'];
+  subject: Scalars['String'];
+  taskId: Scalars['String'];
+};
+
+
+export type MutationSendTaskSmsArgs = {
+  message: Scalars['String'];
+  taskId: Scalars['String'];
+};
+
+
+export type MutationSendTaskToMyPhoneArgs = {
+  taskId: Scalars['String'];
+};
+
+
 export type MutationSetEnterpriseKeyArgs = {
   enterpriseKey: Scalars['String'];
+};
+
+
+export type MutationSetGoogleChatWebhookUrlArgs = {
+  input: SetGoogleChatWebhookUrlInput;
+};
+
+
+export type MutationSetNotificationPreferenceArgs = {
+  enabled: Scalars['Boolean'];
+  event: Scalars['String'];
 };
 
 
@@ -3955,6 +4036,13 @@ export enum PermissionFlagType {
   WORKSPACE_MEMBERS = 'WORKSPACE_MEMBERS'
 }
 
+export type PersonSmsContext = {
+  __typename?: 'PersonSmsContext';
+  aliases: Array<Scalars['String']>;
+  canSend: Scalars['Boolean'];
+  reason?: Maybe<Scalars['String']>;
+};
+
 export type PieChartConfiguration = {
   __typename?: 'PieChartConfiguration';
   aggregateFieldMetadataId: Scalars['UUID'];
@@ -4151,6 +4239,7 @@ export type Query = {
   getViewSort?: Maybe<ViewSort>;
   getViewSorts: Array<ViewSort>;
   getViews: Array<View>;
+  googleChatWebhookSettings: GoogleChatWebhookSettings;
   index: Index;
   indexMetadatas: IndexConnection;
   lineChartData: LineChartData;
@@ -4162,12 +4251,18 @@ export type Query = {
   myMessageFolders: Array<MessageFolder>;
   navigationMenuItem?: Maybe<NavigationMenuItem>;
   navigationMenuItems: Array<NavigationMenuItem>;
+  notificationPreferences: Array<GoogleChatNotificationPreference>;
   object: Object;
   objectRecordCounts: Array<ObjectRecordCount>;
   objects: ObjectConnection;
+  personEmailContext: TaskEmailContext;
+  personSmsContext: PersonSmsContext;
   pieChartData: PieChartData;
+  recordSmsContext: TaskSmsContext;
   skill?: Maybe<Skill>;
   skills: Array<Skill>;
+  taskEmailContext: TaskEmailContext;
+  taskSmsContext: TaskSmsContext;
   validatePasswordResetToken: ValidatePasswordResetToken;
   webhook?: Maybe<Webhook>;
   webhooks: Array<Webhook>;
@@ -4515,13 +4610,40 @@ export type QueryObjectsArgs = {
 };
 
 
+export type QueryPersonEmailContextArgs = {
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+};
+
+
+export type QueryPersonSmsContextArgs = {
+  personId?: InputMaybe<Scalars['String']>;
+};
+
+
 export type QueryPieChartDataArgs = {
   input: PieChartDataInput;
 };
 
 
+export type QueryRecordSmsContextArgs = {
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+};
+
+
 export type QuerySkillArgs = {
   id: Scalars['UUID'];
+};
+
+
+export type QueryTaskEmailContextArgs = {
+  taskId: Scalars['String'];
+};
+
+
+export type QueryTaskSmsContextArgs = {
+  taskId: Scalars['String'];
 };
 
 
@@ -4764,6 +4886,10 @@ export type Sentry = {
   release?: Maybe<Scalars['String']>;
 };
 
+export type SetGoogleChatWebhookUrlInput = {
+  webhookUrl: Scalars['String'];
+};
+
 export type SetupOidcSsoInput = {
   clientID: Scalars['String'];
   clientSecret: Scalars['String'];
@@ -4872,6 +4998,22 @@ export enum SupportDriver {
   FRONT = 'FRONT',
   NONE = 'NONE'
 }
+
+export type TaskEmailContext = {
+  __typename?: 'TaskEmailContext';
+  canSend: Scalars['Boolean'];
+  consentNote?: Maybe<Scalars['String']>;
+  from?: Maybe<Scalars['String']>;
+  hasEmailConsent: Scalars['Boolean'];
+  reason?: Maybe<Scalars['String']>;
+};
+
+export type TaskSmsContext = {
+  __typename?: 'TaskSmsContext';
+  alias?: Maybe<Scalars['String']>;
+  canSend: Scalars['Boolean'];
+  reason?: Maybe<Scalars['String']>;
+};
 
 export type TasksConfiguration = {
   __typename?: 'TasksConfiguration';
@@ -7277,6 +7419,132 @@ export type UploadWorkspaceMemberProfilePictureMutationVariables = Exact<{
 
 export type UploadWorkspaceMemberProfilePictureMutation = { __typename?: 'Mutation', uploadWorkspaceMemberProfilePicture: { __typename?: 'FileWithSignedUrl', id: string, url: string } };
 
+export type DeleteGoogleChatWebhookUrlMutationVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DeleteGoogleChatWebhookUrlMutation = { __typename?: 'Mutation', deleteGoogleChatWebhookUrl: boolean };
+
+export type SendGoogleChatTestNotificationMutationVariables = Exact<{ [key: string]: never; }>;
+
+
+export type SendGoogleChatTestNotificationMutation = { __typename?: 'Mutation', sendGoogleChatTestNotification: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendPersonSmsMutationVariables = Exact<{
+  personId?: InputMaybe<Scalars['String']>;
+  message: Scalars['String'];
+  alias?: InputMaybe<Scalars['String']>;
+  opportunityId?: InputMaybe<Scalars['String']>;
+  taskId?: InputMaybe<Scalars['String']>;
+}>;
+
+
+export type SendPersonSmsMutation = { __typename?: 'Mutation', sendPersonSms: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendRecordEmailMutationVariables = Exact<{
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+  subject: Scalars['String'];
+  body: Scalars['String'];
+}>;
+
+
+export type SendRecordEmailMutation = { __typename?: 'Mutation', sendRecordEmail: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendRecordSmsMutationVariables = Exact<{
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+  message: Scalars['String'];
+}>;
+
+
+export type SendRecordSmsMutation = { __typename?: 'Mutation', sendRecordSms: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendTaskEmailMutationVariables = Exact<{
+  taskId: Scalars['String'];
+  subject: Scalars['String'];
+  body: Scalars['String'];
+}>;
+
+
+export type SendTaskEmailMutation = { __typename?: 'Mutation', sendTaskEmail: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendTaskSmsMutationVariables = Exact<{
+  taskId: Scalars['String'];
+  message: Scalars['String'];
+}>;
+
+
+export type SendTaskSmsMutation = { __typename?: 'Mutation', sendTaskSms: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SendTaskToMyPhoneMutationVariables = Exact<{
+  taskId: Scalars['String'];
+}>;
+
+
+export type SendTaskToMyPhoneMutation = { __typename?: 'Mutation', sendTaskToMyPhone: { __typename?: 'GoogleChatTestResult', success: boolean, error?: string | null } };
+
+export type SetGoogleChatWebhookUrlMutationVariables = Exact<{
+  input: SetGoogleChatWebhookUrlInput;
+}>;
+
+
+export type SetGoogleChatWebhookUrlMutation = { __typename?: 'Mutation', setGoogleChatWebhookUrl: { __typename?: 'GoogleChatWebhookSettings', isConfigured: boolean, maskedWebhookUrl?: string | null } };
+
+export type SetNotificationPreferenceMutationVariables = Exact<{
+  event: Scalars['String'];
+  enabled: Scalars['Boolean'];
+}>;
+
+
+export type SetNotificationPreferenceMutation = { __typename?: 'Mutation', setNotificationPreference: Array<{ __typename?: 'GoogleChatNotificationPreference', event: string, enabled: boolean }> };
+
+export type GoogleChatWebhookSettingsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type GoogleChatWebhookSettingsQuery = { __typename?: 'Query', googleChatWebhookSettings: { __typename?: 'GoogleChatWebhookSettings', isConfigured: boolean, maskedWebhookUrl?: string | null } };
+
+export type NotificationPreferencesQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type NotificationPreferencesQuery = { __typename?: 'Query', notificationPreferences: Array<{ __typename?: 'GoogleChatNotificationPreference', event: string, enabled: boolean }> };
+
+export type PersonEmailContextQueryVariables = Exact<{
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+}>;
+
+
+export type PersonEmailContextQuery = { __typename?: 'Query', personEmailContext: { __typename?: 'TaskEmailContext', from?: string | null, canSend: boolean, reason?: string | null, hasEmailConsent: boolean, consentNote?: string | null } };
+
+export type PersonSmsContextQueryVariables = Exact<{
+  personId?: InputMaybe<Scalars['String']>;
+}>;
+
+
+export type PersonSmsContextQuery = { __typename?: 'Query', personSmsContext: { __typename?: 'PersonSmsContext', aliases: Array<string>, canSend: boolean, reason?: string | null } };
+
+export type RecordSmsContextQueryVariables = Exact<{
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
+}>;
+
+
+export type RecordSmsContextQuery = { __typename?: 'Query', recordSmsContext: { __typename?: 'TaskSmsContext', alias?: string | null, canSend: boolean, reason?: string | null } };
+
+export type TaskEmailContextQueryVariables = Exact<{
+  taskId: Scalars['String'];
+}>;
+
+
+export type TaskEmailContextQuery = { __typename?: 'Query', taskEmailContext: { __typename?: 'TaskEmailContext', from?: string | null, canSend: boolean, reason?: string | null, hasEmailConsent: boolean, consentNote?: string | null } };
+
+export type TaskSmsContextQueryVariables = Exact<{
+  taskId: Scalars['String'];
+}>;
+
+
+export type TaskSmsContextQuery = { __typename?: 'Query', taskSmsContext: { __typename?: 'TaskSmsContext', alias?: string | null, canSend: boolean, reason?: string | null } };
+
 export type UpdateUserEmailMutationVariables = Exact<{
   newEmail: Scalars['String'];
   verifyEmailRedirectPath?: InputMaybe<Scalars['String']>;
@@ -8110,6 +8378,23 @@ export const EnterprisePortalSessionDocument = {"kind":"Document","definitions":
 export const EnterpriseSubscriptionStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"EnterpriseSubscriptionStatus"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"enterpriseSubscriptionStatus"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"licensee"}},{"kind":"Field","name":{"kind":"Name","value":"expiresAt"}},{"kind":"Field","name":{"kind":"Name","value":"cancelAt"}},{"kind":"Field","name":{"kind":"Name","value":"currentPeriodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"isCancellationScheduled"}}]}}]}}]} as unknown as DocumentNode<EnterpriseSubscriptionStatusQuery, EnterpriseSubscriptionStatusQueryVariables>;
 export const UpdateLabPublicFeatureFlagDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateLabPublicFeatureFlag"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateLabPublicFeatureFlagInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateLabPublicFeatureFlag"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"value"}}]}}]}}]} as unknown as DocumentNode<UpdateLabPublicFeatureFlagMutation, UpdateLabPublicFeatureFlagMutationVariables>;
 export const UploadWorkspaceMemberProfilePictureDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UploadWorkspaceMemberProfilePicture"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"file"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Upload"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"uploadWorkspaceMemberProfilePicture"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"file"},"value":{"kind":"Variable","name":{"kind":"Name","value":"file"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]} as unknown as DocumentNode<UploadWorkspaceMemberProfilePictureMutation, UploadWorkspaceMemberProfilePictureMutationVariables>;
+export const DeleteGoogleChatWebhookUrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteGoogleChatWebhookUrl"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteGoogleChatWebhookUrl"}}]}}]} as unknown as DocumentNode<DeleteGoogleChatWebhookUrlMutation, DeleteGoogleChatWebhookUrlMutationVariables>;
+export const SendGoogleChatTestNotificationDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendGoogleChatTestNotification"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendGoogleChatTestNotification"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendGoogleChatTestNotificationMutation, SendGoogleChatTestNotificationMutationVariables>;
+export const SendPersonSmsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendPersonSms"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"message"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"alias"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendPersonSms"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}},{"kind":"Argument","name":{"kind":"Name","value":"message"},"value":{"kind":"Variable","name":{"kind":"Name","value":"message"}}},{"kind":"Argument","name":{"kind":"Name","value":"alias"},"value":{"kind":"Variable","name":{"kind":"Name","value":"alias"}}},{"kind":"Argument","name":{"kind":"Name","value":"opportunityId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}}},{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendPersonSmsMutation, SendPersonSmsMutationVariables>;
+export const SendRecordEmailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendRecordEmail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"subject"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"body"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendRecordEmail"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"opportunityId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}}},{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}},{"kind":"Argument","name":{"kind":"Name","value":"subject"},"value":{"kind":"Variable","name":{"kind":"Name","value":"subject"}}},{"kind":"Argument","name":{"kind":"Name","value":"body"},"value":{"kind":"Variable","name":{"kind":"Name","value":"body"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendRecordEmailMutation, SendRecordEmailMutationVariables>;
+export const SendRecordSmsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendRecordSms"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"message"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendRecordSms"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"opportunityId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}}},{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}},{"kind":"Argument","name":{"kind":"Name","value":"message"},"value":{"kind":"Variable","name":{"kind":"Name","value":"message"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendRecordSmsMutation, SendRecordSmsMutationVariables>;
+export const SendTaskEmailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendTaskEmail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"subject"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"body"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendTaskEmail"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}},{"kind":"Argument","name":{"kind":"Name","value":"subject"},"value":{"kind":"Variable","name":{"kind":"Name","value":"subject"}}},{"kind":"Argument","name":{"kind":"Name","value":"body"},"value":{"kind":"Variable","name":{"kind":"Name","value":"body"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendTaskEmailMutation, SendTaskEmailMutationVariables>;
+export const SendTaskSmsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendTaskSms"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"message"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendTaskSms"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}},{"kind":"Argument","name":{"kind":"Name","value":"message"},"value":{"kind":"Variable","name":{"kind":"Name","value":"message"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendTaskSmsMutation, SendTaskSmsMutationVariables>;
+export const SendTaskToMyPhoneDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SendTaskToMyPhone"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sendTaskToMyPhone"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]} as unknown as DocumentNode<SendTaskToMyPhoneMutation, SendTaskToMyPhoneMutationVariables>;
+export const SetGoogleChatWebhookUrlDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SetGoogleChatWebhookUrl"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"SetGoogleChatWebhookUrlInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"setGoogleChatWebhookUrl"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isConfigured"}},{"kind":"Field","name":{"kind":"Name","value":"maskedWebhookUrl"}}]}}]}}]} as unknown as DocumentNode<SetGoogleChatWebhookUrlMutation, SetGoogleChatWebhookUrlMutationVariables>;
+export const SetNotificationPreferenceDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SetNotificationPreference"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"event"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"enabled"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Boolean"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"setNotificationPreference"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"event"},"value":{"kind":"Variable","name":{"kind":"Name","value":"event"}}},{"kind":"Argument","name":{"kind":"Name","value":"enabled"},"value":{"kind":"Variable","name":{"kind":"Name","value":"enabled"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"event"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}}]}}]}}]} as unknown as DocumentNode<SetNotificationPreferenceMutation, SetNotificationPreferenceMutationVariables>;
+export const GoogleChatWebhookSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GoogleChatWebhookSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"googleChatWebhookSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isConfigured"}},{"kind":"Field","name":{"kind":"Name","value":"maskedWebhookUrl"}}]}}]}}]} as unknown as DocumentNode<GoogleChatWebhookSettingsQuery, GoogleChatWebhookSettingsQueryVariables>;
+export const NotificationPreferencesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"NotificationPreferences"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"notificationPreferences"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"event"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}}]}}]}}]} as unknown as DocumentNode<NotificationPreferencesQuery, NotificationPreferencesQueryVariables>;
+export const PersonEmailContextDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PersonEmailContext"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"personEmailContext"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"opportunityId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}}},{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"from"}},{"kind":"Field","name":{"kind":"Name","value":"canSend"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}},{"kind":"Field","name":{"kind":"Name","value":"hasEmailConsent"}},{"kind":"Field","name":{"kind":"Name","value":"consentNote"}}]}}]}}]} as unknown as DocumentNode<PersonEmailContextQuery, PersonEmailContextQueryVariables>;
+export const PersonSmsContextDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PersonSmsContext"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"personSmsContext"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aliases"}},{"kind":"Field","name":{"kind":"Name","value":"canSend"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}}]}}]}}]} as unknown as DocumentNode<PersonSmsContextQuery, PersonSmsContextQueryVariables>;
+export const RecordSmsContextDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"RecordSmsContext"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"personId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"recordSmsContext"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"opportunityId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"opportunityId"}}},{"kind":"Argument","name":{"kind":"Name","value":"personId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"personId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"alias"}},{"kind":"Field","name":{"kind":"Name","value":"canSend"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}}]}}]}}]} as unknown as DocumentNode<RecordSmsContextQuery, RecordSmsContextQueryVariables>;
+export const TaskEmailContextDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"TaskEmailContext"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"taskEmailContext"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"from"}},{"kind":"Field","name":{"kind":"Name","value":"canSend"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}},{"kind":"Field","name":{"kind":"Name","value":"hasEmailConsent"}},{"kind":"Field","name":{"kind":"Name","value":"consentNote"}}]}}]}}]} as unknown as DocumentNode<TaskEmailContextQuery, TaskEmailContextQueryVariables>;
+export const TaskSmsContextDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"TaskSmsContext"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"taskSmsContext"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"taskId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"taskId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"alias"}},{"kind":"Field","name":{"kind":"Name","value":"canSend"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}}]}}]}}]} as unknown as DocumentNode<TaskSmsContextQuery, TaskSmsContextQueryVariables>;
 export const UpdateUserEmailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateUserEmail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"newEmail"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"verifyEmailRedirectPath"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateUserEmail"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"newEmail"},"value":{"kind":"Variable","name":{"kind":"Name","value":"newEmail"}}},{"kind":"Argument","name":{"kind":"Name","value":"verifyEmailRedirectPath"},"value":{"kind":"Variable","name":{"kind":"Name","value":"verifyEmailRedirectPath"}}}]}]}}]} as unknown as DocumentNode<UpdateUserEmailMutation, UpdateUserEmailMutationVariables>;
 export const UpdateWorkspaceMemberSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateWorkspaceMemberSettings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateWorkspaceMemberSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateWorkspaceMemberSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}]}]}}]} as unknown as DocumentNode<UpdateWorkspaceMemberSettingsMutation, UpdateWorkspaceMemberSettingsMutationVariables>;
 export const CreateOneRoleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateOneRole"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"createRoleInput"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateRoleInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createOneRole"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"createRoleInput"},"value":{"kind":"Variable","name":{"kind":"Name","value":"createRoleInput"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"RoleFragment"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"RoleFragment"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Role"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"canUpdateAllSettings"}},{"kind":"Field","name":{"kind":"Name","value":"canAccessAllTools"}},{"kind":"Field","name":{"kind":"Name","value":"isEditable"}},{"kind":"Field","name":{"kind":"Name","value":"canReadAllObjectRecords"}},{"kind":"Field","name":{"kind":"Name","value":"canUpdateAllObjectRecords"}},{"kind":"Field","name":{"kind":"Name","value":"canSoftDeleteAllObjectRecords"}},{"kind":"Field","name":{"kind":"Name","value":"canDestroyAllObjectRecords"}},{"kind":"Field","name":{"kind":"Name","value":"canBeAssignedToUsers"}},{"kind":"Field","name":{"kind":"Name","value":"canBeAssignedToAgents"}},{"kind":"Field","name":{"kind":"Name","value":"canBeAssignedToApiKeys"}}]}}]} as unknown as DocumentNode<CreateOneRoleMutation, CreateOneRoleMutationVariables>;

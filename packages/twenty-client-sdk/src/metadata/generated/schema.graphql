@@ -1061,6 +1061,7 @@ enum WidgetType {
   STANDALONE_RICH_TEXT
   TIMELINE
   TASKS
+  TASK_ACTIONS
   NOTES
   FILES
   EMAILS
@@ -2600,6 +2601,41 @@ type SendEmailOutput {
   error: String
 }
 
+type GoogleChatNotificationPreference {
+  event: String!
+  enabled: Boolean!
+}
+
+type GoogleChatTestResult {
+  success: Boolean!
+  error: String
+}
+
+type GoogleChatWebhookSettings {
+  isConfigured: Boolean!
+  maskedWebhookUrl: String
+}
+
+type PersonSmsContext {
+  aliases: [String!]!
+  canSend: Boolean!
+  reason: String
+}
+
+type TaskSmsContext {
+  alias: String
+  canSend: Boolean!
+  reason: String
+}
+
+type TaskEmailContext {
+  from: String
+  canSend: Boolean!
+  reason: String
+  hasEmailConsent: Boolean!
+  consentNote: String
+}
+
 type EventLogRecord {
   event: String!
   timestamp: DateTime!
@@ -3032,6 +3068,13 @@ type Query {
   pieChartData(input: PieChartDataInput!): PieChartData!
   lineChartData(input: LineChartDataInput!): LineChartData!
   barChartData(input: BarChartDataInput!): BarChartData!
+  taskEmailContext(taskId: String!): TaskEmailContext!
+  personEmailContext(opportunityId: String, personId: String): TaskEmailContext!
+  googleChatWebhookSettings: GoogleChatWebhookSettings!
+  taskSmsContext(taskId: String!): TaskSmsContext!
+  recordSmsContext(opportunityId: String, personId: String): TaskSmsContext!
+  personSmsContext(personId: String): PersonSmsContext!
+  notificationPreferences: [GoogleChatNotificationPreference!]!
   getConnectedImapSmtpCaldavAccount(id: UUID!): ConnectedImapSmtpCaldavAccount!
   getAutoCompleteAddress(address: String!, token: String!, country: String, isFieldCity: Boolean): [AutocompleteResult!]!
   getAddressDetails(placeId: String!, token: String!): PlaceDetailsResult!
@@ -3302,6 +3345,16 @@ type Mutation {
   editSSOIdentityProvider(input: EditSsoInput!): EditSso!
   duplicateDashboard(id: UUID!): DuplicatedDashboard!
   impersonate(userId: UUID!, workspaceId: UUID!): Impersonate!
+  sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!
+  sendRecordEmail(opportunityId: String, personId: String, subject: String!, body: String!): GoogleChatTestResult!
+  setGoogleChatWebhookUrl(input: SetGoogleChatWebhookUrlInput!): GoogleChatWebhookSettings!
+  deleteGoogleChatWebhookUrl: Boolean!
+  sendGoogleChatTestNotification: GoogleChatTestResult!
+  sendTaskSms(taskId: String!, message: String!): GoogleChatTestResult!
+  sendRecordSms(opportunityId: String, personId: String, message: String!): GoogleChatTestResult!
+  sendPersonSms(personId: String, message: String!, alias: String, opportunityId: String, taskId: String): GoogleChatTestResult!
+  sendTaskToMyPhone(taskId: String!): GoogleChatTestResult!
+  setNotificationPreference(event: String!, enabled: Boolean!): [GoogleChatNotificationPreference!]!
   sendEmail(input: SendEmailInput!): SendEmailOutput!
   startChannelSync(connectedAccountId: UUID!): ChannelSyncSuccess!
   saveImapSmtpCaldavAccount(handle: String!, connectionParameters: EmailAccountConnectionParameters!, id: UUID): ImapSmtpCaldavConnectionSuccess!
@@ -4349,6 +4402,10 @@ input DeleteSsoInput {
 input EditSsoInput {
   id: UUID!
   status: SSOIdentityProviderStatus!
+}
+
+input SetGoogleChatWebhookUrlInput {
+  webhookUrl: String!
 }
 
 input SendEmailInput {
