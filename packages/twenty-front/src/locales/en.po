@@ -13,6 +13,16 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. js-lingui-id: ZkdjPX
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoEvent.tsx
+msgid " — by {authorFullName}"
+msgstr " — by {authorFullName}"
+
+#. js-lingui-id: prfup9
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoEvent.tsx
+msgid " — by ENSO CRM"
+msgstr " — by ENSO CRM"
+
 #. js-lingui-id: lndIq/
 #: src/modules/settings/billing/hooks/useBillingWording.ts
 #: src/modules/settings/billing/hooks/useBillingWording.ts
@@ -497,6 +507,11 @@ msgstr "{stepNumber}. Calendar"
 msgid "{tabCount} tabs"
 msgstr "{tabCount} tabs"
 
+#. js-lingui-id: bh/qAr
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "{text} — opt out"
+msgstr "{text} — opt out"
+
 #. js-lingui-id: p38XKy
 #: src/modules/side-panel/components/SidePanelMultipleRecordsInfo.tsx
 msgid "{totalCount} selected"
@@ -527,6 +542,11 @@ msgstr "{workspaceMemberName} will be unassigned from the following role:"
 #: src/pages/settings/layout/SettingsLayoutViewDetail.tsx
 msgid "#"
 msgstr "#"
+
+#. js-lingui-id: XAbBcd
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "← All chats"
+msgstr "← All chats"
 
 #. js-lingui-id: n9nj+X
 #. placeholder {0}: aiChatThreadPendingDelete?.threadTitle ?? ''
@@ -693,6 +713,16 @@ msgstr "A draft already exists"
 msgid "A draft already exists for this workflow. Are you sure you want to erase it?"
 msgstr "A draft already exists for this workflow. Are you sure you want to erase it?"
 
+#. js-lingui-id: ShVUVJ
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge.tsx
+msgid "a duplicate"
+msgstr "a duplicate"
+
+#. js-lingui-id: HBL+df
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord.tsx
+msgid "a record"
+msgstr "a record"
+
 #. js-lingui-id: C6xZqR
 #: src/pages/settings/developers/api-keys/SettingsDevelopersApiKeyDetail.tsx
 msgid "A role must be selected for the API key"
@@ -780,6 +810,11 @@ msgstr "About this workspace"
 #: src/pages/settings/applications/components/SettingsApplicationRegistrationGeneralInfo.tsx
 msgid "About your app"
 msgstr "About your app"
+
+#. js-lingui-id: dNLvfF
+#: src/modules/navigation/components/RoutingPresenceSection.tsx
+msgid "Accepting leads"
+msgstr "Accepting leads"
 
 #. js-lingui-id: LuXP9q
 #: src/pages/settings/applications/tabs/SettingsApplicationsDeveloperTab.tsx
@@ -934,6 +969,8 @@ msgstr "Active Sync"
 
 #. js-lingui-id: m16xKo
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
 msgid "Add"
 msgstr "Add"
 
@@ -1009,6 +1046,11 @@ msgstr "Add CC"
 #: src/pages/settings/applications/tabs/SettingsApplicationConnectionsSection.tsx
 msgid "Add connection"
 msgstr "Add connection"
+
+#. js-lingui-id: T1tL/H
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Add consent for a project…"
+msgstr "Add consent for a project…"
 
 #. js-lingui-id: RVp8im
 #: src/modules/settings/admin-panel/ai/components/SettingsAdminAI.tsx
@@ -2463,10 +2505,20 @@ msgstr "at minutes {remainingValues} and {lastValue}"
 msgid "at the top of the hour"
 msgstr "at the top of the hour"
 
+#. js-lingui-id: x9ecE4
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Attach file"
+msgstr "Attach file"
+
 #. js-lingui-id: N7m8E+
 #: src/modules/ai/components/internal/AgentChatFileUploadButton.tsx
 msgid "Attach files"
 msgstr "Attach files"
+
+#. js-lingui-id: UY1vmE
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Attachment"
+msgstr "Attachment"
 
 #. js-lingui-id: w/Sphq
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
@@ -2862,6 +2914,14 @@ msgstr "Bullet List"
 msgid "Bundled with {applicationName}"
 msgstr "Bundled with {applicationName}"
 
+#. js-lingui-id: Vi2Pqx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge.tsx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord.tsx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+msgid "by"
+msgstr "by"
+
 #. js-lingui-id: 8ds4Hj
 #: src/pages/settings/applications/components/SettingsAvailableApplicationCard.tsx
 msgid "by {author}"
@@ -3006,6 +3066,8 @@ msgstr "Can't scan? Copy the"
 #: src/modules/side-panel/pages/compose-email/components/SidePanelComposeEmailPage.tsx
 #: src/modules/settings/components/SaveAndCancelButtons/CancelButton.tsx
 #: src/modules/settings/components/SaveAndCancelButtons/CancelButton.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/activities/emails/components/EmailComposer.tsx
 msgid "Cancel"
@@ -3334,6 +3396,11 @@ msgstr "Choose what happens when you click a phone number"
 msgid "Choose what happens when you click an email"
 msgstr "Choose what happens when you click an email"
 
+#. js-lingui-id: k4ynUD
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Choose which CRM events notify you. Everything is on by default."
+msgstr "Choose which CRM events notify you. Everything is on by default."
+
 #. js-lingui-id: 02EFne
 #: src/pages/settings/security/SettingsSecurity.tsx
 msgid "Choose which profile fields users with the Edit Profile permission can modify"
@@ -3368,6 +3435,11 @@ msgstr "Clear filters"
 #: src/modules/settings/admin-panel/config-variables/components/ConfigVariableHelpText.tsx
 msgid "Clear the field or \"X\" to revert to environment/default value."
 msgstr "Clear the field or \"X\" to revert to environment/default value."
+
+#. js-lingui-id: pmI50k
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Click a channel, then confirm. Cancel writes nothing."
+msgstr "Click a channel, then confirm. Cancel writes nothing."
 
 #. js-lingui-id: Gt8ndY
 #: src/pages/settings/ai/components/SettingsAiUsageTab.tsx
@@ -3844,6 +3916,12 @@ msgstr "Connect with Microsoft"
 msgid "Connected"
 msgstr "Connected"
 
+#. js-lingui-id: y5dKcv
+#. placeholder {0}: settings?.maskedWebhookUrl ?? ''
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Connected — {0}"
+msgstr "Connected — {0}"
+
 #. js-lingui-id: 9TzudL
 #: src/pages/settings/accounts/SettingsAccounts.tsx
 msgid "Connected accounts"
@@ -3885,6 +3963,32 @@ msgstr "Connection successfully created"
 #: src/modules/settings/accounts/hooks/useImapSmtpCaldavConnectionForm.ts
 msgid "Connection successfully updated"
 msgstr "Connection successfully updated"
+
+#. js-lingui-id: nLGyiK
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+msgid "consent"
+msgstr "consent"
+
+#. js-lingui-id: l9fkrm
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Consent"
+msgstr "Consent"
+
+#. js-lingui-id: 1C2m/W
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Consent check"
+msgstr "Consent check"
+
+#. js-lingui-id: bUEryi
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+msgid "Consent granted"
+msgstr "Consent granted"
+
+#. js-lingui-id: df0iEW
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+msgid "Consent revoked"
+msgstr "Consent revoked"
 
 #. js-lingui-id: JdGr7p
 #: src/modules/side-panel/pages/page-layout/components/ChartLimitInfoBanner.tsx
@@ -4158,6 +4262,26 @@ msgstr "Could not open Stripe. Please contact support."
 msgid "Could not refresh validity token. Please contact support."
 msgstr "Could not refresh validity token. Please contact support."
 
+#. js-lingui-id: lLs3h/
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Could not remove webhook"
+msgstr "Could not remove webhook"
+
+#. js-lingui-id: VOz168
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Could not save webhook"
+msgstr "Could not save webhook"
+
+#. js-lingui-id: ZUpMkC
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Could not send test notification"
+msgstr "Could not send test notification"
+
+#. js-lingui-id: f440t9
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Could not update preference"
+msgstr "Could not update preference"
+
 #. js-lingui-id: s8lFtq
 #: src/hooks/useCopyToClipboard.tsx
 msgid "Couldn't copy to clipboard"
@@ -4361,6 +4485,7 @@ msgstr "Create, edit, and delete workspace views"
 #: src/pages/settings/admin-panel/SettingsAdminUserDetail.tsx
 #: src/modules/settings/components/SettingsDatabaseEventsForm.tsx
 #: src/modules/settings/admin-panel/components/SettingsAdminWorkspaceContent.tsx
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
 #: src/modules/activities/calendar/components/CalendarEventDetails.tsx
 msgid "Created"
 msgstr "Created"
@@ -4538,6 +4663,11 @@ msgstr "Current"
 #: src/modules/settings/admin-panel/components/SettingsAdminWorkspaceBillingContent.tsx
 msgid "Current period"
 msgstr "Current period"
+
+#. js-lingui-id: lncynY
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "Current step"
+msgstr "Current step"
 
 #. js-lingui-id: C6vAhD
 #: src/modules/settings/admin-panel/components/SettingsAdminWorkspaceBillingContent.tsx
@@ -5541,6 +5671,12 @@ msgstr "Don't create contacts from/to Gmail, Outlook emails"
 msgid "Don't sync emails from team@ support@ noreply@..."
 msgstr "Don't sync emails from team@ support@ noreply@..."
 
+#. js-lingui-id: DPfwMq
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "Done"
+msgstr "Done"
+
 #. js-lingui-id: Wm78zZ
 #: src/modules/settings/experience/components/NumberFormatSelect.tsx
 msgid "Dots and comma"
@@ -5566,6 +5702,7 @@ msgstr "Download {filename}"
 
 #. js-lingui-id: WcWS//
 #: src/modules/settings/security/components/SSO/SettingsSSOSAMLForm.tsx
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
 msgid "Download file"
 msgstr "Download file"
 
@@ -5603,6 +5740,11 @@ msgstr "Drop fields here"
 #: src/modules/spreadsheet-import/steps/components/UploadStep/components/DropZone.tsx
 msgid "Drop file here..."
 msgstr "Drop file here..."
+
+#. js-lingui-id: 2y9Ojd
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Drop files to attach"
+msgstr "Drop files to attach"
 
 #. js-lingui-id: euc6Ns
 #: src/modules/side-panel/pages/page-layout/components/RegularTabSettingsContent.tsx
@@ -5733,6 +5875,7 @@ msgstr "eddy@gmail.com, @apple.com"
 #: src/modules/settings/roles/role-permissions/object-level-permissions/components/SettingsRolePermissionsObjectLevelTableRowOptionsDropdown.tsx
 #: src/modules/settings/logic-functions/components/tabs/SettingsLogicFunctionTabEnvironmentVariableTableRow.tsx
 #: src/modules/settings/data-model/object-details/components/SettingsObjectFieldDisabledActionDropdown.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
 #: src/modules/object-record/record-group/hooks/useRecordGroupActions.ts
 #: src/modules/object-record/record-field/ui/meta-types/input/components/MultiItemFieldMenuItem.tsx
 #: src/modules/object-record/record-field/ui/form-types/components/FormMultiSelectFieldInput.tsx
@@ -6014,6 +6157,11 @@ msgstr "Emails settings"
 #: src/modules/workspace/components/WorkspaceInviteTeam.tsx
 msgid "Emails should not be empty"
 msgstr "Emails should not be empty"
+
+#. js-lingui-id: tKlWWY
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Emoji"
+msgstr "Emoji"
 
 #. js-lingui-id: eXoH4Q
 #: src/modules/settings/data-model/fields/forms/components/SettingsDataModelFieldIconLabelForm.tsx
@@ -6614,6 +6762,11 @@ msgstr "Event Type"
 #: src/modules/settings/accounts/components/SettingsAccountsCalendarChannelDetails.tsx
 msgid "Event visibility"
 msgstr "Event visibility"
+
+#. js-lingui-id: tst44n
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Events"
+msgstr "Events"
 
 #. js-lingui-id: jvNRZW
 #: src/modules/settings/accounts/components/SettingsAccountsCalendarChannelsGeneral.tsx
@@ -7711,6 +7864,11 @@ msgstr "Get more credits"
 msgid "Get the most out of your workspace by inviting your team."
 msgstr "Get the most out of your workspace by inviting your team."
 
+#. js-lingui-id: gOHpPy
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Get your personal CRM alerts (deals routed to you, replies, tasks) in a private Google Chat space."
+msgstr "Get your personal CRM alerts (deals routed to you, replies, tasks) in a private Google Chat space."
+
 #. js-lingui-id: zSGbaR
 #: src/pages/onboarding/internal/ChooseYourPlanContent.tsx
 msgid "Get your subscription"
@@ -7751,15 +7909,38 @@ msgstr "Gold"
 msgid "Google"
 msgstr "Google"
 
+#. js-lingui-id: WH23WU
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Google Chat"
+msgstr "Google Chat"
+
 #. js-lingui-id: CQwSng
 #: src/modules/settings/security/components/SSO/SettingsSSOIdentitiesProvidersForm.tsx
 msgid "Google OIDC"
 msgstr "Google OIDC"
 
+#. js-lingui-id: nE5VAt
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Grant"
+msgstr "Grant"
+
+#. js-lingui-id: o29Bgq
+#. placeholder {0}: pending.channelLabel
+#. placeholder {1}: pending.projectLabel
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Grant {0} for {1}"
+msgstr "Grant {0} for {1}"
+
 #. js-lingui-id: 6eo66Q
 #: src/modules/settings/workspace/components/ToggleImpersonate.tsx
 msgid "Grant access to your workspace so we can troubleshoot problems."
 msgstr "Grant access to your workspace so we can troubleshoot problems."
+
+#. js-lingui-id: E0rSFg
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentHistory.tsx
+msgid "Granted"
+msgstr "Granted"
 
 #. js-lingui-id: WUgtid
 #: src/modules/settings/roles/role-permissions/object-level-permissions/object-form/components/SettingsRolePermissionsObjectLevelObjectFormObjectLevelTableRow.tsx
@@ -8343,6 +8524,11 @@ msgstr "Importing Data ..."
 #: src/modules/settings/developers/utils/formatExpiration.ts
 msgid "In {dateDiff}"
 msgstr "In {dateDiff}"
+
+#. js-lingui-id: kgkIwc
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "In Google Chat, create a new space just for yourself."
+msgstr "In Google Chat, create a new space just for yourself."
 
 #. js-lingui-id: hVockd
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
@@ -9066,6 +9252,7 @@ msgid "Last error"
 msgstr "Last error"
 
 #. js-lingui-id: c5zxSg
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
 #: src/modules/ai/components/internal/AiChatContextUsageButton.tsx
 msgid "Last message"
 msgstr "Last message"
@@ -9466,6 +9653,13 @@ msgstr "Loading thread"
 msgid "Loading..."
 msgstr "Loading..."
 
+#. js-lingui-id: Pwqkdw
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentHistory.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "Loading…"
+msgstr "Loading…"
+
 #. js-lingui-id: 8NbHF7
 #: src/pages/settings/ai/SettingsAiPrompts.tsx
 msgid "Locale"
@@ -9676,6 +9870,11 @@ msgstr "Match {fieldLabel} ({unmatchedCount} Unmatched)"
 msgid "Match Columns"
 msgstr "Match Columns"
 
+#. js-lingui-id: 7PJ/1j
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge.tsx
+msgid "matched on"
+msgstr "matched on"
+
 #. js-lingui-id: CK1KXz
 #: src/modules/side-panel/pages/page-layout/constants/settings/RangeMaxSetting.ts
 #: src/modules/object-record/record-board/record-board-column/utils/getAggregateOperationShortLabel.ts
@@ -9800,6 +9999,16 @@ msgstr "Merge preview"
 #: src/modules/side-panel/hooks/useOpenMergeRecordsPageInSidePanel.tsx
 msgid "Merge records"
 msgstr "Merge records"
+
+#. js-lingui-id: YHg8Pm
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge.tsx
+msgid "Merged duplicate"
+msgstr "Merged duplicate"
+
+#. js-lingui-id: 2QVBwd
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoMerge.tsx
+msgid "Merged duplicates"
+msgstr "Merged duplicates"
 
 #. js-lingui-id: LuriZ0
 #: src/modules/object-record/record-merge/components/MergeRecordsFooter.tsx
@@ -10204,6 +10413,11 @@ msgstr "Name can not be empty"
 msgid "Name in both singular (e.g., 'Invoice') and plural (e.g., 'Invoices') forms."
 msgstr "Name in both singular (e.g., 'Invoice') and plural (e.g., 'Invoices') forms."
 
+#. js-lingui-id: vJXxyc
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Name it \"ENSO CRM\" and copy the webhook URL."
+msgstr "Name it \"ENSO CRM\" and copy the webhook URL."
+
 #. js-lingui-id: z+6jaZ
 #: src/pages/settings/developers/api-keys/SettingsDevelopersApiKeysNew.tsx
 #: src/pages/settings/developers/api-keys/SettingsDevelopersApiKeyDetail.tsx
@@ -10440,6 +10654,7 @@ msgstr "New widget"
 #: src/pages/settings/accounts/SettingsAccountsConfigurationStepEmail.tsx
 #: src/modules/settings/billing/components/internal/SubscriptionInfoRowContainer.tsx
 #: src/modules/settings/admin-panel/health-status/components/SettingsAdminQueueJobsTable.tsx
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
 #: src/modules/auth/sign-in-up/components/internal/SignInUpTwoFactorAuthenticationProvision.tsx
 msgid "Next"
 msgstr "Next"
@@ -10602,10 +10817,25 @@ msgstr "No compatible fields"
 msgid "No config variables match your current filters. Try adjusting your filters or search criteria."
 msgstr "No config variables match your current filters. Try adjusting your filters or search criteria."
 
+#. js-lingui-id: UG8Ira
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentHistory.tsx
+msgid "No consent changes recorded yet."
+msgstr "No consent changes recorded yet."
+
+#. js-lingui-id: nh5jwl
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "No contact linked to show marketing activity for."
+msgstr "No contact linked to show marketing activity for."
+
 #. js-lingui-id: PlVbP6
 #: src/modules/ai/components/RoutingDebugDisplay.tsx
 msgid "No context was provided for this request"
 msgstr "No context was provided for this request"
+
+#. js-lingui-id: orFBCL
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "No conversation linked to this deal yet."
+msgstr "No conversation linked to this deal yet."
 
 #. js-lingui-id: 4BSfjK
 #: src/modules/ui/input/components/internal/country/components/CountrySelect.tsx
@@ -10900,6 +11130,11 @@ msgstr "No permissions configured for this application."
 msgid "No permissions have been set for individual objects."
 msgstr "No permissions have been set for individual objects."
 
+#. js-lingui-id: z3ERlt
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "No phone or email on file yet."
+msgstr "No phone or email on file yet."
+
 #. js-lingui-id: V/+aTW
 #: src/modules/object-record/record-field/ui/form-types/components/FormSingleRecordPicker.tsx
 #: src/modules/object-record/record-field/ui/form-types/components/FormSingleRecordFieldChip.tsx
@@ -11092,6 +11327,11 @@ msgstr "None"
 msgid "Norwegian"
 msgstr "Norwegian"
 
+#. js-lingui-id: gnTMqv
+#: src/modules/navigation/components/RoutingPresenceSection.tsx
+msgid "Not accepting leads"
+msgstr "Not accepting leads"
+
 #. js-lingui-id: v3W9iu
 #: src/modules/spreadsheet-import/steps/components/MatchColumnsStep/MatchColumnsStep.tsx
 msgid "Not all columns matched"
@@ -11120,6 +11360,21 @@ msgstr "Not empty"
 msgid "Not Found"
 msgstr "Not Found"
 
+#. js-lingui-id: IpnyJS
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "Not in any marketing journey yet."
+msgstr "Not in any marketing journey yet."
+
+#. js-lingui-id: PBxg/E
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Not now"
+msgstr "Not now"
+
+#. js-lingui-id: wBW91V
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Not provided"
+msgstr "Not provided"
+
 #. js-lingui-id: MTqQMG
 #: src/pages/settings/layout/SettingsLayoutViewDetail.tsx
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationConfigTab.tsx
@@ -11129,6 +11384,7 @@ msgstr "Not Found"
 #: src/pages/settings/applications/tabs/SettingsApplicationCommandMenuItemSettingsTab.tsx
 #: src/pages/settings/applications/tabs/SettingsApplicationCommandMenuItemSettingsTab.tsx
 #: src/pages/settings/applications/tabs/SettingsApplicationCommandMenuItemSettingsTab.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
 msgid "Not set"
 msgstr "Not set"
 
@@ -11149,6 +11405,13 @@ msgstr "Not shared by {notSharedByFullName}"
 msgid "Not synced"
 msgstr "Not synced"
 
+#. js-lingui-id: g8Wrb8
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Note / proof (optional)"
+msgstr "Note / proof (optional)"
+
 #. js-lingui-id: VngD1z
 #: src/pages/settings/applications/SettingsApplicationDetails.tsx
 msgid "Nothing to configure for this application"
@@ -11158,6 +11421,13 @@ msgstr "Nothing to configure for this application"
 #: src/modules/page-layout/widgets/components/StandaloneWidgetPlaceholder.tsx
 msgid "Nothing to see"
 msgstr "Nothing to see"
+
+#. js-lingui-id: iDNBZe
+#: src/pages/settings/SettingsNotifications.tsx
+#: src/pages/settings/SettingsNotifications.tsx
+#: src/modules/settings/hooks/useSettingsNavigationItems.tsx
+msgid "Notifications"
+msgstr "Notifications"
 
 #. js-lingui-id: YwzE9K
 #: src/utils/date-utils.ts
@@ -11492,6 +11762,7 @@ msgstr "Only you can use this credential."
 #. js-lingui-id: 1TNIig
 #: src/pages/settings/members/tabs/SettingsWorkspaceMembersTeamTab.tsx
 #: src/modules/settings/data-model/objects/forms/components/SettingsDataModelObjectAboutForm.tsx
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
 #: src/modules/command-menu-item/components/RecordShowSidePanelOpenRecordButton.tsx
 msgid "Open"
 msgstr "Open"
@@ -11537,6 +11808,11 @@ msgstr "Open records in"
 msgid "Open side panel"
 msgstr "Open side panel"
 
+#. js-lingui-id: KfRqYy
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Open the space, add an app, and choose \"Incoming Webhook\"."
+msgstr "Open the space, add an app, and choose \"Incoming Webhook\"."
+
 #. js-lingui-id: OV5wZZ
 #: src/modules/navigation-menu-item/display/sections/components/NavigationDrawerOpenedSection.tsx
 msgid "Opened"
@@ -11551,6 +11827,28 @@ msgstr "Operand"
 #: src/modules/settings/admin-panel/health-status/components/SettingsAdminHealthStatusRightContainer.tsx
 msgid "Operational"
 msgstr "Operational"
+
+#. js-lingui-id: YmS1Bz
+#. placeholder {2}: pending.projectLabel
+#. placeholder {3}: pending.channelLabel
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Opt {2} out of {3}"
+msgstr "Opt {2} out of {3}"
+
+#. js-lingui-id: DY5FMn
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Opt out"
+msgstr "Opt out"
+
+#. js-lingui-id: /L/+bH
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Opted out"
+msgstr "Opted out"
+
+#. js-lingui-id: bWVUuH
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Opted out · {date}"
+msgstr "Opted out · {date}"
 
 #. js-lingui-id: lVa1Xn
 #: src/modules/settings/data-model/fields/forms/select/hooks/useSelectSettingsFormInitialValues.ts
@@ -11827,6 +12125,11 @@ msgstr "Password must be between 8 and 50 characters"
 #: src/modules/auth/sign-in-up/hooks/useHandleResetPassword.ts
 msgid "Password reset link has been sent to the email"
 msgstr "Password reset link has been sent to the email"
+
+#. js-lingui-id: YKFdo0
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Paste it below and save."
+msgstr "Paste it below and save."
 
 #. js-lingui-id: cpStVq
 #: src/modules/auth/sign-in-up/components/internal/SignInUpTwoFactorAuthenticationVerification.tsx
@@ -12294,6 +12597,11 @@ msgstr "Profile - Settings"
 msgid "Profile Picture"
 msgstr "Profile Picture"
 
+#. js-lingui-id: ysxgu8
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "project"
+msgstr "project"
+
 #. js-lingui-id: W9uQXX
 #: src/modules/workflow/workflow-steps/workflow-actions/ai-agent-action/components/WorkflowEditActionAiAgent.tsx
 msgid "Prompt"
@@ -12471,6 +12779,11 @@ msgstr "Ratio"
 msgid "Raw JSON"
 msgstr "Raw JSON"
 
+#. js-lingui-id: ikYdso
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Re-enabling — the original consent source is preserved."
+msgstr "Re-enabling — the original consent source is preserved."
+
 #. js-lingui-id: 549d7o
 #: src/pages/settings/updates/SettingsUpdates.tsx
 msgid "Read changelog"
@@ -12512,6 +12825,11 @@ msgstr "Read-only"
 #: src/pages/settings/layout/components/SettingsLayoutDetailScaffold.tsx
 msgid "Read-only {entityTypeLabel} definition shipped by this app"
 msgstr "Read-only {entityTypeLabel} definition shipped by this app"
+
+#. js-lingui-id: vCFdY5
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Read-only. Click Edit to record verbal consent or an opt-out."
+msgstr "Read-only. Click Edit to record verbal consent or an opt-out."
 
 #. js-lingui-id: W+ApAD
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
@@ -12586,6 +12904,7 @@ msgstr "record"
 #: src/modules/settings/applications/hooks/useComputeApplicationContentForLayoutAndLogic.ts
 #: src/modules/navigation-menu-item/edit/side-panel/components/SidePanelNewSidebarItemMainMenu.tsx
 #: src/modules/navigation-menu-item/display/object/components/NavigationDrawerItemForObjectMetadataItem.tsx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord.tsx
 msgid "Record"
 msgstr "Record"
 
@@ -12593,6 +12912,17 @@ msgstr "Record"
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionUpsertRecord.tsx
 msgid "Record (ID)"
 msgstr "Record (ID)"
+
+#. js-lingui-id: MijoW0
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Record consent"
+msgstr "Record consent"
+
+#. js-lingui-id: aTni6+
+#. placeholder {4}: addModal.projectLabel
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Record consent for {4}"
+msgstr "Record consent for {4}"
 
 #. js-lingui-id: 2CUci6
 #: src/modules/object-record/hooks/useBatchCreateManyRecords.ts
@@ -12779,6 +13109,7 @@ msgid "Reloading..."
 msgstr "Reloading..."
 
 #. js-lingui-id: t/YqKh
+#: src/pages/settings/SettingsNotifications.tsx
 #: src/pages/settings/admin-panel/SettingsAdminAiProviderDetail.tsx
 #: src/pages/settings/admin-panel/SettingsAdminAiProviderDetail.tsx
 #: src/modules/ui/input/components/ImageInput.tsx
@@ -12915,10 +13246,20 @@ msgstr "Reorder field"
 msgid "Reorder options"
 msgstr "Reorder options"
 
+#. js-lingui-id: 0b4f40
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Replace webhook"
+msgstr "Replace webhook"
+
 #. js-lingui-id: q8Id6J
 #: src/modules/side-panel/pages/page-layout/components/WidgetSettingsManageSection.tsx
 msgid "Replace widget"
 msgstr "Replace widget"
+
+#. js-lingui-id: oeE6lR
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Replies are paused"
+msgstr "Replies are paused"
 
 #. js-lingui-id: ImOQa9
 #: src/modules/side-panel/hooks/useOpenComposeEmailInSidePanel.ts
@@ -13020,6 +13361,11 @@ msgstr "Reset to static value"
 #: src/modules/settings/config-variables/components/ConfigVariableEdit.tsx
 msgid "Reset variable"
 msgstr "Reset variable"
+
+#. js-lingui-id: O6H89R
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Resolved"
+msgstr "Resolved"
 
 #. js-lingui-id: ICm0YO
 #: src/modules/settings/billing/components/internal/ResourceCreditPriceSelector.tsx
@@ -13141,6 +13487,7 @@ msgstr "Revoke signing key"
 #. js-lingui-id: xGiT1z
 #: src/modules/settings/admin-panel/signing-keys/components/SettingsAdminSigningKeysTable.tsx
 #: src/modules/settings/admin-panel/signing-keys/components/SettingsAdminSigningKeysTable.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentHistory.tsx
 msgid "Revoked"
 msgstr "Revoked"
 
@@ -13336,6 +13683,11 @@ msgstr "Save as new view"
 #: src/modules/layout-customization/hooks/useEnterLayoutCustomizationMode.ts
 msgid "Save or cancel dashboard changes before editing the layout."
 msgstr "Save or cancel dashboard changes before editing the layout."
+
+#. js-lingui-id: Vl3SEU
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Save webhook"
+msgstr "Save webhook"
 
 #. js-lingui-id: gmB6oO
 #: src/modules/workflow/workflow-trigger/components/CronExpressionHelper.tsx
@@ -13963,6 +14315,7 @@ msgstr "Select your preferred language"
 
 #. js-lingui-id: JlFcis
 #: src/modules/side-panel/pages/compose-email/components/SidePanelComposeEmailPage.tsx
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
 #: src/modules/page-layout/widgets/email-thread/components/EmailThreadComposer.tsx
 #: src/modules/activities/emails/components/EmailComposer.tsx
 msgid "Send"
@@ -13984,6 +14337,11 @@ msgstr "Send Email"
 msgid "Send emails via connected accounts"
 msgstr "Send emails via connected accounts"
 
+#. js-lingui-id: eus61c
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Send test"
+msgstr "Send test"
+
 #. js-lingui-id: asU5VT
 #: src/modules/workflow/workflow-steps/workflow-actions/http-request-action/components/HttpRequestExecutionResult.tsx
 msgid "Sending request..."
@@ -13994,6 +14352,11 @@ msgstr "Sending request..."
 #: src/modules/auth/sign-in-up/components/EmailVerificationSent.tsx
 msgid "Sending..."
 msgstr "Sending..."
+
+#. js-lingui-id: Sad2tK
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Sending…"
+msgstr "Sending…"
 
 #. js-lingui-id: h69WC6
 #: src/modules/settings/accounts/components/SettingsAccountsMessageAutoCreationCard.tsx
@@ -15112,6 +15475,11 @@ msgstr "Terms of Service"
 msgid "Test"
 msgstr "Test"
 
+#. js-lingui-id: MucYW8
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Test notification sent"
+msgstr "Test notification sent"
+
 #. js-lingui-id: 3nWPN6
 #: src/modules/settings/logic-functions/components/tabs/SettingsLogicFunctionTestTab.tsx
 msgid "Test your function"
@@ -15219,6 +15587,11 @@ msgstr ""
 "\n"
 "See the [Getting Started guide](https://twenty.com/developers/extend/apps/getting-started) for the full walkthrough, and [Building Apps](https://twenty.com/developers/extend/apps/building) for the `defineApplication` / `defineEntity` APIs."
 
+#. js-lingui-id: a+fNa8
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "the contact"
+msgstr "the contact"
+
 #. js-lingui-id: 1xQkU9
 #: src/modules/settings/data-model/fields/forms/phones/components/SettingsDataModelFieldPhonesForm.tsx
 msgid "The default country code for new phone numbers."
@@ -15289,6 +15662,11 @@ msgstr "The name of your organization"
 #: src/pages/not-found/NotFound.tsx
 msgid "The page you're seeking is either gone or never was. Let's get you back on track"
 msgstr "The page you're seeking is either gone or never was. Let's get you back on track"
+
+#. js-lingui-id: 6dKHCX
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "The reply window is closed — {contactLabel} needs to send a new message before you can reply."
+msgstr "The reply window is closed — {contactLabel} needs to send a new message before you can reply."
 
 #. js-lingui-id: jrCR2X
 #: src/modules/workflow/workflow-trigger/components/WorkflowEditTriggerManual.tsx
@@ -15526,6 +15904,12 @@ msgstr "This model will be removed from the provider. You can re-add it later."
 msgid "This page has no content"
 msgstr "This page has no content"
 
+#. js-lingui-id: ux170F
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "this project"
+msgstr "this project"
+
 #. js-lingui-id: R/PuIn
 #: src/pages/settings/admin-panel/SettingsAdminNewAiProvider.tsx
 msgid "This provider doesn't have a native SDK yet — it will use OpenAI-compatible mode. Need native support? Reach out to us."
@@ -15644,6 +16028,11 @@ msgstr "This will permanently delete your two factor authentication method.<0/>S
 #: src/modules/ai/components/ThinkingStepsDisplay.tsx
 msgid "Thought"
 msgstr "Thought"
+
+#. js-lingui-id: dzWUW1
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "Tick the channels they agreed to. Cancel adds nothing."
+msgstr "Tick the channels they agreed to. Cancel adds nothing."
 
 #. js-lingui-id: Vqn9Z1
 #: src/modules/workflow/workflow-diagram/components/WorkflowDiagramRightClickCommandMenu.tsx
@@ -16069,6 +16458,11 @@ msgstr "Type"
 msgid "Type '/' for commands, '@' for mentions"
 msgstr "Type '/' for commands, '@' for mentions"
 
+#. js-lingui-id: NOwTvu
+#: src/modules/page-layout/widgets/iframe/components/ChatwootConversationEmbed.tsx
+msgid "Type a reply…"
+msgstr "Type a reply…"
+
 #. js-lingui-id: qzD6hf
 #: src/modules/workflow/workflow-steps/workflow-actions/ai-agent-action/components/WorkflowAiAgentPermissionsTab.tsx
 #: src/modules/side-panel/components/SidePanelTopBar.tsx
@@ -16336,6 +16730,11 @@ msgstr "Unused credits from the previous period. Expired at the end of the perio
 #: src/modules/settings/admin-panel/utils/getUpgradeHealthStatusBadge.ts
 msgid "Up to date"
 msgstr "Up to date"
+
+#. js-lingui-id: ia8YsC
+#: src/modules/page-layout/widgets/iframe/components/MarketingJourneysWidget.tsx
+msgid "Upcoming"
+msgstr "Upcoming"
 
 #. js-lingui-id: hmc//6
 #: src/modules/workflow/workflow-trigger/components/CronExpressionHelper.tsx
@@ -16658,6 +17057,7 @@ msgstr "Useful for pivot/junction tables"
 #. js-lingui-id: 7PzzBU
 #: src/pages/settings/SettingsTwoFactorAuthenticationMethod.tsx
 #: src/pages/settings/SettingsProfile.tsx
+#: src/pages/settings/SettingsNotifications.tsx
 #: src/pages/settings/security/event-logs/utils/getColumnsForEventLogTable.ts
 #: src/pages/settings/security/event-logs/utils/getColumnsForEventLogTable.ts
 #: src/pages/settings/security/event-logs/utils/getColumnsForEventLogTable.ts
@@ -16828,6 +17228,11 @@ msgstr "Version of the application"
 msgid "Vertical Bar Chart"
 msgstr "Vertical Bar Chart"
 
+#. js-lingui-id: B9IKUw
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoConsent.tsx
+msgid "via"
+msgstr "via"
+
 #. js-lingui-id: vSJd18
 #: src/pages/settings/admin-panel/SettingsAdminNewAiModel.tsx
 msgid "Video"
@@ -16963,6 +17368,11 @@ msgstr "View Role"
 msgid "view sort"
 msgstr "view sort"
 
+#. js-lingui-id: 3y0eQW
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentHistory.tsx
+msgid "View triggering activity →"
+msgstr "View triggering activity →"
+
 #. js-lingui-id: bJAIqT
 #: src/modules/views/view-picker/components/ViewPickerContentCreateMode.tsx
 msgid "View type"
@@ -17059,6 +17469,7 @@ msgstr "Warning"
 
 #. js-lingui-id: zFSQY3
 #: src/modules/activities/timeline-activities/rows/main-object/components/EventRowMainObject.tsx
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord.tsx
 msgid "was created by"
 msgstr "was created by"
 
@@ -17071,6 +17482,16 @@ msgstr "was deleted by"
 #: src/modules/activities/timeline-activities/rows/main-object/components/EventRowMainObject.tsx
 msgid "was restored by"
 msgstr "was restored by"
+
+#. js-lingui-id: +0YVgo
+#: src/modules/activities/timeline-activities/rows/enso/components/EventRowEnsoLinkedRecord.tsx
+msgid "was updated by"
+msgstr "was updated by"
+
+#. js-lingui-id: dYv040
+#: src/modules/page-layout/widgets/iframe/components/PersonConsentCard.tsx
+msgid "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
+msgstr "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
 
 #. js-lingui-id: 6eMAkI
 #: src/modules/auth/sign-in-up/components/EmailVerificationSent.tsx
@@ -17156,6 +17577,16 @@ msgstr "Webhook ID is required for deletion"
 #: src/modules/settings/developers/hooks/useWebhookForm.ts
 msgid "Webhook ID is required for updates"
 msgstr "Webhook ID is required for updates"
+
+#. js-lingui-id: ntMZte
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Webhook removed"
+msgstr "Webhook removed"
+
+#. js-lingui-id: 0evqDo
+#: src/pages/settings/SettingsNotifications.tsx
+msgid "Webhook saved"
+msgstr "Webhook saved"
 
 #. js-lingui-id: v1kQyJ
 #: src/pages/settings/workspace/SettingsApiWebhooks.tsx
@@ -17831,152 +18262,3 @@ msgstr "Your workspace doesn't have an active subscription. Please contact your 
 #: src/modules/settings/billing/components/SettingsBillingContent.tsx
 msgid "Your workspace will be disabled"
 msgstr "Your workspace will be disabled"
-
-
-#. js-lingui-id: bh/qAr
-msgid "{text} — opt out"
-msgstr "{text} — opt out"
-
-#. js-lingui-id: T1tL/H
-msgid "Add consent for a project…"
-msgstr "Add consent for a project…"
-
-#. js-lingui-id: cx8+A8
-msgid "Click a channel, then confirm. Granting keeps any existing form consent; cancel writes nothing."
-msgstr "Click a channel, then confirm. Granting keeps any existing form consent; cancel writes nothing."
-
-#. js-lingui-id: 1C2m/W
-msgid "Consent check"
-msgstr "Consent check"
-
-#. js-lingui-id: cZR+BY
-msgid "Consent history"
-msgstr "Consent history"
-
-#. js-lingui-id: l9fkrm
-msgid "Consent"
-msgstr "Consent"
-
-#. js-lingui-id: DPfwMq
-msgid "Done"
-msgstr "Done"
-
-#. js-lingui-id: o29Bgq
-msgid "Grant {0} for {1}"
-msgstr "Grant {0} for {1}"
-
-#. js-lingui-id: nE5VAt
-msgid "Grant"
-msgstr "Grant"
-
-#. js-lingui-id: E0rSFg
-msgid "Granted"
-msgstr "Granted"
-
-#. js-lingui-id: Pwqkdw
-msgid "Loading…"
-msgstr "Loading…"
-
-#. js-lingui-id: o6eU2k
-msgid "No marketing consent is on record for {checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now."
-msgstr "No marketing consent is on record for {checkProjectLabel}, but we can reach this person. Tick the channels they agreed to, or choose Not now."
-
-#. js-lingui-id: PBxg/E
-msgid "Not now"
-msgstr "Not now"
-
-#. js-lingui-id: wBW91V
-msgid "Not provided"
-msgstr "Not provided"
-
-#. js-lingui-id: g8Wrb8
-msgid "Note / proof (optional)"
-msgstr "Note / proof (optional)"
-
-#. js-lingui-id: xdzze+
-msgid "Opt {0} out of {1}"
-msgstr "Opt {0} out of {1}"
-
-#. js-lingui-id: DY5FMn
-msgid "Opt out"
-msgstr "Opt out"
-
-#. js-lingui-id: bWVUuH
-msgid "Opted out · {date}"
-msgstr "Opted out · {date}"
-
-#. js-lingui-id: /L/+bH
-msgid "Opted out"
-msgstr "Opted out"
-
-#. js-lingui-id: ikYdso
-msgid "Re-enabling — the original consent source is preserved."
-msgstr "Re-enabling — the original consent source is preserved."
-
-#. js-lingui-id: vCFdY5
-msgid "Read-only. Click Edit to record verbal consent or an opt-out."
-msgstr "Read-only. Click Edit to record verbal consent or an opt-out."
-
-#. js-lingui-id: MijoW0
-msgid "Record consent"
-msgstr "Record consent"
-
-#. js-lingui-id: ysxgu8
-msgid "project"
-msgstr "project"
-
-#. js-lingui-id: ux170F
-msgid "this project"
-msgstr "this project"
-
-#. js-lingui-id: bUEryi
-msgid "Consent granted"
-msgstr "Consent granted"
-
-#. js-lingui-id: df0iEW
-msgid "Consent revoked"
-msgstr "Consent revoked"
-
-#. js-lingui-id: nLGyiK
-msgid "consent"
-msgstr "consent"
-
-#. js-lingui-id: Vi2Pqx
-msgid "by"
-msgstr "by"
-
-#. js-lingui-id: 3y0eQW
-msgid "View triggering activity →"
-msgstr "View triggering activity →"
-
-#. js-lingui-id: B9IKUw
-msgid "via"
-msgstr "via"
-
-#. js-lingui-id: XIHM3o
-msgid "automatically"
-msgstr "automatically"
-
-#. js-lingui-id: pmI50k
-msgid "Click a channel, then confirm. Cancel writes nothing."
-msgstr "Click a channel, then confirm. Cancel writes nothing."
-
-#. js-lingui-id: Li3ydf
-msgid "Record consent for {0}"
-msgstr "Record consent for {0}"
-
-#. js-lingui-id: dzWUW1
-msgid "Tick the channels they agreed to. Cancel adds nothing."
-msgstr "Tick the channels they agreed to. Cancel adds nothing."
-
-#. js-lingui-id: z3ERlt
-msgid "No phone or email on file yet."
-msgstr "No phone or email on file yet."
-
-#. js-lingui-id: UG8Ira
-msgid "No consent changes recorded yet."
-msgstr "No consent changes recorded yet."
-
-#. js-lingui-id: dYv040
-msgid "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
-msgstr "We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now."
