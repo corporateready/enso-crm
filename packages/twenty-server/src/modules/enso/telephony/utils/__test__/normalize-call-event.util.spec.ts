@@ -11,6 +11,7 @@ import {
 import {
   CALL_STATUS_TO_OUTBOUND_OUTCOME,
   MOLDCELL_STATUS_TO_CALL_STATUS,
+  toCallStatus,
 } from 'src/modules/enso/telephony/telephony.constants';
 
 describe('normalizeE164', () => {
@@ -283,6 +284,53 @@ describe('normalizeRoistatCall', () => {
     const moldcell = normalizeMoldcellHistory({ cmd: 'history', callid: 'X' });
 
     expect(roistat?.externalId).not.toBe(moldcell?.externalId);
+  });
+});
+
+// A live missed call arrived as `status: "missed", user: "pbx"` — lower-cased
+// where the docs say `Missed`, and attributed to the switch itself. Both details
+// mattered: an unmapped status read as "no status", which combined with a
+// person-looking `user` marked a call NOBODY answered as a sales pickup, and that
+// in turn would have opened the deal CONNECTED.
+describe('missed calls reported by the PBX itself', () => {
+  it('should map the status whatever its casing', () => {
+    for (const status of ['missed', 'Missed', 'MISSED', ' missed ']) {
+      expect(
+        normalizeMoldcellHistory({
+          cmd: 'history',
+          type: 'in',
+          status,
+          callid: 'c1',
+        })?.callStatus,
+      ).toBe('UNANSWERED');
+    }
+
+    // The rest of the documented set, through the same case-insensitive path.
+    expect(toCallStatus('Success')).toBe('ANSWERED');
+    expect(toCallStatus('notavailable')).toBe('CONGESTION');
+    expect(toCallStatus('something-new')).toBeUndefined();
+  });
+
+  it('should not treat the switch as the person who answered', () => {
+    const event = normalizeMoldcellHistory({
+      cmd: 'history',
+      type: 'in',
+      status: 'missed',
+      user: 'pbx',
+      group: 'g_e2079b5f-25f7-4743-9323-761429e73aeb',
+      callid: 'J5H44UHD0G000036',
+      groupRealName: 'Newton House Gradina Botanica',
+    });
+
+    expect(event?.answeredByLogin).toBeUndefined();
+    expect(event?.answeredByGroup).toBe('Newton House Gradina Botanica');
+  });
+
+  it('should treat `pbx` as a non-person wherever a login is parsed', () => {
+    expect(splitPbxLogin('pbx').isGroup).toBe(true);
+    expect(splitPbxLogin('pbx@enso.pbx.moldcell.md').isGroup).toBe(true);
+    // A real employee whose login merely contains those letters must be fine.
+    expect(splitPbxLogin('pbxadmin_ion').isGroup).toBe(false);
   });
 });
 

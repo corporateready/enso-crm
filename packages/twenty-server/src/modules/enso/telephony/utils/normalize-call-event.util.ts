@@ -6,9 +6,10 @@ import {
   MOLDCELL_EVENT_OUTGOING,
   MOLDCELL_EXTERNAL_ID_PREFIX,
   MOLDCELL_GROUP_LOGIN_PREFIX,
-  MOLDCELL_STATUS_TO_CALL_STATUS,
+  MOLDCELL_NON_PERSON_LOGINS,
   ROISTAT_EXTERNAL_ID_PREFIX,
   ROISTAT_STATUS_TO_CALL_STATUS,
+  toCallStatus,
 } from 'src/modules/enso/telephony/telephony.constants';
 import {
   type MoldcellContactPush,
@@ -80,6 +81,11 @@ export const normalizeE164 = (
 };
 
 // PBX logins arrive as `<login>@<tenant>`; groups as `g_<uuid>@<tenant>`.
+//
+// `isGroup` really means "not an identifiable person", which also covers the
+// switch reporting under its own name: a live missed call arrived as
+// `status: "missed", user: "pbx"`, and treating `pbx` as the answerer credited a
+// call nobody took to a human.
 export const splitPbxLogin = (
   value: unknown,
 ): { login?: string; isGroup: boolean } => {
@@ -93,7 +99,9 @@ export const splitPbxLogin = (
 
   return {
     login: local,
-    isGroup: local.startsWith(MOLDCELL_GROUP_LOGIN_PREFIX),
+    isGroup:
+      local.startsWith(MOLDCELL_GROUP_LOGIN_PREFIX) ||
+      MOLDCELL_NON_PERSON_LOGINS.has(local.toLowerCase()),
   };
 };
 
@@ -241,7 +249,7 @@ export const normalizeMoldcellHistory = (
     calleeDid: digitsOnly(push.diversion) || undefined,
     pbxTelnum: digitsOnly(push.telnum) || undefined,
     occurredAt: parseMoldcellTimestamp(push.start),
-    callStatus: MOLDCELL_STATUS_TO_CALL_STATUS[status],
+    callStatus: toCallStatus(status),
     durationS: toDurationSeconds(push.duration),
     recordingUrl: String(push.link ?? '').trim() || undefined,
     // Inbound: who the call reached (a group here is NOT proof of a pickup).

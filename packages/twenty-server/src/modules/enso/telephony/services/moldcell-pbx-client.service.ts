@@ -122,14 +122,28 @@ export class MoldcellPbxClientService {
     return String(data ?? 'unknown error').slice(0, 200);
   }
 
+  // The documented 200 response is the bare CallID, but a live call came back as
+  // an object with no CallID in it, and String()-ing that produced the literal
+  // id "[object Object]" — which then went into externalId, where two such rows
+  // would collide and correlate the wrong call. So only a scalar is accepted.
   private readCallId(data: unknown): string | undefined {
     const raw =
       typeof data === 'object' && data !== null && 'CallID' in data
         ? (data as { CallID: unknown }).CallID
         : data;
 
-    const callId = String(raw ?? '').trim();
+    if (typeof raw !== 'string' && typeof raw !== 'number') {
+      this.logger.warn(
+        `makeCall answered 200 without a readable CallID: ${JSON.stringify(data).slice(0, 200)}`,
+      );
 
-    return callId && callId.length <= 128 ? callId : undefined;
+      return undefined;
+    }
+
+    const callId = String(raw).trim();
+
+    // A plausible id, not a sentence: the PBX's ids are short alphanumerics, and
+    // anything else means we misread the response shape.
+    return /^[\w.:-]{1,128}$/.test(callId) ? callId : undefined;
   }
 }
