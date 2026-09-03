@@ -73,6 +73,15 @@ Answers the PBX `contact` push. Synchronous, millisecond budget, **writes nothin
 2. Owner found → return `{contact_name, responsible}` → PBX rings that manager directly
 3. No owner → return `contact_name` only → PBX falls through to its department queue
 
+`isAvailableForRouting` is deliberately **not** consulted. It means "send me new
+leads or not" — a load control over the ROUTING pool — not "do not connect my own
+customers to me". An existing client ringing their own manager is not new work,
+and diverting them to the department throws away the continuity sticky ownership
+exists for. This matches the routing brain, which already holds that "sticky wins
+even if the manager is currently offline — it's their client". Real presence
+belongs to the PBX (DND / «Приём звонков»), whose mandatory fallback sends the
+call to the department on no-answer.
+
 Hard requirements: a strict timeout and a **safe fallback** — omitting
 `responsible` must be the failure mode. A stall here delays a live call, so this
 path must not sit behind heavy middleware or a shared job queue. It reads only;
