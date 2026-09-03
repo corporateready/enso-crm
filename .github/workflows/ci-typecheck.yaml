@@ -1,0 +1,53 @@
+name: CI Typecheck
+
+# The inherited upstream CI gates typecheck behind changed-files + nx-affected
+# and 8-core runners. This workflow is deliberately plain: both typechecks, every
+# PR, on standard runners — so a type error cannot reach main unnoticed.
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  typecheck:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [twenty-server, twenty-front]
+    env:
+      # twenty-front's program is large enough to OOM the default heap.
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Fetch local actions
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        uses: ./.github/actions/yarn-install
+      - name: Write .env
+        run: npx nx reset:env ${{ matrix.project }}
+      # No --skip-nx-cache: typecheck dependsOn ^build, and the cache is keyed on
+      # inputs, so a real source change always re-runs it.
+      - name: Typecheck ${{ matrix.project }}
+        run: npx nx typecheck ${{ matrix.project }}
+
+  ci-typecheck-status-check:
+    if: always() && !cancelled()
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    needs: [typecheck]
+    steps:
+      - name: Fail job if any needs failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1
