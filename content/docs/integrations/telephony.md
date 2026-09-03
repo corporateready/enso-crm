@@ -224,6 +224,31 @@ Project codes: `ENS2301` ARTIMA · `ENS1901` Ioana Radu · `ENS2402` AVRAM IANCU
 > The legacy `Calls Workflow` maps `ENS1901` to "NEWTON House Buiucani". That
 > label is **wrong** — `ENS1901` is Ioana Radu. Do not port that map.
 
+### Both tracking types carry UTMs — via different slots
+
+Roistat delivers attribution through **two** slots, and which one a field uses is a
+per-scenario configuration choice, not a property of the field:
+
+- **`custom_fields`** — the configurable payload. **Static** scenarios put
+  *enforced* values here: a static number has no visitor session, so its UTMs are
+  set once in Roistat against the scenario. This is the same mechanism that
+  already carries `project_id`.
+- **top level** — Roistat's own session-derived values on **dynamic** scenarios
+  (`landing_page`, `referrer`, `ip`, `google_client_id`, …).
+
+So intake reads **every** attribution field from `custom_fields` first and the top
+level second. Reading one slot only would silently drop whichever type is
+configured the other way. An enforced custom field wins a collision, because it is
+a deliberate per-scenario decision.
+
+`roistatVisitId` is how the two are told apart after the fact: null on static, set
+on dynamic.
+
+`trafficType` is **derived from `utm_medium`** (Roistat has no traffic-type
+concept), using the same convention the Lead Ads intake already applies —
+`utm_medium=paid_social` → `PAID` — so a call and a lead ad describing the same
+campaign read alike. The deal copies it onto its first/last-touch snapshot.
+
 ### Static vs dynamic
 
 133 scenarios: 124 static, 9 dynamic; 74 enabled. Dynamic is in real use —

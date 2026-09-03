@@ -500,6 +500,115 @@ describe('outbound calls', () => {
   });
 });
 
+// Roistat delivers attribution through two slots, and which one a field uses is a
+// per-scenario configuration choice. STATIC numbers have no visitor session, so
+// their UTMs are enforced against the scenario and arrive in `custom_fields` —
+// the same mechanism that already carries `project_id`. DYNAMIC numbers carry
+// session-derived values, mostly top level. Reading one slot only would silently
+// drop whichever type is configured the other way.
+describe('normalizeRoistatCall attribution — static and dynamic', () => {
+  it('should read enforced UTMs from custom_fields (static tracking)', () => {
+    const event = normalizeRoistatCall({
+      id: 'r1',
+      caller: '37360177070',
+      callee: '37376040824',
+      // Static: no session.
+      visit_id: null,
+      custom_fields: {
+        project_id: 'ENS2301',
+        utm_source: 'billboard',
+        utm_medium: 'offline',
+        utm_campaign: 'artima_q3',
+        landing_page: 'https://artima.md/',
+      },
+    });
+
+    expect(event?.attribution?.projectCode).toBe('ENS2301');
+    expect(event?.attribution?.utmSource).toBe('billboard');
+    expect(event?.attribution?.utmCampaign).toBe('artima_q3');
+    // Configured as a custom field rather than derived from a session.
+    expect(event?.attribution?.landingPage).toBe('https://artima.md/');
+    expect(event?.attribution?.roistatVisitId).toBeUndefined();
+  });
+
+  it('should read session-derived values from the top level (dynamic tracking)', () => {
+    const event = normalizeRoistatCall({
+      id: 'r2',
+      caller: '37360177070',
+      callee: '37376040824',
+      visit_id: 918273,
+      landing_page: 'https://artima.md/planuri',
+      referrer: 'https://www.google.com/',
+      google_client_id: 'GA1.2.123.456',
+      ip: '31.220.1.2',
+      city: 'Chisinau',
+      custom_fields: {
+        project_id: 'ENS2301',
+        utm_source: 'google',
+        utm_medium: 'cpc',
+      },
+    });
+
+    expect(event?.attribution?.roistatVisitId).toBe('918273');
+    expect(event?.attribution?.landingPage).toBe('https://artima.md/planuri');
+    expect(event?.attribution?.referrer).toBe('https://www.google.com/');
+    expect(event?.attribution?.googleClientId).toBe('GA1.2.123.456');
+    expect(event?.attribution?.city).toBe('Chisinau');
+  });
+
+  it('should accept a UTM delivered top level rather than as a custom field', () => {
+    const event = normalizeRoistatCall({
+      id: 'r3',
+      callee: '37376040824',
+      utm_source: 'facebook',
+      utm_medium: 'paid_social',
+    } as Parameters<typeof normalizeRoistatCall>[0]);
+
+    expect(event?.attribution?.utmSource).toBe('facebook');
+    expect(event?.attribution?.utmMedium).toBe('paid_social');
+  });
+
+  it('should prefer the custom field when a key appears in both slots', () => {
+    // An enforced value is a deliberate per-scenario decision, so it wins.
+    const event = normalizeRoistatCall({
+      id: 'r4',
+      callee: '37376040824',
+      utm_source: 'session-value',
+      custom_fields: { utm_source: 'enforced-value' },
+    } as Parameters<typeof normalizeRoistatCall>[0]);
+
+    expect(event?.attribution?.utmSource).toBe('enforced-value');
+  });
+
+  // The deal copies trafficType onto its first/last-touch snapshot, and the Lead
+  // Ads intake already labels utm_medium=paid_social as PAID — so a call and a
+  // lead ad describing the same campaign must read alike.
+  it('should derive trafficType from the medium, matching the Lead Ads convention', () => {
+    const tt = (medium?: string, source?: string) =>
+      normalizeRoistatCall({
+        id: 'r5',
+        callee: '37376040824',
+        custom_fields: {
+          ...(medium ? { utm_medium: medium } : {}),
+          ...(source ? { utm_source: source } : {}),
+        },
+      })?.attribution?.trafficType;
+
+    expect(tt('paid_social')).toBe('PAID');
+    expect(tt('cpc')).toBe('PAID');
+    expect(tt('organic')).toBe('ORGANIC');
+    expect(tt('social')).toBe('SOCIAL');
+    expect(tt('email')).toBe('EMAIL');
+    expect(tt('referral')).toBe('REFERRAL');
+    expect(tt('none')).toBe('DIRECT');
+    expect(tt('something-odd')).toBe('OTHER');
+    // A source with no medium is still SOMETHING, but the type is unknowable.
+    expect(tt(undefined, 'billboard')).toBe('OTHER');
+    // Nothing at all claims nothing.
+    expect(tt()).toBeUndefined();
+  });
+});
+
 describe('normalizeMoldcellContact', () => {
   it('should record the push without claiming any outcome', () => {
     // `contact` carries no status at all, so it must never look terminal or
