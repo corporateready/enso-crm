@@ -15,6 +15,7 @@ import {
   CROSS_PROVIDER_CORRELATION_WINDOW_MS,
 } from 'src/modules/enso/telephony/telephony.constants';
 import { type NormalizedCallEvent } from 'src/modules/enso/telephony/types/telephony.types';
+import { splitPbxLogin } from 'src/modules/enso/telephony/utils/normalize-call-event.util';
 
 type ActorValue = { source: string; name: string; context?: object };
 
@@ -146,7 +147,82 @@ export class CallIngestService {
     );
   }
 
-  // Attaches the resolved person and project. Returns true when the row is now
+    // The call's OUTCOME as the row finally settled, rather than as any single
+  // push reported it.
+  //
+  // This exists because `event CANCELLED` is a PER-LEG event, not a call-level
+  // one: when a call rings a department, every extension that did NOT win the
+  // race gets its own CANCELLED. Verified on a live call — Alexandr answered on
+  // ext 722 while Denis's ext 704 was cancelled — so a push-by-push reading of
+  // the outcome makes an answered group call look abandoned.
+  //
+  // `salesPickup` is part of the answer on purpose: it is set the moment an
+  // individual accepts, so it still proves a human took the call even if the
+  // authoritative `history` push never arrives.
+  async readSettledOutcome(
+    workspaceId: string,
+    activityId: string,
+  ): Promise<
+    | {
+        callStatus?: string;
+        salesPickup: boolean;
+        answeredByLogin?: string;
+        hasOpportunity: boolean;
+      }
+    | undefined
+  > {
+    const systemAuthContext = buildSystemAuthContext(workspaceId);
+
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const repository =
+          await this.globalWorkspaceOrmManager.getRepository<InboundActivityRow>(
+            workspaceId,
+            'inboundActivity',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const row = await repository.findOne({ where: { id: activityId } });
+
+        if (!isDefined(row)) {
+          return undefined;
+        }
+
+        return {
+          ...(isDefined(row.callStatus) ? { callStatus: row.callStatus } : {}),
+          salesPickup: row.salesPickup === true,
+          ...(isDefined(this.readAnsweredByLogin(row))
+            ? { answeredByLogin: this.readAnsweredByLogin(row) }
+            : {}),
+          hasOpportunity: isDefined(row.opportunityId),
+        };
+      },
+      systemAuthContext,
+    );
+  }
+
+  // Who actually took the call, recovered from the stored pushes. `history` is
+  // the authoritative record; the ACCEPTED event is the fallback for a call whose
+  // history push never arrived. Deliberately NOT the CANCELLED event's user —
+  // that names someone whose phone merely stopped ringing.
+  private readAnsweredByLogin(row: InboundActivityRow): string | undefined {
+    const payload =
+      typeof row.submittedPayload === 'object' && row.submittedPayload !== null
+        ? (row.submittedPayload as Record<string, { user?: unknown }>)
+        : {};
+
+    const raw =
+      payload['moldcell:history']?.user ??
+      payload['moldcell:event:ACCEPTED']?.user;
+
+    const { login, isGroup } = splitPbxLogin(raw);
+
+    // A group in the answered-by column means "rang a department", never "a
+    // person answered".
+    return isGroup ? undefined : login;
+  }
+
+// Attaches the resolved person and project. Returns true when the row is now
   // complete enough for the lead pipeline AND has no opportunity yet — i.e. when
   // it is worth enqueueing opportunity resolution.
   async linkIdentity(

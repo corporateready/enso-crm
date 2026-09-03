@@ -4,6 +4,7 @@ import { FileStorageModule } from 'src/engine/core-modules/file-storage/file-sto
 import { SecureHttpClientModule } from 'src/engine/core-modules/secure-http-client/secure-http-client.module';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { ArchiveCallRecordingJob } from 'src/modules/enso/telephony/jobs/archive-call-recording.job';
+import { DecideCallOutcomeJob } from 'src/modules/enso/telephony/jobs/decide-call-outcome.job';
 import { IngestCallEventJob } from 'src/modules/enso/telephony/jobs/ingest-call-event.job';
 import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
 import { CallRecordingArchiveService } from 'src/modules/enso/telephony/services/call-recording-archive.service';
@@ -26,6 +27,7 @@ import { CallIngestService } from 'src/modules/enso/telephony/services/call-inge
     CallRecordingArchiveService,
     InboundActivityNameService,
     IngestCallEventJob,
+    DecideCallOutcomeJob,
     ArchiveCallRecordingJob,
   ],
 })

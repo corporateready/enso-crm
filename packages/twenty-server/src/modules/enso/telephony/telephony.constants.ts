@@ -149,6 +149,16 @@ export const RECORDING_FETCH_TIMEOUT_MS = Number(
   process.env.ENSO_TELEPHONY_RECORDING_TIMEOUT_MS ?? 30 * 1000,
 );
 
+// How long to wait after a call looks finished before deciding whether it was
+// answered. `event CANCELLED` is a PER-LEG push — every extension that did not
+// win a department's race gets one — so the terminal pushes race each other and
+// no single one of them knows the call's outcome. Waiting lets them all land, so
+// the decision reads the activity's settled state instead. Observed live: all
+// pushes for one call arrive within the same second, so this is generous.
+export const CALL_OUTCOME_SETTLE_MS = Number(
+  process.env.ENSO_TELEPHONY_OUTCOME_SETTLE_MS ?? 20 * 1000,
+);
+
 // The PBX finishes writing the audio only after the call ends, so fetching the
 // instant `history` lands is a guaranteed miss on a short call.
 export const RECORDING_INITIAL_DELAY_MS = Number(

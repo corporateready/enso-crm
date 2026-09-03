@@ -286,6 +286,71 @@ describe('normalizeRoistatCall', () => {
   });
 });
 
+// A department call rings several extensions; the ones that lose the race each
+// get their OWN `event CANCELLED` naming their user. Verified live: Alexandr
+// answered on ext 722 while Denis's ext 704 was cancelled. Treating that push as
+// the call's outcome, or its user as the answerer, opened an answered call in
+// ROUTING under the wrong name.
+describe('per-leg CANCELLED on a department call', () => {
+  it('should never name the cancelled leg as the person who answered', () => {
+    const cancelled = normalizeMoldcellEvent({
+      cmd: 'event',
+      type: 'CANCELLED',
+      direction: 'in',
+      callid: 'J5B9FFOD60000038',
+      // The push DOES carry a user — the manager whose phone stopped ringing.
+      user: 'denis_vasiliev',
+      ext: '704',
+      phone: '37360177070',
+      diversion: '37376040824',
+      groupRealName: 'ARTIMA',
+    });
+
+    expect(cancelled?.answeredByLogin).toBeUndefined();
+  });
+
+  it('should not mark a cancelled leg as authoritative about the outcome', () => {
+    // It may claim ABANDONED — that is the only outcome signal a missed call
+    // ever produces — but it must never outrank the `history` push, which is
+    // what keeps an answered call from being downgraded.
+    const cancelled = normalizeMoldcellEvent({
+      cmd: 'event',
+      type: 'CANCELLED',
+      direction: 'in',
+      callid: 'c1',
+      user: 'denis_vasiliev',
+    });
+
+    expect(cancelled?.isAuthoritativeOutcome).toBe(false);
+    expect(cancelled?.isTerminal).toBe(true);
+
+    const history = normalizeMoldcellHistory({
+      cmd: 'history',
+      type: 'in',
+      status: 'Success',
+      callid: 'c1',
+      user: 'olvanica_alexandru',
+    });
+
+    expect(history?.isAuthoritativeOutcome).toBe(true);
+    expect(history?.callStatus).toBe('ANSWERED');
+    expect(history?.answeredByLogin).toBe('olvanica_alexandru');
+  });
+
+  it('should still name the answerer from the ACCEPTED push', () => {
+    expect(
+      normalizeMoldcellEvent({
+        cmd: 'event',
+        type: 'ACCEPTED',
+        direction: 'in',
+        callid: 'J5B9FFOD60000038',
+        user: 'olvanica_alexandru',
+        ext: '722',
+      })?.answeredByLogin,
+    ).toBe('olvanica_alexandru');
+  });
+});
+
 describe('outbound calls', () => {
   // Direction decides which object the call becomes. Getting it wrong is the bug
   // observed live: a manager dialling out arrived as `type: OUTGOING,

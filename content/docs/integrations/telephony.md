@@ -93,9 +93,20 @@ Everything else. Correlates the 3–4 events describing one call into a single
   patch outcome, duration, and recording as later events arrive. Waiting for the
   call to end before creating anything is what made the legacy design blind.
 - **Who answered** comes from `event ACCEPTED`.`user` / `history`.`user`, mapped
-  via `cmd=accounts` → `workspaceMember`. Answered calls **auto-claim** to that
-  manager. Missed calls (`CANCELLED`, `status=Missed`) enter normal routing plus
-  the claim window.
+  via `workspaceMember.pbxLogin`. Answered calls **auto-claim** to that manager.
+  Missed calls (`status=Missed`, or a call whose only terminal push is
+  `CANCELLED`) enter normal routing plus the claim window.
+- **`event CANCELLED` is PER-LEG, not per-call.** When a call rings a department,
+  every extension that does *not* win the race gets its own CANCELLED push naming
+  its own user. Verified live: Alexandr answered on ext 722 while Denis's ext 704
+  was cancelled. So no single terminal push knows how the call ended, and the
+  pushes race each other over HTTP — deciding from whichever arrived first opened
+  an answered department call in ROUTING with no owner.
+  **The stage is therefore decided from the ACTIVITY, not from a push**, by
+  `DecideCallOutcomeJob` a short settle delay (`ENSO_TELEPHONY_OUTCOME_SETTLE_MS`,
+  default 20s) after the call ends: `history` has authority over the status, and
+  `salesPickup` independently proves an individual accepted — which still holds if
+  the `history` push never arrives.
 - **Reconciliation sweep** catches calls whose terminal event never arrived
   (observed: 1 in 6 Roistat after-call events went missing).
 
