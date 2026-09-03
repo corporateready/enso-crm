@@ -42,6 +42,12 @@ export type MoldcellHistoryPush = {
   // Recording URL, when recording is enabled.
   link?: string;
   crm_token?: string;
+  // UNDOCUMENTED but observed live. `group` is the raw `g_<uuid>` login of the
+  // department the call rang; `missedStatus` accompanies `status: "missed"` and
+  // its meaning is not published. Declared so the shapes we actually receive
+  // typecheck, and so a reader knows they exist.
+  group?: string;
+  missedStatus?: string;
 };
 
 // Fires while the phone is still ringing. We must answer fast; omitting

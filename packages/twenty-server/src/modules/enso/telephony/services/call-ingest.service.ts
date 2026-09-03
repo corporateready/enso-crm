@@ -535,8 +535,14 @@ export class CallIngestService {
     }
 
     if (!isDefined(event.callStatus)) {
-      // ACCEPTED pushes name the person who answered but carry no status.
-      return true;
+      // An ACCEPTED push names the person who answered but carries no status,
+      // and that IS proof of a pickup. An AUTHORITATIVE push is different: if
+      // `history` names someone but its status is one we do not recognise, that
+      // is not proof of anything. Live example — a missed call arrived as
+      // `status: "missed", user: "pbx"`, and taking the shortcut there marked a
+      // call nobody answered as a sales pickup, which in turn opened the deal
+      // CONNECTED.
+      return !event.isAuthoritativeOutcome;
     }
 
     return ANSWERED_CALL_STATUSES.includes(event.callStatus);

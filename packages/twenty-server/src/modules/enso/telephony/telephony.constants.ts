@@ -63,15 +63,32 @@ export const MOLDCELL_EVENT_TRANSFERRED = 'TRANSFERRED';
 // Deliberately does NOT infer "answered" from the presence of an `account`/user:
 // verified against live PBX history, a group or a real user login appears in that
 // column even for calls that were never picked up. Only the status/type decides.
-export const MOLDCELL_STATUS_TO_CALL_STATUS: Record<string, string> = {
-  Success: 'ANSWERED',
-  Missed: 'UNANSWERED',
-  Cancel: 'ABANDONED',
-  Busy: 'BUSY',
-  NotAvailable: 'CONGESTION',
-  NotAllowed: 'CONGESTION',
-  NotFound: 'CONGESTION',
+//
+// Keys are lower-cased because the CASING IS NOT STABLE: the API docs list
+// `Missed`, but a live missed-call push carried `status: "missed"`. Look values
+// up through `toCallStatus`, never by direct indexing, or an unrecognised casing
+// silently becomes "no status" — which is much worse than it sounds, because a
+// status-less authoritative push used to read as a pickup.
+const MOLDCELL_STATUS_TO_CALL_STATUS_ENTRIES: Record<string, string> = {
+  success: 'ANSWERED',
+  missed: 'UNANSWERED',
+  cancel: 'ABANDONED',
+  busy: 'BUSY',
+  notavailable: 'CONGESTION',
+  notallowed: 'CONGESTION',
+  notfound: 'CONGESTION',
 };
+
+export const toCallStatus = (status: unknown): string | undefined =>
+  MOLDCELL_STATUS_TO_CALL_STATUS_ENTRIES[
+    String(status ?? '')
+      .trim()
+      .toLowerCase()
+  ];
+
+// Kept for the tests that assert the full mapping is covered.
+export const MOLDCELL_STATUS_TO_CALL_STATUS =
+  MOLDCELL_STATUS_TO_CALL_STATUS_ENTRIES;
 
 // Roistat `status` -> inboundActivity.callStatus SELECT.
 export const ROISTAT_STATUS_TO_CALL_STATUS: Record<string, string> = {
@@ -177,6 +194,11 @@ export const RECORDING_RETRY_DELAY_MS = Number(
 // A group in the answered-by column means "rang a department", not "a person
 // answered", so it must never be treated as a sales pickup.
 export const MOLDCELL_GROUP_LOGIN_PREFIX = 'g_';
+
+// `user` values that are NOT a person. `pbx` is the switch reporting on its own
+// behalf — observed on a live missed call (`status: "missed", user: "pbx"`), where
+// treating it as the answerer would credit a call nobody took to a human.
+export const MOLDCELL_NON_PERSON_LOGINS = new Set(['pbx']);
 
 // Statuses that mean a human actually spoke to the caller.
 export const ANSWERED_CALL_STATUSES = ['ANSWERED', 'SALES_PICKUP'];
