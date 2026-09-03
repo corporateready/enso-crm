@@ -319,34 +319,31 @@ export class OutboundCallIngestService {
   ): Promise<void> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const repository = await this.getRepository(workspaceId);
-        const existing = await repository.findOne({
-          where: { id: activityId },
-        });
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const repository = await this.getRepository(workspaceId);
+      const existing = await repository.findOne({
+        where: { id: activityId },
+      });
 
-        if (!isDefined(existing)) {
-          return;
-        }
+      if (!isDefined(existing)) {
+        return;
+      }
 
-        if (
-          !isDefined(existing.opportunityId) &&
-          isDefined(details.opportunityId)
-        ) {
-          await repository.update(
-            { id: activityId },
-            { opportunityId: details.opportunityId, updatedBy: SYSTEM_ACTOR },
-          );
-        }
+      if (
+        !isDefined(existing.opportunityId) &&
+        isDefined(details.opportunityId)
+      ) {
+        await repository.update(
+          { id: activityId },
+          { opportunityId: details.opportunityId, updatedBy: SYSTEM_ACTOR },
+        );
+      }
 
-        await this.writeTimeline(workspaceId, existing, {
-          ...details,
-          opportunityId: details.opportunityId ?? existing.opportunityId,
-        });
-      },
-      systemAuthContext,
-    );
+      await this.writeTimeline(workspaceId, existing, {
+        ...details,
+        opportunityId: details.opportunityId ?? existing.opportunityId,
+      });
+    }, systemAuthContext);
   }
 
   // One row per timeline the call should appear on. Written explicitly rather
@@ -467,7 +464,6 @@ export class OutboundCallIngestService {
 
     return fields;
   }
-
 
   // The PBX side of the call: the manager's own direct number if the push names
   // one, otherwise their PBX login — enough for a human to see where it went out.

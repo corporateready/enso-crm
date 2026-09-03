@@ -147,7 +147,7 @@ export class CallIngestService {
     );
   }
 
-    // The call's OUTCOME as the row finally settled, rather than as any single
+  // The call's OUTCOME as the row finally settled, rather than as any single
   // push reported it.
   //
   // This exists because `event CANCELLED` is a PER-LEG event, not a call-level
@@ -222,7 +222,7 @@ export class CallIngestService {
     return isGroup ? undefined : login;
   }
 
-// Attaches the resolved person and project. Returns true when the row is now
+  // Attaches the resolved person and project. Returns true when the row is now
   // complete enough for the lead pipeline AND has no opportunity yet — i.e. when
   // it is worth enqueueing opportunity resolution.
   async linkIdentity(

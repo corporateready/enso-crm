@@ -189,16 +189,19 @@ export class TelephonyOutboundService {
     };
   }
 
-  private buildE164(phones: PhonesValue | null | undefined): string | undefined {
+  private buildE164(
+    phones: PhonesValue | null | undefined,
+  ): string | undefined {
     const number = String(phones?.primaryPhoneNumber ?? '').replace(/\D/g, '');
 
     if (!number) {
       return undefined;
     }
 
-    const callingCode = String(
-      phones?.primaryPhoneCallingCode ?? '',
-    ).replace(/\D/g, '');
+    const callingCode = String(phones?.primaryPhoneCallingCode ?? '').replace(
+      /\D/g,
+      '',
+    );
 
     // Phone storage in this workspace is inconsistent: some rows keep the
     // country code inside primaryPhoneNumber alongside a wrong calling code (see
@@ -229,48 +232,45 @@ export class TelephonyOutboundService {
     const id = randomUUID();
     const occurredAt = new Date();
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const repository =
-          await this.globalWorkspaceOrmManager.getRepository<OutboundActivityRow>(
-            params.workspaceId,
-            'outboundActivity',
-            { shouldBypassPermissionChecks: true },
-          );
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<OutboundActivityRow>(
+          params.workspaceId,
+          'outboundActivity',
+          { shouldBypassPermissionChecks: true },
+        );
 
-        const lastPosition = await repository.maximum('position', undefined);
+      const lastPosition = await repository.maximum('position', undefined);
 
-        await repository.insert({
-          id,
-          name: `Outbound call · ${params.phone} · ${occurredAt
-            .toISOString()
-            .slice(0, 16)
-            .replace('T', ' ')}`,
-          channel: 'CALL',
-          loggedVia: 'CRM_INITIATED',
-          toIdentity: params.phone,
-          fromIdentity: params.fromIdentity,
-          occurredAt,
-          personId: params.personId,
-          performedById: params.workspaceMemberId,
-          // Prefixed the same way the pushes are, so a matching CallID
-          // correlates on the externalId lookup with no special-casing.
-          ...(isDefined(params.callId)
-            ? {
-                externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${params.callId}`,
-              }
-            : {}),
-          ...(isDefined(params.opportunityId)
-            ? { opportunityId: params.opportunityId }
-            : {}),
-          ...(isDefined(params.taskId) ? { taskId: params.taskId } : {}),
-          position: (lastPosition ?? 0) + 1,
-          createdBy: params.actor ?? SYSTEM_ACTOR,
-          updatedBy: params.actor ?? SYSTEM_ACTOR,
-        });
-      },
-      buildSystemAuthContext(params.workspaceId),
-    );
+      await repository.insert({
+        id,
+        name: `Outbound call · ${params.phone} · ${occurredAt
+          .toISOString()
+          .slice(0, 16)
+          .replace('T', ' ')}`,
+        channel: 'CALL',
+        loggedVia: 'CRM_INITIATED',
+        toIdentity: params.phone,
+        fromIdentity: params.fromIdentity,
+        occurredAt,
+        personId: params.personId,
+        performedById: params.workspaceMemberId,
+        // Prefixed the same way the pushes are, so a matching CallID
+        // correlates on the externalId lookup with no special-casing.
+        ...(isDefined(params.callId)
+          ? {
+              externalId: `${MOLDCELL_EXTERNAL_ID_PREFIX}:${params.callId}`,
+            }
+          : {}),
+        ...(isDefined(params.opportunityId)
+          ? { opportunityId: params.opportunityId }
+          : {}),
+        ...(isDefined(params.taskId) ? { taskId: params.taskId } : {}),
+        position: (lastPosition ?? 0) + 1,
+        createdBy: params.actor ?? SYSTEM_ACTOR,
+        updatedBy: params.actor ?? SYSTEM_ACTOR,
+      });
+    }, buildSystemAuthContext(params.workspaceId));
 
     return id;
   }
