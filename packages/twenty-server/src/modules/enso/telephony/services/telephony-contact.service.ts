@@ -20,7 +20,6 @@ type AssignmentRow = {
 type WorkspaceMemberRow = {
   id: string;
   pbxLogin?: string | null;
-  isAvailableForRouting?: boolean | null;
 };
 
 // Module A — the synchronous half of telephony.
@@ -150,12 +149,22 @@ export class TelephonyContactService {
           return undefined;
         }
 
-        // Do not ring someone who has turned off lead reception; the PBX would
-        // otherwise send a live call to a phone nobody is watching.
-        if (manager.isAvailableForRouting === false) {
-          return undefined;
-        }
-
+        // `isAvailableForRouting` is deliberately NOT consulted here. It means
+        // "send me new leads or not" — a distribution-load control over the
+        // ROUTING pool. It does not mean "do not connect my own customers to
+        // me": an existing client ringing their own manager is not new work, and
+        // diverting them to the department loses exactly the continuity that
+        // sticky ownership exists to provide.
+        //
+        // This now matches the routing brain, which already states the rule —
+        // "sticky wins even if the manager is currently offline, it's their
+        // client" (opportunity-routing.service.ts). Module A had the same policy
+        // backwards.
+        //
+        // Real presence belongs to the PBX, not to this flag: a manager who is
+        // away sets DND / their «Приём звонков» settings, and the PBX's own
+        // mandatory fallback sends the call to the department on no-answer. So
+        // returning an owner who cannot pick up costs nothing.
         return manager.pbxLogin;
       },
       buildSystemAuthContext(workspaceId),
