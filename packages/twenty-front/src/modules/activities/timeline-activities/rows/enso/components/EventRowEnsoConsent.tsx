@@ -41,7 +41,9 @@ const StyledRow = styled.div`
 // $granted: green for a grant, danger for a revoke.
 const StyledAction = styled.span<{ $granted: boolean }>`
   color: ${({ $granted }) =>
-    $granted ? themeCssVariables.color.green : themeCssVariables.font.color.danger};
+    $granted
+      ? themeCssVariables.color.green
+      : themeCssVariables.font.color.danger};
   font-weight: ${themeCssVariables.font.weight.medium};
 `;
 
@@ -54,12 +56,14 @@ const StyledLinkedRecord = styled.span`
   white-space: nowrap;
 `;
 
+type EventRowEnsoConsentProps = EventRowDynamicComponentProps;
+
 export const EventRowEnsoConsent = ({
   authorFullName,
   event,
   linkedObjectMetadataItem,
   createdAt,
-}: EventRowDynamicComponentProps) => {
+}: EventRowEnsoConsentProps) => {
   const [, eventAction] = event.name.split('.');
   const granted = eventAction === 'granted';
 

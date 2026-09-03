@@ -90,11 +90,13 @@ const StyledDate = styled.div`
   padding: 0 ${themeCssVariables.spacing[1]};
 `;
 
+type EventRowEnsoEventProps = EventRowDynamicComponentProps;
+
 export const EventRowEnsoEvent = ({
   authorFullName,
   event,
   createdAt,
-}: EventRowDynamicComponentProps) => {
+}: EventRowEnsoEventProps) => {
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
   const auto = event.properties?.auto === true;

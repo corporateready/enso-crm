@@ -38,11 +38,13 @@ const StyledItemTitleDate = styled.div`
   padding: 0 ${themeCssVariables.spacing[1]};
 `;
 
+type EventRowEnsoMergeProps = EventRowDynamicComponentProps;
+
 export const EventRowEnsoMerge = ({
   authorFullName,
   event,
   createdAt,
-}: EventRowDynamicComponentProps) => {
+}: EventRowEnsoMergeProps) => {
   const mergedLabel = isNonEmptyString(event.linkedRecordCachedName)
     ? event.linkedRecordCachedName
     : t`a duplicate`;

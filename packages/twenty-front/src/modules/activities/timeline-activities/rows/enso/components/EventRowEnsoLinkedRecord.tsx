@@ -50,12 +50,14 @@ const StyledLinkedRecord = styled.span`
   white-space: nowrap;
 `;
 
+type EventRowEnsoLinkedRecordProps = EventRowDynamicComponentProps;
+
 export const EventRowEnsoLinkedRecord = ({
   authorFullName,
   event,
   linkedObjectMetadataItem,
   createdAt,
-}: EventRowDynamicComponentProps) => {
+}: EventRowEnsoLinkedRecordProps) => {
   const [, eventAction] = event.name.split('.');
 
   // The linked object's human label ("Opportunity", "Inbound Activity") so the
