@@ -230,10 +230,18 @@ jobs:
             echo "The following migration changes were detected:"
             echo "==================================================="
             git diff
+            # The generated command file itself is untracked, so `git diff`
+            # never showed it — and its SQL is the whole diagnostic. Print it.
+            for generated_file in $(git ls-files --others --exclude-standard -- packages/twenty-server/src/database/commands/upgrade-version-command); do
+              echo ""
+              echo "--- generated file: $generated_file"
+              cat "$generated_file"
+            done
             echo "==================================================="
             echo ""
 
             git checkout -- .
+            git clean -fq -- packages/twenty-server/src/database/commands/upgrade-version-command
 
             exit 1
           fi
