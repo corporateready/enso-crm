@@ -203,10 +203,12 @@ export class IngestCallEventJob {
       activityId: ingested.activityId,
     });
 
-    // Only the push that FIRST gave the row its outcome finalizes it. Gating on
-    // "is this the history push" is not enough — a redelivered history push
-    // would write a second timeline line for the same call.
-    if (!ingested.becameTerminal) {
+    // Only the push that actually knows how the call went finalizes it. Note
+    // this is NOT "the first push to record an outcome": an `event CANCELLED`
+    // can land first and set NO_ANSWER, and gating on that made the real
+    // outcome push look redundant — silently costing the call its deal link and
+    // timeline line. Duplicate timeline rows are prevented inside finalize.
+    if (!ingested.isAuthoritative) {
       return;
     }
 

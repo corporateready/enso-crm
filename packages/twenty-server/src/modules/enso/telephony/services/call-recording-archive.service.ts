@@ -109,32 +109,29 @@ export class CallRecordingArchiveService {
       settings: { isTemporaryFile: true, toDelete: false },
     });
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const repository =
-          await this.globalWorkspaceOrmManager.getRepository<AttachmentRow>(
-            workspaceId,
-            'attachment',
-            { shouldBypassPermissionChecks: true },
-          );
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<AttachmentRow>(
+          workspaceId,
+          'attachment',
+          { shouldBypassPermissionChecks: true },
+        );
 
-        const lastPosition = await repository.maximum('position', undefined);
+      const lastPosition = await repository.maximum('position', undefined);
 
-        await repository.insert({
-          id: randomUUID(),
-          name: label,
-          // The ORM rewrites `extension` from the stored file's own path, and
-          // flips the file from temporary to permanent, as part of this insert.
-          file: [{ fileId, label, extension }],
-          fileCategory: 'AUDIO',
-          ...this.targetColumns(target),
-          position: (lastPosition ?? 0) + 1,
-          createdBy: SYSTEM_ACTOR,
-          updatedBy: SYSTEM_ACTOR,
-        });
-      },
-      buildSystemAuthContext(workspaceId),
-    );
+      await repository.insert({
+        id: randomUUID(),
+        name: label,
+        // The ORM rewrites `extension` from the stored file's own path, and
+        // flips the file from temporary to permanent, as part of this insert.
+        file: [{ fileId, label, extension }],
+        fileCategory: 'AUDIO',
+        ...this.targetColumns(target),
+        position: (lastPosition ?? 0) + 1,
+        createdBy: SYSTEM_ACTOR,
+        updatedBy: SYSTEM_ACTOR,
+      });
+    }, buildSystemAuthContext(workspaceId));
 
     this.logger.log(
       `Archived ${audio.buffer.length} B recording for ${target.objectNameSingular} ${target.activityId}`,

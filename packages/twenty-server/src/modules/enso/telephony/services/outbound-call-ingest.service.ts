@@ -11,6 +11,7 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
   buildEnsoTimelineInserts,
+  ENSO_EVENT_ACTIVITY_NAME_PREFIX,
   type EnsoTimelineSegment,
 } from 'src/modules/enso/timeline/enso-timeline.util';
 import {
@@ -58,10 +59,13 @@ type OutboundActivityRepository = WorkspaceRepository<OutboundActivityRow>;
 export type OutboundCallIngestResult = {
   activityId: string;
   created: boolean;
-  // True only for the ONE push that first gave the row its outcome. The deal
-  // link and the timeline line hang off this, so a redelivered `history` push
-  // cannot produce a second timeline row for the same call.
-  becameTerminal: boolean;
+  // True for the push that actually KNOWS how the call went — `history`, which
+  // fires once per call. Deliberately not "the first push to set any outcome":
+  // an `event CANCELLED` can land first and set NO_ANSWER, and gating on that
+  // made the later authoritative push look redundant, silently costing the call
+  // its deal link and its timeline line. Duplicate timeline rows are prevented
+  // in writeTimeline instead, where it can be checked exactly.
+  isAuthoritative: boolean;
 };
 
 // The outbound half of PBX intake.
@@ -105,15 +109,12 @@ export class OutboundCallIngestService {
         );
 
         if (isDefined(existing)) {
-          const hadOutcome =
-            isDefined(existing.outcome) || isDefined(existing.durationS);
-
           await this.patchActivity(repository, existing, event, identity);
 
           return {
             activityId: existing.id,
             created: false,
-            becameTerminal: !hadOutcome && event.isAuthoritativeOutcome,
+            isAuthoritative: event.isAuthoritativeOutcome,
           };
         }
 
@@ -126,7 +127,7 @@ export class OutboundCallIngestService {
         return {
           activityId,
           created: true,
-          becameTerminal: event.isAuthoritativeOutcome,
+          isAuthoritative: event.isAuthoritativeOutcome,
         };
       },
       systemAuthContext,
@@ -318,34 +319,31 @@ export class OutboundCallIngestService {
   ): Promise<void> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const repository = await this.getRepository(workspaceId);
-        const existing = await repository.findOne({
-          where: { id: activityId },
-        });
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const repository = await this.getRepository(workspaceId);
+      const existing = await repository.findOne({
+        where: { id: activityId },
+      });
 
-        if (!isDefined(existing)) {
-          return;
-        }
+      if (!isDefined(existing)) {
+        return;
+      }
 
-        if (
-          !isDefined(existing.opportunityId) &&
-          isDefined(details.opportunityId)
-        ) {
-          await repository.update(
-            { id: activityId },
-            { opportunityId: details.opportunityId, updatedBy: SYSTEM_ACTOR },
-          );
-        }
+      if (
+        !isDefined(existing.opportunityId) &&
+        isDefined(details.opportunityId)
+      ) {
+        await repository.update(
+          { id: activityId },
+          { opportunityId: details.opportunityId, updatedBy: SYSTEM_ACTOR },
+        );
+      }
 
-        await this.writeTimeline(workspaceId, existing, {
-          ...details,
-          opportunityId: details.opportunityId ?? existing.opportunityId,
-        });
-      },
-      systemAuthContext,
-    );
+      await this.writeTimeline(workspaceId, existing, {
+        ...details,
+        opportunityId: details.opportunityId ?? existing.opportunityId,
+      });
+    }, systemAuthContext);
   }
 
   // One row per timeline the call should appear on. Written explicitly rather
@@ -364,6 +362,26 @@ export class OutboundCallIngestService {
     },
   ): Promise<void> {
     try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<
+          Record<string, unknown>
+        >(workspaceId, 'timelineActivity', {
+          shouldBypassPermissionChecks: true,
+        });
+
+      // Exact idempotency, keyed on the activity itself: a redelivered `history`
+      // push must not add a second line for the same call.
+      const alreadyWritten = await timelineRepository.findOne({
+        where: {
+          name: `${ENSO_EVENT_ACTIVITY_NAME_PREFIX}.outbound-call`,
+          linkedRecordId: existing.id,
+        },
+      });
+
+      if (isDefined(alreadyWritten)) {
+        return;
+      }
+
       const inserts = buildEnsoTimelineInserts({
         action: 'outbound-call',
         target: {
@@ -371,6 +389,9 @@ export class OutboundCallIngestService {
           opportunityId: details.opportunityId ?? null,
         },
         segments: this.buildTimelineSegments(existing, details),
+        // Doubles as the dedup key above, and points the row's click target at
+        // the activity it describes.
+        linkedRecordId: existing.id,
         // Attributed to the manager when their PBX login maps to a member;
         // otherwise it reads "by ENSO CRM", which is honest — we observed the
         // call without being able to say whose it was.
@@ -386,13 +407,6 @@ export class OutboundCallIngestService {
       if (inserts.length === 0) {
         return;
       }
-
-      const timelineRepository =
-        await this.globalWorkspaceOrmManager.getRepository<
-          Record<string, unknown>
-        >(workspaceId, 'timelineActivity', {
-          shouldBypassPermissionChecks: true,
-        });
 
       await timelineRepository.insert(inserts);
     } catch (error) {
@@ -450,7 +464,6 @@ export class OutboundCallIngestService {
 
     return fields;
   }
-
 
   // The PBX side of the call: the manager's own direct number if the push names
   // one, otherwise their PBX login — enough for a human to see where it went out.
