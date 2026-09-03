@@ -12,6 +12,11 @@ export type IngestCallEventJobData = {
   event: SerializedCallEvent;
 };
 
+export type DecideCallOutcomeJobData = {
+  workspaceId: string;
+  activityId: string;
+};
+
 export type ArchiveCallRecordingJobData = {
   workspaceId: string;
   // The PBX url the audio is fetched from. Kept on the activity too, as

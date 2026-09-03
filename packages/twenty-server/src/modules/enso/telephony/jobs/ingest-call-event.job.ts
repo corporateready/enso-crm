@@ -7,11 +7,11 @@ import { Process } from 'src/engine/core-modules/message-queue/decorators/proces
 import { Processor } from 'src/engine/core-modules/message-queue/decorators/processor.decorator';
 import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queue.constants';
 import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
-import { type ResolveOpportunityFromActivityJobData } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
-import { ResolveOpportunityFromActivityJob } from 'src/modules/enso/lead-pipeline/jobs/resolve-opportunity-from-activity.job';
 import { ArchiveCallRecordingJob } from 'src/modules/enso/telephony/jobs/archive-call-recording.job';
+import { DecideCallOutcomeJob } from 'src/modules/enso/telephony/jobs/decide-call-outcome.job';
 import {
   type ArchiveCallRecordingJobData,
+  type DecideCallOutcomeJobData,
   deserializeCallEvent,
   type IngestCallEventJobData,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
@@ -21,6 +21,7 @@ import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number
 import {
   ANSWERED_CALL_STATUSES,
   ARCHIVE_RECORDINGS,
+  CALL_OUTCOME_SETTLE_MS,
   RECORDING_INITIAL_DELAY_MS,
 } from 'src/modules/enso/telephony/telephony.constants';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
@@ -39,8 +40,6 @@ export class IngestCallEventJob {
     private readonly outboundCallIngestService: OutboundCallIngestService,
     private readonly callIdentityService: CallIdentityService,
     private readonly pbxNumberService: PbxNumberService,
-    @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
-    private readonly leadPipelineQueueService: MessageQueueService,
     @InjectMessageQueue(MessageQueue.ensoTelephonyQueue)
     private readonly telephonyQueueService: MessageQueueService,
   ) {}
@@ -136,45 +135,23 @@ export class IngestCallEventJob {
       return;
     }
 
-    // Hold opportunity resolution until the call's outcome is actually known.
-    // Being terminal is not enough: `event COMPLETED` ends the call but carries
-    // no status, so acting on it opened every answered call in ROUTING — the
-    // stage for a call nobody took. `history` (and `event CANCELLED`, which does
-    // imply ABANDONED) are the pushes that can decide, so we wait for one.
-    if (!event.isTerminal || !isDefined(event.callStatus)) {
+    // Wait for the call to be over before deciding anything about the deal.
+    if (!event.isTerminal) {
       return;
     }
 
-    const answered = ANSWERED_CALL_STATUSES.includes(event.callStatus);
-
-    // An answered inbound call is two-way engagement, so it opens CONNECTED and
-    // never routes. An unanswered one is exactly what ROUTING is for.
-    const alreadyConnected = answered
-      ? {
-          ownerMemberId:
-            await this.callIdentityService.resolveAnsweredOwnerMemberId(
-              workspaceId,
-              event.answeredByLogin,
-            ),
-        }
-      : undefined;
-
-    // Raw-ORM writes bypass the createOne POST hook that normally starts the
-    // pipeline, so the handoff is explicit here.
-    await this.leadPipelineQueueService.add<ResolveOpportunityFromActivityJobData>(
-      ResolveOpportunityFromActivityJob.name,
+    // The stage decision does NOT happen here, and must not: `event CANCELLED`
+    // is a per-leg push, so on a call a department answered the terminal pushes
+    // disagree with each other and whichever arrived first would decide. That
+    // opened an answered group call in ROUTING, unowned. DecideCallOutcomeJob
+    // runs after a short settle delay and reads the activity instead.
+    await this.telephonyQueueService.add<DecideCallOutcomeJobData>(
+      DecideCallOutcomeJob.name,
+      { workspaceId, activityId: ingested.activityId },
       {
-        workspaceId,
-        activityId: ingested.activityId,
-        ...(isDefined(alreadyConnected) ? { alreadyConnected } : {}),
+        id: `enso-telephony-decide:${ingested.activityId}`,
+        delay: CALL_OUTCOME_SETTLE_MS,
       },
-      // One resolution attempt per activity; the job itself is idempotent on
-      // opportunityId, but this keeps redelivered pushes from queueing repeats.
-      { id: `enso-telephony-resolve:${ingested.activityId}` },
-    );
-
-    this.logger.log(
-      `Enqueued opportunity resolution for activity ${ingested.activityId} (${answered ? 'answered → CONNECTED' : 'unanswered → ROUTING'})`,
     );
   }
 
