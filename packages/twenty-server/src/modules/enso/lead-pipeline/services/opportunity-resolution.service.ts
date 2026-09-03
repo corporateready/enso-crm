@@ -30,6 +30,7 @@ const OPPORTUNITY_OBJECT_METADATA_ID = 'a71b2bcb-9380-4b84-9f94-b6ddc19b103b';
 const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
   'cef40992-41c4-4742-8b4c-234777a1b8c6';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
+import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services/opportunity-claim.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 
 // Result of resolving an inbound activity to an opportunity.
@@ -76,6 +77,7 @@ export class OpportunityResolutionService {
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly opportunityNameService: OpportunityNameService,
     private readonly managerNotificationService: ManagerNotificationService,
+    private readonly opportunityClaimService: OpportunityClaimService,
   ) {}
 
   async resolveFromActivity(
@@ -339,6 +341,35 @@ export class OpportunityResolutionService {
         },
         systemAuthContext,
       );
+
+    // Sticky (person × project) ownership for a deal this pipeline opened
+    // straight at CONNECTED — an answered call, where we already know who spoke
+    // to the customer.
+    //
+    // The sticky write normally hangs off the `opportunity.updateOne` post-hook,
+    // but everything above is a raw-ORM write and raw writes bypass query hooks.
+    // So an answered call — the STRONGEST ownership signal there is, a human
+    // actually talked to them — was the one case that never became sticky, and
+    // the customer kept ringing the whole department. Verified on live data
+    // before this fix: both answered-call deals had no assignment.
+    //
+    // Handing off explicitly is the same pattern telephony intake uses, for the
+    // same reason. syncStickyAssignment is idempotent and refuses to act on a
+    // deal still in ROUTING, so this is safe for every outcome: created at
+    // CONNECTED, a parked deal moved to CONNECTED by the attach branch, or a
+    // deal that stays parked (no-op).
+    if (isDefined(result)) {
+      try {
+        await this.opportunityClaimService.syncStickyAssignment(
+          authContext,
+          result.opportunityId,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Sticky assignment sync failed for deal ${result.opportunityId}: ${(error as Error).message}`,
+        );
+      }
+    }
 
     if (isDefined(reengagementNotify) && isDefined(result)) {
       try {
