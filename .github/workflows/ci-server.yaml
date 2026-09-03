@@ -281,6 +281,17 @@ jobs:
           if [ "$HAS_ERRORS" = true ]; then
             exit 1
           fi
+      - name: Upload regenerated code
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: regenerated-codegen
+          path: |
+            packages/twenty-front/src/generated
+            packages/twenty-front/src/generated-metadata
+            packages/twenty-front/src/generated-admin
+            packages/twenty-client-sdk/src/metadata/generated
+          retention-days: 1
   server-test:
     needs: server-build
     timeout-minutes: 30
