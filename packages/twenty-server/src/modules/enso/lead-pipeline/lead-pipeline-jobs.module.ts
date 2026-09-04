@@ -12,6 +12,7 @@ import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/services/opportunity-resolution.service';
 import { OpportunityRoutingService } from 'src/modules/enso/lead-pipeline/services/opportunity-routing.service';
+import { ProjectNotificationService } from 'src/modules/enso/lead-pipeline/services/project-notification.service';
 import { PersonFirstTouchService } from 'src/modules/enso/lead-pipeline/services/person-first-touch.service';
 import { PersonTimelineService } from 'src/modules/enso/lead-pipeline/services/person-timeline.service';
 import { ConsentEventService } from 'src/modules/enso/person-project-consent/services/consent-event.service';
@@ -47,6 +48,10 @@ import { PersonProjectConsentNameService } from 'src/modules/enso/person-project
     PersonProjectConsentNameService,
     ConsentEventService,
     ManagerNotificationService,
+    // The marketing lane's poster. Same reason OpportunityClaimService is
+    // listed here: OpportunityResolutionService depends on it, and this graph
+    // resolves independently of the server one.
+    ProjectNotificationService,
     ResolveOpportunityFromActivityJob,
     RouteOpportunityJob,
     NotifyManagerAssignmentJob,
