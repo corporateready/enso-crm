@@ -31,6 +31,7 @@ const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
   'cef40992-41c4-4742-8b4c-234777a1b8c6';
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services/opportunity-claim.service';
+import { ProjectNotificationService } from 'src/modules/enso/lead-pipeline/services/project-notification.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
 
 // Result of resolving an inbound activity to an opportunity.
@@ -78,6 +79,7 @@ export class OpportunityResolutionService {
     private readonly opportunityNameService: OpportunityNameService,
     private readonly managerNotificationService: ManagerNotificationService,
     private readonly opportunityClaimService: OpportunityClaimService,
+    private readonly projectNotificationService: ProjectNotificationService,
   ) {}
 
   async resolveFromActivity(
@@ -367,6 +369,23 @@ export class OpportunityResolutionService {
       } catch (error) {
         this.logger.warn(
           `Sticky assignment sync failed for deal ${result.opportunityId}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // MARKETING lane: post the new deal to its project's shared Google Chat
+    // space. Creation only — a re-engagement is not new demand. Deliberately
+    // separate from the manager notify above and from routing: this feed is read
+    // by marketing to see what their spend produced, and it must never be able
+    // to fail the deal that triggered it.
+    if (isDefined(result) && result.created) {
+      try {
+        await this.projectNotificationService.notifyNewDeal(authContext, {
+          opportunityId: result.opportunityId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Project marketing notify failed for deal ${result.opportunityId}: ${(error as Error).message}`,
         );
       }
     }

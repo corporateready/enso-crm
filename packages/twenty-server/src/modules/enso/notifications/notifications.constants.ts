@@ -44,3 +44,20 @@ export type NotificationEventKey =
 
 export const NOTIFICATION_EVENT_KEYS: NotificationEventKey[] =
   Object.values(NOTIFICATION_EVENTS);
+
+// ── Second lane: per-PROJECT marketing spaces ────────────────────────────────
+//
+// Distinct from the per-manager lane above, and deliberately so. The manager
+// lane is private and time-critical ("claim this in 3 minutes"); this one is a
+// shared per-development room the MARKETING team reads to see what their spend
+// is producing — ARTIMA Leads, AVRAM IANCU Leads, TRIUMF BOTANICA Leads,
+// Vânzări Imobiliare Leads. The same new deal therefore produces two posts:
+// one to the owner privately, one to the project room. That is the design, not
+// duplication.
+//
+// Stored per project, workspace-scoped (userId = null) and encrypted, because a
+// webhook URL is a capability: whoever holds it can post into that space.
+export const PROJECT_CHAT_WEBHOOK_URL_KEY_PREFIX = 'PROJECT_CHAT_WEBHOOK_URL:';
+
+export const projectChatWebhookKey = (projectId: string): string =>
+  `${PROJECT_CHAT_WEBHOOK_URL_KEY_PREFIX}${projectId}`;
