@@ -32,6 +32,7 @@ import { type WorkspaceDeleteQueryBuilder } from 'src/engine/twenty-orm/reposito
 import { WorkspaceSelectQueryBuilder } from 'src/engine/twenty-orm/repository/workspace-select-query-builder';
 import { type WorkspaceSoftDeleteQueryBuilder } from 'src/engine/twenty-orm/repository/workspace-soft-delete-query-builder';
 import { applyRowLevelPermissionPredicates } from 'src/engine/twenty-orm/utils/apply-row-level-permission-predicates.util';
+import { applyEnsoRecordVisibility } from 'src/modules/enso/record-visibility/utils/apply-enso-record-visibility.util';
 import { applyTableAliasOnWhereCondition } from 'src/engine/twenty-orm/utils/apply-table-alias-on-where-condition';
 import { computeEventSelectQueryBuilder } from 'src/engine/twenty-orm/utils/compute-event-select-query-builder.util';
 import { formatData } from 'src/engine/twenty-orm/utils/format-data.util';
@@ -640,6 +641,14 @@ export class WorkspaceUpdateQueryBuilder<
       internalContext: this.internalContext,
       authContext: this.authContext,
       featureFlagMap: this.featureFlagMap,
+    });
+
+    applyEnsoRecordVisibility({
+      queryBuilder: this,
+      objectMetadata,
+      internalContext: this.internalContext,
+      authContext: this.authContext,
+      useDirectTableReference: true,
     });
   }
 
