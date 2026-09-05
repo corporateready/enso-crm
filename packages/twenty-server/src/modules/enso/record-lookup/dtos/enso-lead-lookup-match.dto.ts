@@ -78,4 +78,11 @@ export class EnsoLeadLookupResultDTO {
 
   @Field(() => Number)
   remainingLookupsToday: number;
+
+  // False for admins and anyone else who already sees every record. The lookup
+  // is then a no-op: nothing is queried, nothing is counted, and the UI has no
+  // reason to show a "worked by someone else" section next to results that
+  // already include those records.
+  @Field(() => Boolean)
+  isViewerScoped: boolean;
 }

@@ -6,6 +6,7 @@ import { AuthGraphqlApiExceptionFilter } from 'src/engine/core-modules/auth/filt
 import { ResolverValidationPipe } from 'src/engine/core-modules/graphql/pipes/resolver-validation.pipe';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
+import { AuthUserWorkspaceId } from 'src/engine/decorators/auth/auth-user-workspace-id.decorator';
 import { AuthWorkspaceMemberId } from 'src/engine/decorators/auth/auth-workspace-member-id.decorator';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
@@ -28,10 +29,12 @@ export class EnsoLeadLookupResolver {
     @Args('searchTerm', { type: () => String }) searchTerm: string,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthWorkspaceMemberId() workspaceMemberId: string,
+    @AuthUserWorkspaceId() userWorkspaceId: string,
   ): Promise<EnsoLeadLookupResultDTO> {
     return this.ensoLeadLookupService.lookup({
       workspaceId: workspace.id,
       workspaceMemberId,
+      userWorkspaceId,
       searchTerm,
     });
   }
