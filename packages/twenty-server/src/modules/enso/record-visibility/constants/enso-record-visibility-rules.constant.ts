@@ -32,6 +32,15 @@ const ownedCompanyIds = ({ schema, me }: EnsoRecordVisibilityConditionArgs) => `
   WHERE cpa."deletedAt" IS NULL AND cpa."managerId" = ${me}
 `;
 
+const ownedAssignmentIds = ({
+  schema,
+  me,
+}: EnsoRecordVisibilityConditionArgs) => `
+  SELECT ppa."id"
+  FROM ${schema}."_personProjectAssignment" ppa
+  WHERE ppa."deletedAt" IS NULL AND ppa."managerId" = ${me}
+`;
+
 const personColumnIsOwned = (
   args: EnsoRecordVisibilityConditionArgs,
   columnName: string,
@@ -66,6 +75,9 @@ const targetRowIsOwned = (args: EnsoRecordVisibilityConditionArgs) =>
     personColumnIsOwned(args, 'targetPersonId'),
     opportunityColumnIsOwned(args, 'targetOpportunityId'),
     `${args.ref('targetCompanyId')} IN (${ownedCompanyIds(args)})`,
+    `${args.ref('targetPersonProjectAssignmentId')} IN (${ownedAssignmentIds(
+      args,
+    )})`,
   ]);
 
 const hasOwnedTarget = (
@@ -178,5 +190,12 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
   attachment: {
     buildCondition: (args) =>
       anyOf([wasCreatedByMe(args), targetRowIsOwned(args)]),
+  },
+  // Timeline rows carry a `properties` diff of the record they describe, so an
+  // unscoped timeline hands over field values for records the manager cannot
+  // open. Anything targeting something outside the three record roots stays
+  // hidden, which is the safe direction for an audit trail.
+  timelineActivity: {
+    buildCondition: (args) => targetRowIsOwned(args),
   },
 };
