@@ -494,7 +494,9 @@ export class EnsoLeadLookupService {
 
     const stages = opportunities.map((row) => row.stage ?? '');
 
-    if (stages.some((stage) => !WON_STAGES.has(stage) && !LOST_STAGES.has(stage))) {
+    if (
+      stages.some((stage) => !WON_STAGES.has(stage) && !LOST_STAGES.has(stage))
+    ) {
       return 'OPEN';
     }
 

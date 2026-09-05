@@ -64,7 +64,8 @@ export const useEnsoLeadLookup = (searchTerm: string | null) => {
     isViewerScoped,
     // Only meaningful for a scoped viewer; an admin is never rate limited
     // because the lookup never runs for them.
-    isRateLimited: isViewerScoped && (data?.ensoLeadLookup.isRateLimited ?? false),
+    isRateLimited:
+      isViewerScoped && (data?.ensoLeadLookup.isRateLimited ?? false),
     remainingLookupsToday: data?.ensoLeadLookup.remainingLookupsToday ?? 0,
   };
 };
