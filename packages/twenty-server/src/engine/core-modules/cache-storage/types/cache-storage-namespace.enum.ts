@@ -2,6 +2,7 @@ export enum CacheStorageNamespace {
   ModuleMessaging = 'module:messaging',
   ModuleCalendar = 'module:calendar',
   ModuleWorkflow = 'module:workflow',
+  ModuleEnsoLookup = 'module:enso-lookup',
   EngineWorkspace = 'engine:workspace',
   EngineCoreEntity = 'engine:core-entity',
   EngineLock = 'engine:lock',

@@ -77,6 +77,7 @@ import { DashboardModule } from 'src/modules/dashboard/dashboard.module';
 import { SendEmailModule } from 'src/modules/messaging/message-outbound-manager/send-email.module';
 import { NotificationSettingsModule } from 'src/modules/enso/notifications/notification-settings.module';
 import { OutboundEmailModule } from 'src/modules/enso/outbound-email/outbound-email.module';
+import { EnsoLeadLookupModule } from 'src/modules/enso/record-lookup/enso-lead-lookup.module';
 import { TelephonyOutboundModule } from 'src/modules/enso/telephony/telephony-outbound.module';
 import { AuditModule } from './audit/audit.module';
 import { ClientConfigModule } from './client-config/client-config.module';
@@ -134,6 +135,7 @@ import { FileModule } from './file/file.module';
     SendEmailModule,
     NotificationSettingsModule,
     OutboundEmailModule,
+    EnsoLeadLookupModule,
     TelephonyOutboundModule,
     FileStorageModule.forRoot(),
     LoggerModule.forRootAsync({
