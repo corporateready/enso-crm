@@ -46,7 +46,9 @@ type AssignmentRow = {
 };
 
 type OpportunityRow = {
-  pointOfContactId: string | null;
+  // Non-null by construction: rows only reach us because this column matched a
+  // set of person ids, so widening it to null would only break the In() filter.
+  pointOfContactId: string;
   projectId: string | null;
   ownerId: string | null;
   stage?: string | null;
