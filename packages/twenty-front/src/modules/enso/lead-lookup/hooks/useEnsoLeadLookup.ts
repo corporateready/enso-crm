@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
 
 import { ENSO_LEAD_LOOKUP } from '@/enso/lead-lookup/graphql/queries/ensoLeadLookup';
-import { ENSO_LEAD_LOOKUP_MIN_TERM_LENGTH } from '@/enso/lead-lookup/utils/ensoLeadLookup.constants';
+import { ENSO_LEAD_LOOKUP_MIN_TERM_LENGTH } from '@/enso/lead-lookup/constants/EnsoLeadLookupMinTermLength';
 
 export type EnsoLeadLookupProject = {
   projectId: string | null;
