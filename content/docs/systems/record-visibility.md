@@ -80,4 +80,8 @@ Guardrails, because a lookup that cannot be audited is just a slower way to brow
 
 ## Before enabling this
 
-Ownership is barely populated. As of September 2026: 20 of 773 deals have an owner, and 4 `personProjectAssignment` rows exist in total. A manager switched on today would see an almost empty CRM. Backfill ownership first, then set the variable.
+Ownership is barely populated — as of September 2026, 20 of 773 deals have an owner and 4 `personProjectAssignment` rows exist in total — but this is **not a backfill problem**. Of the 753 unowned deals, 686 are `CLOSED_LOST` and 78 are parked in `ROUTING`; none of them has a single answered call or outbound touch attached. There is no record of who worked them because nobody did. Ownership starts accruing the moment managers work leads through routing.
+
+So the sequence is: put real managers in the workspace on the Sales Manager role, populate the project routing pools, then set the variable. A manager enabled before they own anything simply sees an empty CRM — not wrong, just useless.
+
+One trap on the way: those 78 parked `ROUTING` deals poll forever, so adding the first routing candidate assigns and notifies the entire backlog at once. See [routing](./routing) — drain or close the backlog before opening the pool.
