@@ -63,6 +63,8 @@ type ActivityRow = {
   roistatVisitId?: string | null;
 };
 
+type ReengagementNotify = { managerId: string };
+
 // Turns one inbound activity into (or onto) an opportunity:
 //   skip synthetic / incomplete / already-linked
 //   → dedup: open deal for (person × project) within the window? attach : create
@@ -97,7 +99,11 @@ export class OpportunityResolutionService {
 
     // Set inside the attach branch when a re-engagement lands on an already-claimed
     // deal; the owner is pinged AFTER the workspace-context block (best-effort).
-    let reengagementNotify: { managerId: string } | null = null;
+    // The assertion preserves the declared type: control-flow analysis cannot
+    // see the assignment inside the closure, so a bare `null` initializer would
+    // narrow this to `null` for the rest of the method.
+    let reengagementNotify: ReengagementNotify | null =
+      null as ReengagementNotify | null;
 
     const result =
       await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
