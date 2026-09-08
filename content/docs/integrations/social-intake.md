@@ -128,8 +128,20 @@ parser/builder to persist `referral` (`ref`, `ad_id`, `ads_context_data`) into
 `conversation.additional_attributes`, so it then flows natively through the
 Chatwoot webhook to n8n — mirroring how form-intake gets PostHog data.
 
-To receive the referral on the `messages` event, the page must subscribe to both
-`messages` and **`messaging_referrals`** webhook fields.
+To receive the referral the channel must subscribe to the referral webhook field
+as well as `messages` — and Meta names it differently per object: the **page**
+object takes **`messaging_referrals`** (plural), the **instagram** object takes
+**`messaging_referral`** (singular). `messaging_referrals` fires when a contact
+returns to an *existing* thread from an ad or an `m.me?ref` link; a *new*
+ad-initiated thread instead carries the referral inside the first `messages`
+event (or a `messaging_postbacks` payload), which is why PATCH 1 reads both
+`messaging.referral` and `postback.referral`.
+
+⚠️ **This was missing until 2026-09-08.** Chatwoot's own `subscribe` calls never
+included either field, so the live channels asked Meta only for
+`messages, message_deliveries, message_echoes, message_reads, standby,
+messaging_handovers` (pages) and `messages, message_reactions, messaging_seen`
+(Instagram) — see the as-built note at the end of this page.
 
 ### The `ref` scheme (hand to the marketing team)
 
@@ -276,7 +288,8 @@ Standard Access still applies. Requirements:
    `/super_admin/app_config?config=instagram`; webhook →
    `https://chat.enso.ro/webhooks/instagram`; redirect →
    `https://chat.enso.ro/instagram/callback`; subscribe `messages, messaging_seen,
-   message_reactions`; permissions `instagram_business_basic,
+   message_reactions, messaging_referral` *(singular on the instagram object —
+   this is the ad-attribution field)*; permissions `instagram_business_basic,
    instagram_business_manage_messages`.
 6. Set app **Live** (required for IG webhooks; only own/added assets connected).
 7. Create the FB + IG inboxes in Chatwoot via the Login flows; attach assets;
@@ -399,6 +412,40 @@ fields on `InboundActivityCreateInput`** (a create with them → `BAD_USER_INPUT
 which briefly broke intake during the build until reverted). The ad_id / raw ref
 are retained in `submittedPayload` (the raw Chatwoot payload) for the DWH; `utm*`
 are parsed from `ref` as before. Workflow backup at `/tmp/social-workflow-backup.json`.
+
+**⚠️ No referral had ever arrived — referral fields now subscribed (2026-09-08).**
+Triggered by a marketing-room post reading `no attribution — this lead arrived
+untagged`. Findings, all verified live:
+
+- **0 of 854** Chatwoot conversations have any `additional_attributes` at all, so
+  PATCH 1 has never had a referral to persist — even though the patch **is** in
+  the deployed image (`423af00` is an ancestor of the live SHA `6f6ab5c`).
+- The live `subscribed_apps` field lists carried **no referral field**: 5/5 FB
+  pages had `messages, message_deliveries, message_echoes, message_reads, standby,
+  messaging_handovers`; the IG accounts had `messages, message_reactions,
+  messaging_seen`. Fixed by hand via the Graph API — all 5 pages now also carry
+  `messaging_referrals`, and Artima + Vânzări IG carry `messaging_referral`
+  (verified by re-reading each channel). Persisted in the fork by
+  corporateready/chatwoot#1 so `after_create_commit :subscribe` cannot drop it on
+  the next re-authorization; that PR is **not merged/deployed** yet, and merging
+  it redeploys Chatwoot.
+- **3 Instagram channels are dead**: ENSO Dev Moldova, Avram Iancu and ENSO Dev
+  România IG tokens expired 2026-08-02 (`Session has expired`), so they could not
+  be re-subscribed and are presumably not delivering DMs either. They need a human
+  re-authorization in Chatwoot (Artima IG expires 2026-09-21, Vânzări 2026-09-24).
+- The subscription gap is **not proof** that paid social leads were mis-attributed:
+  an ads-initiated *first* message carries its referral inside the `messages` event
+  we already had. The likelier reason no referral has ever appeared is that no
+  click-to-Messenger / click-to-Direct ads have been running with a `ref` — paid
+  social spend currently goes through the Lead Ads channel, whose activities do
+  arrive `PAID` with full UTMs. **Open question for marketing.**
+- Also fixed CRM-side: the marketing-room post now names the platform
+  (`Instagram Social Message` — `platformPrefix` had been reading `source`, always
+  `CHATWOOT`, instead of `platform`) and distinguishes an organic DM from a lost
+  campaign (`no utm tags — organic Instagram DM, no ad click to attribute`)
+  instead of calling every untagged social touch `untagged`.
+- Still not covered: a referral that carries only `ad_id` and no `ref` yields
+  `trafficType=PAID` with empty `utm_*` — nothing maps `ad_id` → campaign.
 
 **Auto-resolve on window close (2026-06-05, live config).** Chatwoot account
 `settings.auto_resolve_after = 1440` (minutes = 24h; set via
