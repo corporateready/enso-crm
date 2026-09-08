@@ -9,6 +9,7 @@ import {
   type InboundRawEventChannel,
   type InboundRawEventStatus,
 } from 'src/modules/enso/inbound-raw-event/types/inbound-raw-event.types';
+import { redactPayloadSecrets } from 'src/modules/enso/inbound-raw-event/utils/redact-payload-secrets.util';
 
 // Raw inserts bypass the create resolver that normally fills the `createdBy`
 // ACTOR from auth context, and `createdByName` / `updatedByName` are NOT NULL
@@ -116,7 +117,7 @@ export class EnsoInboundRawEventService {
             source,
             externalId: externalId ?? null,
             occurredAt: occurredAt ?? null,
-            payload,
+            payload: redactPayloadSecrets(payload),
             processingStatus: 'RECEIVED' satisfies InboundRawEventStatus,
             createdBy: SYSTEM_ACTOR,
             updatedBy: SYSTEM_ACTOR,
