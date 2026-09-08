@@ -151,13 +151,33 @@ const gql = async (query, variables) => {
 const findObject = async () => {
   const { objects } = await gql(
     `query { objects(paging: { first: 500 }) {
-      edges { node { id nameSingular isActive fields(paging: { first: 200 }) { edges { node { name } } } } }
+      edges { node { id nameSingular isActive } }
     } }`,
   );
 
   return objects.edges
     .map((edge) => edge.node)
     .find((node) => node.nameSingular === OBJECT.nameSingular);
+};
+
+// Deliberately NOT the nested `fields` connection on `objects`: that connection
+// silently truncates, so it reports fields as absent that plainly exist, and
+// this script would then try to re-create them on every run. Ask the top-level
+// `fields` query for one object instead.
+const findFieldNames = async (objectMetadataId) => {
+  const { fields } = await gql(
+    `query FieldsForObject($objectMetadataId: UUID!) {
+      fields(
+        paging: { first: 200 }
+        filter: { objectMetadataId: { eq: $objectMetadataId } }
+      ) {
+        edges { node { name } }
+      }
+    }`,
+    { objectMetadataId },
+  );
+
+  return new Set(fields.edges.map((edge) => edge.node.name));
 };
 
 const main = async () => {
@@ -193,9 +213,7 @@ const main = async () => {
     return;
   }
 
-  const existing = new Set(
-    object.fields.edges.map((edge) => edge.node.name),
-  );
+  const existing = await findFieldNames(object.id);
   const missing = FIELDS.filter((field) => !existing.has(field.name));
 
   console.log(
