@@ -119,6 +119,19 @@ export class IngestCallEventJob {
       },
     );
 
+    // Attribute the call BEFORE deciding whether it is a lead. A non-lead entry
+    // point is still a real call that belongs to a real project, and the person
+    // and project are what put it on the contact's timeline and into per-project
+    // reporting. Returning before this wrote neither, so a department marked
+    // `lead: false` produced calls indistinguishable from ones nothing
+    // recognised at all — and a project worked outside the CRM could not be
+    // observed in it at all.
+    const shouldResolveOpportunity = await this.callIngestService.linkIdentity(
+      workspaceId,
+      ingested.activityId,
+      { personId, projectId: resolved?.projectId },
+    );
+
     // Two entry points can share a project but belong to different teams —
     // TRIUMF Support and TRIUMF Sales are both ENS2101. A support call is a real
     // call worth logging, but it is not a sales lead, so it stops here rather
@@ -131,19 +144,30 @@ export class IngestCallEventJob {
       return;
     }
 
-    const shouldResolveOpportunity = await this.callIngestService.linkIdentity(
-      workspaceId,
-      ingested.activityId,
-      { personId, projectId: resolved?.projectId },
-    );
-
     if (!shouldResolveOpportunity) {
       // A call with no resolvable project still lands as a visible activity; it
       // just cannot become a deal, because the pipeline keys dedup and routing
       // on (person, project). Most untracked-DID calls end up here until the
       // PBX-department / DID project map is filled in.
+      //
+      // `resolveEntryPoint` returning undefined means NOTHING recognised the
+      // call — neither the department, nor the learned dial plan, nor the DID
+      // map — which is a hole in the configuration, not a decision. That is a
+      // lead being dropped on the floor, so it must not read like the routine
+      // "recognised, deliberately not a lead" case: warn, and name the two keys
+      // an operator would add. Found the hard way — 13 answered calls on an
+      // unmapped Newton House department sat unnoticed for two weeks because
+      // this line was indistinguishable from the intentional exclusions.
+      if (!isDefined(resolved)) {
+        this.logger.warn(
+          `Unmapped call entry point — activity ${ingested.activityId} on DID ${event.calleeDid ?? 'unknown'} (department ${routableGroup ?? 'unknown'}) resolved no project and cannot become a deal`,
+        );
+
+        return;
+      }
+
       this.logger.log(
-        `Activity ${ingested.activityId} not ready for opportunity resolution (person=${isDefined(personId)}, project=${isDefined(resolved?.projectId)})`,
+        `Activity ${ingested.activityId} not ready for opportunity resolution (person=${isDefined(personId)}, project=${isDefined(resolved.projectId)})`,
       );
 
       return;
