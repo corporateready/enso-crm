@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
@@ -8,6 +9,17 @@ import {
   type InboundRawEventChannel,
   type InboundRawEventStatus,
 } from 'src/modules/enso/inbound-raw-event/types/inbound-raw-event.types';
+
+// Raw inserts bypass the create resolver that normally fills the `createdBy`
+// ACTOR from auth context, and `createdByName` / `updatedByName` are NOT NULL
+// on custom objects. These rows are written by the system, so stamp them as a
+// SYSTEM actor — without this every insert fails the NOT NULL constraint, and
+// the ORM reports it only as the generic "Data validation error."
+const SYSTEM_ACTOR = {
+  source: 'SYSTEM',
+  name: 'ENSO CRM',
+  context: {},
+} as const;
 
 type InboundRawEventRow = {
   id: string;
@@ -19,6 +31,8 @@ type InboundRawEventRow = {
   payload?: unknown;
   processingStatus?: string | null;
   processingNote?: string | null;
+  createdBy?: typeof SYSTEM_ACTOR;
+  updatedBy?: typeof SYSTEM_ACTOR;
 };
 
 // The raw intake log.
@@ -37,6 +51,28 @@ type InboundRawEventRow = {
 // sit on live-call paths — the PBX `contact` push fires while the phone is
 // ringing — so logging must never delay or fail a response. A lost log line is
 // regrettable; a delayed ringing call is not acceptable.
+// The ORM maps most Postgres failures to the message "Data validation error."
+// and drops the detail, which made a NOT NULL violation on this object look
+// like a payload problem for 25 minutes. Pull whatever the exception still
+// carries so the log names the actual cause.
+const describeError = (error: unknown): string => {
+  const { message, code, detail, constraint } = (error ?? {}) as {
+    message?: string;
+    code?: string;
+    detail?: string;
+    constraint?: string;
+  };
+
+  return [
+    message,
+    code && `code=${code}`,
+    constraint && `constraint=${constraint}`,
+    detail,
+  ]
+    .filter(isNonEmptyString)
+    .join(' ');
+};
+
 @Injectable()
 export class EnsoInboundRawEventService {
   private readonly logger = new Logger(EnsoInboundRawEventService.name);
@@ -82,6 +118,8 @@ export class EnsoInboundRawEventService {
             occurredAt: occurredAt ?? null,
             payload,
             processingStatus: 'RECEIVED' satisfies InboundRawEventStatus,
+            createdBy: SYSTEM_ACTOR,
+            updatedBy: SYSTEM_ACTOR,
           });
 
           return created.id;
@@ -90,7 +128,7 @@ export class EnsoInboundRawEventService {
       );
     } catch (error) {
       this.logger.warn(
-        `Could not record raw ${channel} payload: ${(error as Error).message}`,
+        `Could not record raw ${channel} payload: ${describeError(error)}`,
       );
 
       return undefined;
@@ -131,7 +169,7 @@ export class EnsoInboundRawEventService {
       );
     } catch (error) {
       this.logger.warn(
-        `Could not stamp outcome ${status} on raw event ${id}: ${(error as Error).message}`,
+        `Could not stamp outcome ${status} on raw event ${id}: ${describeError(error)}`,
       );
     }
   }
