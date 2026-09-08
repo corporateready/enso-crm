@@ -15,6 +15,8 @@ import {
   deserializeCallEvent,
   type IngestCallEventJobData,
 } from 'src/modules/enso/telephony/jobs/telephony-job.types';
+import { type RecordActivityAttributionJobData } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
+import { RecordActivityAttributionJob } from 'src/modules/enso/lead-pipeline/jobs/record-activity-attribution.job';
 import { CallFollowUpService } from 'src/modules/enso/telephony/services/call-follow-up.service';
 import { CallIdentityService } from 'src/modules/enso/telephony/services/call-identity.service';
 import { OutboundCallIngestService } from 'src/modules/enso/telephony/services/outbound-call-ingest.service';
@@ -45,6 +47,8 @@ export class IngestCallEventJob {
     private readonly callFollowUpService: CallFollowUpService,
     @InjectMessageQueue(MessageQueue.ensoTelephonyQueue)
     private readonly telephonyQueueService: MessageQueueService,
+    @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
+    private readonly leadPipelineQueueService: MessageQueueService,
   ) {}
 
   @Process(IngestCallEventJob.name)
@@ -131,6 +135,21 @@ export class IngestCallEventJob {
       ingested.activityId,
       { personId, projectId: resolved?.projectId },
     );
+
+    // Record what the call says about the PERSON as soon as it is over, and
+    // before any question of a deal: first touch, the touch on their timeline,
+    // consent. Every gate below this line is about whether a DEAL should exist,
+    // and none of them changes whether the conversation happened. Enqueued on
+    // the terminal push only — a ringing call has not established anything yet
+    // — and keyed by activity id, because one call arrives as several pushes
+    // and the timeline insert has no dedup of its own.
+    if (event.isTerminal) {
+      await this.leadPipelineQueueService.add<RecordActivityAttributionJobData>(
+        RecordActivityAttributionJob.name,
+        { workspaceId, activityId: ingested.activityId },
+        { id: `enso-activity-attribution:${ingested.activityId}` },
+      );
+    }
 
     // Two entry points can share a project but belong to different teams —
     // TRIUMF Support and TRIUMF Sales are both ENS2101. A support call is a real
