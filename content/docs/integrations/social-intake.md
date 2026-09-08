@@ -480,8 +480,57 @@ untagged`. Findings, all verified live:
   (`REAUTHORIZATION_REQUIRED:channel_instagram:{3,4,5}`) rather than calling
   `prompt_reauthorization!`, which would also have emailed the account admins an
   `instagram_disconnect` notice. `reauthorized!` clears both keys after a
-  successful reconnect. **A token-expiry monitor is the real fix** —
-  `channel_instagram.expires_at` is right there in the DB.
+  successful reconnect.
+
+  Reconnecting the **same** Instagram account is safe and in-place:
+  `Instagram::CallbacksController#find_or_create_inbox` looks the channel up by
+  `instagram_id` and `update!`s the token + `expires_at` on it, keeping the inbox,
+  its conversations, its agents and our hand-added `messaging_referral`
+  subscription (`after_create_commit :subscribe` does not re-run on an update).
+  Only authorizing a *different* account creates a new channel + inbox — and that
+  one would subscribe with the un-patched field list until
+  corporateready/chatwoot#1 ships. Note the reconnect renames the inbox to the
+  Instagram username; harmless, since n8n maps projects by inbox **id**.
+
+**Token-expiry monitor (live 2026-09-08).** n8n workflow **`Chatwoot Token Expiry
+Watch`** (`ZPlGI7PHrniWwxas`, daily 08:40, `errorWorkflow` = Intake Error Alerts)
+reads `channel_instagram.expires_at` and posts to the ops Google Chat space
+(`AAQA-eMmZDo`, same as the lead-ad watchdog) when a token has expired, expires
+within 14 days, or has no expiry recorded. Silent otherwise. First run against
+live data: 3 expired, 1 expiring in 13 days (Artima).
+
+It reads the Chatwoot DB through a **dedicated read-only role** rather than the
+superuser: `n8n_readonly`, `SELECT` on `channel_instagram`,
+`channel_facebook_pages`, `inboxes` only — verified it cannot read
+`conversations` or write anything. n8n credential *Chatwoot DB (read-only)*
+(`nv26IyiWGMaFgGtf`) over the public TCP proxy. Rollback: `drop role n8n_readonly`
+plus deleting that credential. FB page tokens carry no expiry column, so only
+Instagram is watched.
+
+### Granting `ads_read` for attribution tier 2
+
+The credential the `Read Ad` node reuses belongs to system user
+**`ENSOCRMENRICHMENT`** (`122133623625354657`) on app **ENSO Lead Ads**
+(`877859282026498`), and its granted scopes are exactly `pages_show_list`,
+`pages_read_engagement`, `leads_retrieval`, `public_profile` — no `ads_read`, no
+`business_management` (`/me/businesses` → *(#100) Missing Permission*). It manages
+6 pages: Artima, ENSO Development Moldova, ENSO Development România, Vânzări
+Imobiliare, Avram Iancu, READY.
+
+Adding the asset is not enough — **a system-user token's scopes are fixed when the
+token is generated**, so tier 2 needs a token minted *with* `ads_read`:
+
+1. Business Settings → Users → System users → the system user → **Add assets → Ad
+   accounts** → the ad accounts running those brands' campaigns → **View
+   performance** (that is `ads_read`).
+2. **Generate new token** against the ENSO Lead Ads app with `ads_read` included.
+3. Put it in an n8n credential and point `Read Ad` at it.
+
+⚠️ Prefer a **separate** system user / credential for this. Overwriting *Facebook
+Lead Ads system token* (`bMIbvMPFyVcJEUPV`) also re-tokens the live Lead Ad
+intake, and a regenerated token missing `leads_retrieval` or
+`pages_read_engagement` breaks lead fetching. To find which ad account to grant,
+look up ad id `120243558339980604` (a real one from a recent lead) in Ads Manager.
 - The subscription gap is **not proof** that paid social leads were mis-attributed:
   an ads-initiated *first* message carries its referral inside the `messages` event
   we already had. The likelier reason no referral has ever appeared is that no
