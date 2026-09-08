@@ -457,8 +457,14 @@ untagged`. Findings, all verified live:
   `messaging_referrals`, and Artima + Vânzări IG carry `messaging_referral`
   (verified by re-reading each channel). Persisted in the fork by
   corporateready/chatwoot#1 so `after_create_commit :subscribe` cannot drop it on
-  the next re-authorization; that PR is **not merged/deployed** yet, and merging
-  it redeploys Chatwoot.
+  the next re-authorization — **merged and deployed 2026-09-08**, live SHA
+  `f4102ca` (previous `6f6ab5c` is the rollback point). ~10 min build, and the
+  swap cost no observable downtime: `chat.enso.ro` answered 200 on every 20s poll
+  across the whole window. Verified after the deploy: both patched subscribe lists
+  are in the running image, CSP `frame-ancestors` (PATCH 2) intact, Chatwoot API
+  up, account webhook still `conversation_created` → the n8n intake path, and all
+  7 live channels still carry the referral field — a change to
+  subscribe-on-create cannot touch existing subscriptions.
 - **3 Instagram channels are dead**: ENSO Dev Moldova (inbox 6), Avram Iancu (9)
   and ENSO Dev România (10) IG tokens expired 2026-08-02 (`Session has expired`),
   so they could not be re-subscribed and are not delivering DMs either. Artima IG
@@ -488,8 +494,8 @@ untagged`. Findings, all verified live:
   its conversations, its agents and our hand-added `messaging_referral`
   subscription (`after_create_commit :subscribe` does not re-run on an update).
   Only authorizing a *different* account creates a new channel + inbox — and that
-  one would subscribe with the un-patched field list until
-  corporateready/chatwoot#1 ships. Note the reconnect renames the inbox to the
+  one now subscribes with the referral field too, since
+  corporateready/chatwoot#1 is deployed. Note the reconnect renames the inbox to the
   Instagram username; harmless, since n8n maps projects by inbox **id**.
 
 **Token-expiry monitor (live 2026-09-08).** n8n workflow **`Chatwoot Token Expiry
