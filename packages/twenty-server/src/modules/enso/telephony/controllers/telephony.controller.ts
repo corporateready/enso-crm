@@ -135,7 +135,9 @@ export class TelephonyController {
       void this.recordRaw('PBX', 'moldcell:contact', body);
 
       try {
-        await this.enqueue(normalizeMoldcellContact(body as MoldcellContactPush));
+        await this.enqueue(
+          normalizeMoldcellContact(body as MoldcellContactPush),
+        );
       } catch (error) {
         this.logger.warn(
           `Could not record contact push: ${(error as Error).message}`,
