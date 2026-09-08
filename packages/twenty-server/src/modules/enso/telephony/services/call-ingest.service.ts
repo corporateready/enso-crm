@@ -241,22 +241,19 @@ export class CallIngestService {
   ): Promise<void> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const repository =
-          await this.globalWorkspaceOrmManager.getRepository<InboundActivityRow>(
-            workspaceId,
-            'inboundActivity',
-            { shouldBypassPermissionChecks: true },
-          );
-
-        await repository.update(
-          { id: activityId },
-          { nonSalesPickupBy: answeredByLogin, updatedBy: SYSTEM_ACTOR },
+    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
+      const repository =
+        await this.globalWorkspaceOrmManager.getRepository<InboundActivityRow>(
+          workspaceId,
+          'inboundActivity',
+          { shouldBypassPermissionChecks: true },
         );
-      },
-      systemAuthContext,
-    );
+
+      await repository.update(
+        { id: activityId },
+        { nonSalesPickupBy: answeredByLogin, updatedBy: SYSTEM_ACTOR },
+      );
+    }, systemAuthContext);
   }
 
   // Attaches the resolved person and project. Returns true when the row is now
