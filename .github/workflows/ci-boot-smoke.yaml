@@ -64,11 +64,18 @@ jobs:
         run: npx nx reset:env twenty-server
       - name: Server / Build
         run: npx nx build twenty-server
-      - name: Server / Create DB
+      - name: Server / Create databases
         run: |
           PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -c 'CREATE DATABASE "default";'
           PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -c 'CREATE DATABASE "test";'
-          npx nx run twenty-server:database:init:prod
+      # database:init:prod bootstraps the Nest app, so a broken module graph
+      # fails HERE rather than at the boot steps below — which is why its output
+      # is captured: without it the dependency error is attributed to "creating
+      # databases" and reads like a Postgres problem.
+      - name: Server / Init schema (boots the app)
+        run: |
+          set -o pipefail
+          npx nx run twenty-server:database:init:prod 2>&1 | tee /tmp/server-init.log
       # The worker loads its own module graph, so a provider that resolves on
       # the server can still be missing here. Staying up for 30s (timeout's
       # exit 124) is the pass condition; any earlier exit is a crash.
@@ -99,10 +106,17 @@ jobs:
           exit 1
       # Only on failure, and filtered: the raw log is a flood of Lingui
       # warnings that buries the actual dependency error.
-      - name: Server / Boot log on failure
+      - name: Boot failure diagnosis
         if: failure()
         run: |
-          echo "=== dependency / bootstrap errors ==="
-          grep -E "UnknownDependenciesException|Nest can't resolve|ExceptionHandler|Cannot find module" /tmp/server-boot.log | head -40 || true
-          echo "=== last 80 lines ==="
-          tail -80 /tmp/server-boot.log || true
+          echo "=== dependency / bootstrap errors (any step that booted the app) ==="
+          grep -hE "UnknownDependenciesException|Nest can't resolve|is available in the|Cannot find module" \
+            /tmp/server-init.log /tmp/server-boot.log 2>/dev/null | sort -u | head -30 || true
+          echo
+          echo "A 'Nest can't resolve dependencies' line above means a module is"
+          echo "missing a provider or an import — commonly a mixin guard such as"
+          echo "SettingsPermissionGuard, whose dependencies must resolve from the"
+          echo "module that declares the resolver."
+          echo
+          echo "=== tail of the server boot log, if it got that far ==="
+          tail -60 /tmp/server-boot.log 2>/dev/null || echo "(server never started)"
