@@ -6,6 +6,19 @@ import { KeyValuePairType } from 'src/engine/core-modules/key-value-pair/key-val
 import { KeyValuePairService } from 'src/engine/core-modules/key-value-pair/key-value-pair.service';
 import { ensoRoleDefaultViewsKey } from 'src/modules/enso/default-views/constants/enso-default-views.constants';
 
+export type EnsoRoleDefaultViews = {
+  defaultViewIdByObjectMetadataId: Record<string, string>;
+  // Changes whenever the role's defaults are rewritten. The client re-applies a
+  // role default once per object per version, so bumping this is what rolls a
+  // new default out to members who already have a last-visited view.
+  version: string | null;
+};
+
+const EMPTY_DEFAULT_VIEWS: EnsoRoleDefaultViews = {
+  defaultViewIdByObjectMetadataId: {},
+  version: null,
+};
+
 // Which view a member lands on for a given object.
 //
 // Twenty has no role dimension on views — a view is workspace-wide or personal
@@ -25,7 +38,7 @@ export class EnsoDefaultViewsService {
   }: {
     workspaceId: string;
     roleId: string;
-  }): Promise<Record<string, string>> {
+  }): Promise<EnsoRoleDefaultViews> {
     const rows = await this.keyValuePairService.get({
       type: KeyValuePairType.USER_VARIABLE,
       userId: null,
@@ -33,19 +46,33 @@ export class EnsoDefaultViewsService {
       key: ensoRoleDefaultViewsKey(roleId),
     });
 
-    const stored = rows?.[0]?.value;
+    const row = rows?.[0];
+    const stored = row?.value;
 
     if (!isDefined(stored) || typeof stored !== 'object') {
-      return {};
+      return EMPTY_DEFAULT_VIEWS;
     }
 
-    // Stored by a provisioning script, so treat it as untrusted shape rather
-    // than assuming: a malformed entry should drop out, not break the sidebar.
-    return Object.fromEntries(
-      Object.entries(stored as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
+    return {
+      // Stored by a provisioning script, so treat it as untrusted shape rather
+      // than assuming: a malformed entry should drop out, not break the sidebar.
+      defaultViewIdByObjectMetadataId: Object.fromEntries(
+        Object.entries(stored as Record<string, unknown>).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
       ),
-    );
+      version: this.readVersion(row?.updatedAt),
+    };
+  }
+
+  // The row's updatedAt is the version: it moves on every write and needs no
+  // second column to maintain.
+  private readVersion(updatedAt: unknown): string | null {
+    if (updatedAt instanceof Date) {
+      return updatedAt.toISOString();
+    }
+
+    return typeof updatedAt === 'string' ? updatedAt : null;
   }
 
   async setRoleDefaultViews({

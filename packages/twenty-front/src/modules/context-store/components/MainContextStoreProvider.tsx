@@ -1,5 +1,7 @@
 import { MainContextStoreProviderEffect } from '@/context-store/components/MainContextStoreProviderEffect';
+import { getViewId } from '@/context-store/utils/getViewId';
 import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
+import { appliedRoleDefaultViewVersionPerObjectMetadataItemState } from '@/navigation/states/appliedRoleDefaultViewVersionPerObjectMetadataItemState';
 import { metadataStoreState } from '@/metadata-store/states/metadataStoreState';
 import { useIsSettingsPage } from '@/navigation/hooks/useIsSettingsPage';
 import { useLastVisitedView } from '@/navigation/hooks/useLastVisitedView';
@@ -12,42 +14,6 @@ import { AppPath } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
 import { ViewKey, ViewType } from '~/generated-metadata/graphql';
 import { isMatchingLocation } from '~/utils/isMatchingLocation';
-
-// The one place that decides which view an object opens on.
-//
-// An explicit choice in the URL wins, then wherever this person was last, then
-// their ROLE's configured default, then the workspace INDEX view. The role
-// default is a starting point rather than a cage: it applies until the person
-// navigates somewhere themselves.
-const getViewId = (
-  viewIdFromQueryParams: string | null,
-  indexViewId?: string,
-  lastVisitedViewId?: string,
-  firstAvailableViewId?: string,
-  roleDefaultViewId?: string,
-) => {
-  if (isDefined(viewIdFromQueryParams)) {
-    return viewIdFromQueryParams;
-  }
-
-  if (isDefined(lastVisitedViewId)) {
-    return lastVisitedViewId;
-  }
-
-  if (isDefined(roleDefaultViewId)) {
-    return roleDefaultViewId;
-  }
-
-  if (isDefined(indexViewId)) {
-    return indexViewId;
-  }
-
-  if (isDefined(firstAvailableViewId)) {
-    return firstAvailableViewId;
-  }
-
-  return undefined;
-};
 
 export const MainContextStoreProvider = () => {
   const location = useLocation();
@@ -76,7 +42,15 @@ export const MainContextStoreProvider = () => {
   );
 
   const { getLastVisitedViewIdFromObjectNamePlural } = useLastVisitedView();
-  const { roleDefaultViewIdByObjectMetadataId } = useEnsoViewerScope();
+  const {
+    roleDefaultViewIdByObjectMetadataId,
+    roleDefaultViewsVersion,
+    isEnsoViewerScopeLoading,
+  } = useEnsoViewerScope();
+
+  const appliedRoleDefaultViewVersionPerObjectMetadataItem = useAtomStateValue(
+    appliedRoleDefaultViewVersionPerObjectMetadataItemState,
+  );
 
   const viewIdQueryParamView = views.find(
     (view) => view.id === viewIdQueryParamRaw,
@@ -125,20 +99,41 @@ export const MainContextStoreProvider = () => {
       view.id === roleDefaultViewIdRaw && view.type !== ViewType.FIELDS_WIDGET,
   )?.id;
 
-  const viewId = getViewId(
-    viewIdQueryParam,
+  // Seed once per object per version of the role's configuration.
+  const shouldSeedRoleDefaultView =
+    isDefined(objectMetadataItem) &&
+    isDefined(roleDefaultViewId) &&
+    isDefined(roleDefaultViewsVersion) &&
+    appliedRoleDefaultViewVersionPerObjectMetadataItem?.[
+      objectMetadataItem.id
+    ] !== roleDefaultViewsVersion;
+
+  const viewId = getViewId({
+    viewIdFromQueryParams: viewIdQueryParam,
     indexViewId,
     lastVisitedViewId,
     firstAvailableViewId,
     roleDefaultViewId,
-  );
+    shouldSeedRoleDefaultView,
+  });
 
+  // Only record the seeding once it is what actually happened — an explicit
+  // ?viewId in the URL must not burn this person's one application of it.
+  const roleDefaultViewVersionToMark =
+    shouldSeedRoleDefaultView && viewId === roleDefaultViewId
+      ? roleDefaultViewsVersion
+      : undefined;
+
+  // Waiting on the viewer scope is load-bearing, not tidiness: answering while
+  // it is still in flight resolves to the INDEX view, and landing on a view
+  // writes it as last-visited, so an early answer is a permanent one.
   const shouldComputeContextStore =
     (isRecordIndexPage ||
       isRecordShowPage ||
       isStandalonePage ||
       isSettingsPage) &&
-    metadataStore.status === 'up-to-date';
+    metadataStore.status === 'up-to-date' &&
+    !isEnsoViewerScopeLoading;
 
   if (!shouldComputeContextStore) {
     return null;
@@ -147,6 +142,7 @@ export const MainContextStoreProvider = () => {
   return (
     <MainContextStoreProviderEffect
       viewId={viewId}
+      roleDefaultViewVersionToMark={roleDefaultViewVersionToMark}
       objectMetadataItem={objectMetadataItem}
       isRecordIndexPage={isRecordIndexPage}
       isRecordShowPage={isRecordShowPage}

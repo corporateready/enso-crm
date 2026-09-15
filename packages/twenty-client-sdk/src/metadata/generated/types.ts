@@ -5354,6 +5354,9 @@ export default {
             "defaultViews": [
                 294
             ],
+            "defaultViewsVersion": [
+                1
+            ],
             "__typename": [
                 1
             ]

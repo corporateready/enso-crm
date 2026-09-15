@@ -8,9 +8,18 @@
 // columns, filters, sorts, grouping and type, so pointing a role at a view is
 // what gives that role its own list layout.
 //
-// Resolution order in the client is: an explicit ?viewId in the URL, then
-// wherever that person was last, then this role default, then the workspace
-// INDEX view. So this is a starting point, not a cage.
+// Resolution order in the client is: an explicit ?viewId in the URL, then this
+// role default if the person has not been landed on it yet at its current
+// version, then wherever they were last, then this role default, then the
+// workspace INDEX view.
+//
+// That middle step is what makes writing this worth doing. Were the role
+// default only consulted after last-visited, it would reach nobody who had
+// ever opened the object — which is every existing member. Each write here
+// bumps the stored row's updatedAt, and that value IS the version, so running
+// this re-seeds every member of the role once, on their next visit to each
+// configured object. After that one landing they are free to move and their
+// own choice wins again: a starting point, not a cage.
 //
 // Usage:
 //   TWENTY_API_URL=https://crm.enso.ro \

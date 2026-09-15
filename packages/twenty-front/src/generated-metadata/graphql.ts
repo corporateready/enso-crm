@@ -1582,6 +1582,7 @@ export type EnsoRoutingAvailability = {
 export type EnsoViewerScope = {
   __typename?: 'EnsoViewerScope';
   defaultViews: Array<EnsoDefaultView>;
+  defaultViewsVersion?: Maybe<Scalars['String']>;
   hiddenNavigationObjectNameSingulars: Array<Scalars['String']>;
   isRecordScoped: Scalars['Boolean'];
 };

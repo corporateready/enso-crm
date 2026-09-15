@@ -2357,6 +2357,7 @@ export interface EnsoViewerScope {
     isRecordScoped: Scalars['Boolean']
     hiddenNavigationObjectNameSingulars: Scalars['String'][]
     defaultViews: EnsoDefaultView[]
+    defaultViewsVersion?: Scalars['String']
     __typename: 'EnsoViewerScope'
 }
 
@@ -5518,6 +5519,7 @@ export interface EnsoViewerScopeGenqlSelection{
     isRecordScoped?: boolean | number
     hiddenNavigationObjectNameSingulars?: boolean | number
     defaultViews?: EnsoDefaultViewGenqlSelection
+    defaultViewsVersion?: boolean | number
     __typename?: boolean | number
     __scalar?: boolean | number
 }
