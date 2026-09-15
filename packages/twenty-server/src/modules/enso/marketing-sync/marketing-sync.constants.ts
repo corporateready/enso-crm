@@ -135,46 +135,23 @@ export const SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL: Readonly<
   call: 'dittofeedCallSubscriptionGroupId',
 };
 
-// FALLBACK ONLY — the mapping now lives on the Project record (see
-// SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL). These entries keep the two live pilots
-// mirroring on a deploy that lands before the Project fields are provisioned
-// and backfilled. Do not add projects here: set the fields on the project
-// instead. Delete an entry once its project carries its own ids, and delete
-// this map once both are done.
-//   The live pilot is IOANA RADU (ENS1901) — see the entry below.
-export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
-  Record<string, Partial<Record<ConsentChannel, string>>>
-> = {
-  // IOANA RADU (ENS1901) — the live pilot. Groups were created for the earlier
-  // ENSO Estate pilot then renamed "IOANA RADU · …" (ids unchanged).
-  'd8f29e3b-7955-4795-b1a6-f3bfd3b4602e': {
-    email: 'b8fea92b-c85e-47f3-805c-0a038a84210d',
-    sms: '2d9dfa15-6b65-4d3e-b7b2-ef0d93cc8b82',
-  },
-  // ARTIMA Business & Lifestyle (ENS2301) — second pilot, entered via the
-  // "New ARTIMA Leads" segment (deal_created projectCode=ENS2301 + email).
-  '4b63d540-a54a-4a0f-94e6-959d35d4112d': {
-    email: '1a777cd5-64ae-43b1-a7de-1a8b8499dccc',
-    sms: '083cfdb6-2f79-4bdb-8109-f9e241699240',
-  },
-};
-
-// A project's per-channel subscription group ids: what the project record
-// carries, then PROJECT_SUBSCRIPTION_GROUPS for anything it doesn't. Per
-// channel, not per project, so backfilling email alone does not switch sms off.
-// `project` is the raw ORM row (or null when the project is gone).
+// A project's per-channel subscription group ids, read off the Project record.
+// This is the only source now: the hardcoded PROJECT_SUBSCRIPTION_GROUPS
+// fallback existed to carry the two pilots across the migration and was deleted
+// once both records were backfilled. A project with no ids set is simply not
+// mirrored, and the worker says so. `project` is the raw ORM row (or null when
+// the project is gone).
 export const resolveProjectSubscriptionGroups = (
-  projectId: string,
   project: Record<string, unknown> | null | undefined,
 ): Partial<Record<ConsentChannel, string>> => {
-  const fallback = PROJECT_SUBSCRIPTION_GROUPS[projectId] ?? {};
   const groups: Partial<Record<ConsentChannel, string>> = {};
 
   for (const channel of CONSENT_CHANNELS) {
-    const onProject = project?.[SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL[channel]];
-    const groupId = isNonEmptyString(onProject)
-      ? onProject.trim()
-      : fallback[channel];
+    const raw = project?.[SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL[channel]];
+    // Check AFTER trimming, not before: isNonEmptyString('   ') is true, so a
+    // whitespace-only field would otherwise resolve to an empty group id and
+    // the mirror would push consent at nothing.
+    const groupId = isNonEmptyString(raw) ? raw.trim() : undefined;
 
     if (isNonEmptyString(groupId)) {
       groups[channel] = groupId;

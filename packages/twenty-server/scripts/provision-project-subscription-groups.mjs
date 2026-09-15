@@ -19,11 +19,12 @@
 //                        the two Dittofeed actually has subscription groups
 //                        for; add whatsapp/call here if that ever changes, no
 //                        code change needed)
-//   --backfill           ALSO write the two pilot projects' current ids onto
-//                        their records, via the core API. Off by default: this
-//                        writes production DATA, not just metadata. Field
-//                        creation alone is safe — the code falls back to
-//                        PROJECT_SUBSCRIPTION_GROUPS until a record is set.
+//
+// Set the ids themselves in the CRM, on each project. The one-time backfill of
+// the two pilots is done, and carrying a hardcoded copy of their ids here would
+// re-introduce exactly the second source of truth this whole change removed —
+// worse, it would silently write stale ids if a group is ever recreated in
+// Dittofeed.
 //
 // The field NAMES here must match SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL in
 // marketing-sync.constants.ts.
@@ -34,9 +35,7 @@ const API_URL = (process.env.TWENTY_API_URL ?? 'https://crm.enso.ro').replace(
 );
 const API_KEY = process.env.TWENTY_API_KEY;
 const DRY_RUN = process.argv.includes('--dry-run');
-const BACKFILL = process.argv.includes('--backfill');
 const METADATA_ENDPOINT = `${API_URL}/metadata`;
-const CORE_ENDPOINT = `${API_URL}/graphql`;
 
 const channelsArg = process.argv.find((arg) => arg.startsWith('--channels='));
 const CHANNELS = (channelsArg ? channelsArg.split('=')[1] : 'email,sms')
@@ -62,21 +61,6 @@ const LABEL_BY_CHANNEL = {
   sms: 'Dittofeed SMS Subscription Group',
   whatsapp: 'Dittofeed WhatsApp Subscription Group',
   call: 'Dittofeed Call Subscription Group',
-};
-
-// The current hardcoded fallback, for --backfill. Keep in step with
-// PROJECT_SUBSCRIPTION_GROUPS until that map is deleted.
-const PILOT_GROUPS = {
-  // IOANA RADU (ENS1901)
-  'd8f29e3b-7955-4795-b1a6-f3bfd3b4602e': {
-    email: 'b8fea92b-c85e-47f3-805c-0a038a84210d',
-    sms: '2d9dfa15-6b65-4d3e-b7b2-ef0d93cc8b82',
-  },
-  // ARTIMA Business & Lifestyle (ENS2301)
-  '4b63d540-a54a-4a0f-94e6-959d35d4112d': {
-    email: '1a777cd5-64ae-43b1-a7de-1a8b8499dccc',
-    sms: '083cfdb6-2f79-4bdb-8109-f9e241699240',
-  },
 };
 
 const unknownChannels = CHANNELS.filter(
@@ -197,29 +181,6 @@ const createField = async (objectMetadataId, channel) =>
     },
   );
 
-const backfillProject = async (projectId, groups) => {
-  const data = Object.fromEntries(
-    CHANNELS.filter((channel) => groups[channel]).map((channel) => [
-      FIELD_BY_CHANNEL[channel],
-      groups[channel],
-    ]),
-  );
-
-  if (Object.keys(data).length === 0) {
-    return null;
-  }
-
-  return gql(
-    CORE_ENDPOINT,
-    `
-    mutation UpdateProject($id: UUID!, $data: ProjectUpdateInput!) {
-      updateProject(id: $id, data: $data) { id }
-    }
-  `,
-    { id: projectId, data },
-  );
-};
-
 const main = async () => {
   console.log(
     `Metadata endpoint: ${METADATA_ENDPOINT}${DRY_RUN ? ' (dry-run)' : ''}`,
@@ -259,33 +220,6 @@ const main = async () => {
       console.error(`✗ failed ${name}: ${error.message}`);
       process.exitCode = 1;
     }
-  }
-
-  if (BACKFILL) {
-    console.log(
-      `\nBackfilling the pilot projects${DRY_RUN ? ' (dry-run)' : ''}:`,
-    );
-
-    for (const [projectId, groups] of Object.entries(PILOT_GROUPS)) {
-      if (DRY_RUN) {
-        console.log(`• would backfill ${projectId}:`, groups);
-        continue;
-      }
-
-      try {
-        await backfillProject(projectId, groups);
-        console.log(`✓ backfill ${projectId}`);
-      } catch (error) {
-        console.error(`✗ failed backfill ${projectId}: ${error.message}`);
-        process.exitCode = 1;
-      }
-    }
-  } else {
-    console.log(
-      '\nNo backfill (pass --backfill to also write the pilot ids onto their' +
-        ' project records). Until then the pilots keep mirroring through the' +
-        ' PROJECT_SUBSCRIPTION_GROUPS fallback.',
-    );
   }
 
   console.log(
