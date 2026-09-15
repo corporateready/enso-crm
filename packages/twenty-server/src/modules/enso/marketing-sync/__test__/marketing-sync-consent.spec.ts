@@ -2,21 +2,17 @@ import {
   buildConsentSubscriptionChanges,
   CONSENT_CHANNELS,
   type PersonProjectConsentRecord,
-  PROJECT_SUBSCRIPTION_GROUPS,
   resolveProjectSubscriptionGroups,
   revokedConsentChannels,
   SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
-
-const FALLBACK_PROJECT_ID = Object.keys(PROJECT_SUBSCRIPTION_GROUPS)[0];
-const UNCONFIGURED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 const consent = (
   overrides: Partial<PersonProjectConsentRecord> = {},
 ): PersonProjectConsentRecord => ({
   id: 'consent-1',
   personId: 'person-1',
-  projectId: FALLBACK_PROJECT_ID,
+  projectId: 'project-1',
   emailMarketingConsent: null,
   smsMarketingConsent: null,
   whatsappMarketingConsent: null,
@@ -37,95 +33,59 @@ const projectWith = (
     ]),
   );
 
-// Subscription groups are configured per project in the CRM now, with the
-// hardcoded map left as a fallback until the records are backfilled. Getting
-// the precedence wrong either ignores what marketing configured or silently
-// stops mirroring a live pilot, so it is pinned per channel here.
+// Subscription groups are configured per project in the CRM — the Project
+// record is the only source since the hardcoded fallback was deleted. A blank
+// field must read as unconfigured rather than as a group id, or the mirror
+// would push consent at an empty subscription group.
 describe('resolveProjectSubscriptionGroups', () => {
-  it('should prefer the ids on the project record', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      FALLBACK_PROJECT_ID,
-      projectWith({ email: 'from-project' }),
-    );
-
-    expect(groups.email).toBe('from-project');
-  });
-
-  it('should fall back per channel, not per project', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      FALLBACK_PROJECT_ID,
-      projectWith({ email: 'from-project' }),
-    );
-
-    // email came from the record; sms must still come from the fallback rather
-    // than being switched off because the record only carried one channel.
-    expect(groups.email).toBe('from-project');
-    expect(groups.sms).toBe(
-      PROJECT_SUBSCRIPTION_GROUPS[FALLBACK_PROJECT_ID].sms,
-    );
-  });
-
-  it('should use the fallback when the project carries nothing', () => {
-    expect(resolveProjectSubscriptionGroups(FALLBACK_PROJECT_ID, null)).toEqual(
-      PROJECT_SUBSCRIPTION_GROUPS[FALLBACK_PROJECT_ID],
-    );
-  });
-
-  it('should keep mirroring a fallback project when its record is missing', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      FALLBACK_PROJECT_ID,
-      undefined,
-    );
-
-    expect(Object.keys(groups).length).toBeGreaterThan(0);
-  });
-
-  it('should resolve nothing for a project configured nowhere', () => {
+  it('should read the ids off the project record', () => {
     expect(
-      resolveProjectSubscriptionGroups(UNCONFIGURED_PROJECT_ID, null),
-    ).toEqual({});
+      resolveProjectSubscriptionGroups(
+        projectWith({ email: 'email-group', sms: 'sms-group' }),
+      ),
+    ).toEqual({ email: 'email-group', sms: 'sms-group' });
   });
 
-  it('should let a project outside the fallback map configure itself', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      UNCONFIGURED_PROJECT_ID,
-      projectWith({ email: 'new-project-email', sms: 'new-project-sms' }),
-    );
-
-    expect(groups).toEqual({
-      email: 'new-project-email',
-      sms: 'new-project-sms',
-    });
+  it('should resolve only the channels that are set', () => {
+    expect(
+      resolveProjectSubscriptionGroups(projectWith({ email: 'email-group' })),
+    ).toEqual({ email: 'email-group' });
   });
 
-  it.each(['', '   '])(
+  it.each([null, undefined])(
+    'should resolve nothing when the project is %p',
+    (project) => {
+      expect(resolveProjectSubscriptionGroups(project)).toEqual({});
+    },
+  );
+
+  it('should resolve nothing for a project with no ids set', () => {
+    expect(resolveProjectSubscriptionGroups({})).toEqual({});
+  });
+
+  // Twenty stores an unset TEXT field as '', not null — the live records read
+  // back that way before they were backfilled.
+  it.each(['', '   ', '\n'])(
     'should treat a blank field (%p) as unconfigured',
     (blank) => {
       expect(
-        resolveProjectSubscriptionGroups(
-          UNCONFIGURED_PROJECT_ID,
-          projectWith({ email: blank }),
-        ),
+        resolveProjectSubscriptionGroups(projectWith({ email: blank })),
       ).toEqual({});
     },
   );
 
   it('should trim a pasted id', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      UNCONFIGURED_PROJECT_ID,
-      projectWith({ email: '  padded-id\n' }),
-    );
-
-    expect(groups.email).toBe('padded-id');
+    expect(
+      resolveProjectSubscriptionGroups(projectWith({ email: '  padded-id\n' }))
+        .email,
+    ).toBe('padded-id');
   });
 
   it('should support a channel no project has been provisioned for yet', () => {
-    const groups = resolveProjectSubscriptionGroups(
-      UNCONFIGURED_PROJECT_ID,
-      projectWith({ whatsapp: 'whatsapp-group' }),
-    );
-
-    expect(groups.whatsapp).toBe('whatsapp-group');
+    expect(
+      resolveProjectSubscriptionGroups(projectWith({ whatsapp: 'wa-group' }))
+        .whatsapp,
+    ).toBe('wa-group');
   });
 });
 

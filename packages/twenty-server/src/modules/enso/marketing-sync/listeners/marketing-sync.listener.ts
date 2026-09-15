@@ -215,8 +215,8 @@ export class MarketingSyncListener {
   // Consent mirror (CRM → Dittofeed). personProjectConsent is written by both
   // the intake pipeline (raw ORM) and manual manager edits (GraphQL) — the
   // workspace event bus fires for both — so a grant/revoke from either path
-  // re-pushes the person's subscription state. Only projects mapped in
-  // PROJECT_SUBSCRIPTION_GROUPS produce changes; others no-op.
+  // re-pushes the person's subscription state. Which projects actually mirror
+  // is decided worker-side from the Project record.
   @OnDatabaseBatchEvent('personProjectConsent', DatabaseEventAction.CREATED)
   async onPersonProjectConsentCreated(
     payload: WorkspaceEventBatch<

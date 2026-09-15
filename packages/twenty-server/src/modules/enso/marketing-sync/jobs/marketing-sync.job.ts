@@ -108,10 +108,9 @@ export class MarketingSyncJob {
   // whether this is the person's first deal, and the project's name + code.
   // projectName/projectCode are what Dittofeed segments key on to scope a
   // journey to one development (e.g. "New Artima Leads" = projectCode ENS2301).
-  // Which subscription groups this project has is data now: read off the
-  // Project record, falling back to PROJECT_SUBSCRIPTION_GROUPS until the
-  // records are backfilled. Resolved here rather than in the listener so the
-  // listener stays off the ORM.
+  // Which subscription groups this project has is data: read off the Project
+  // record, which is now the only source. Resolved here rather than in the
+  // listener so the listener stays off the ORM.
   private async buildConsentChanges(
     workspaceId: string,
     projectId: string,
@@ -136,7 +135,7 @@ export class MarketingSyncJob {
         authContext,
       );
 
-    const groups = resolveProjectSubscriptionGroups(projectId, project);
+    const groups = resolveProjectSubscriptionGroups(project);
     const changes = buildConsentSubscriptionChanges(groups, consent);
 
     if (Object.keys(changes).length === 0) {
