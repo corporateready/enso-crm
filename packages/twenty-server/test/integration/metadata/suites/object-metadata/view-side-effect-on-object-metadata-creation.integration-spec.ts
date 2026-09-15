@@ -5,6 +5,7 @@ import { deleteOneObjectMetadata } from 'test/integration/metadata/suites/object
 import { updateOneObjectMetadata } from 'test/integration/metadata/suites/object-metadata/utils/update-one-object-metadata.util';
 import { findViewFields } from 'test/integration/metadata/suites/view-field/utils/find-view-fields.util';
 import { findViews } from 'test/integration/metadata/suites/view/utils/find-views.util';
+import { ViewKey } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
 
 import { type FlatView } from 'src/engine/metadata-modules/flat-view/types/flat-view.type';
@@ -80,16 +81,31 @@ describe('View side effect on object creation', () => {
 
     expect(createdViews).toBeDefined();
     expect(createdViews.length).toBe(2);
-    const [firstView] = createdViews;
 
-    expect(firstView).toMatchObject<Partial<FlatView>>({
+    // Creating an object makes TWO views with different field counts — the
+    // record-list table (ViewKey.INDEX) and the record-page field list — and
+    // getViews returns them unordered: ViewService.getFilteredFlatViews maps
+    // Object.values() over an in-memory cache, with no ORDER BY and no sort.
+    // Taking createdViews[0] therefore asserted against whichever view the
+    // cache happened to list first, and flaked between 5 and 4 fields.
+    const indexView = createdViews.find((view) => view.key === ViewKey.INDEX);
+
+    if (!isDefined(indexView)) {
+      throw new Error(
+        `Expected an INDEX view for object ${createdObjectMetadataId}, got keys: ${createdViews
+          .map((view) => view.key)
+          .join(', ')}`,
+      );
+    }
+
+    expect(indexView).toMatchObject<Partial<FlatView>>({
       objectMetadataId: createdObjectMetadataId,
     });
 
     const {
       data: { getViewFields: createdViewFields },
     } = await findViewFields({
-      viewId: firstView.id,
+      viewId: indexView.id,
       expectToFail: false,
     });
 
