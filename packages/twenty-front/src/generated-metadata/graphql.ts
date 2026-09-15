@@ -1585,6 +1585,7 @@ export type EnsoViewerScope = {
   defaultViewsVersion?: Maybe<Scalars['String']>;
   hiddenNavigationObjectNameSingulars: Array<Scalars['String']>;
   isRecordScoped: Scalars['Boolean'];
+  personalDefaultViews: Array<EnsoDefaultView>;
 };
 
 export type EnterpriseLicenseInfoDto = {
@@ -2530,6 +2531,7 @@ export type Mutation = {
   editSSOIdentityProvider: EditSso;
   emailPasswordResetLink: EmailPasswordResetLink;
   endSubscriptionTrialPeriod: BillingEndTrialPeriod;
+  ensoSetMyDefaultView: Array<EnsoDefaultView>;
   ensoSetMyRoutingAvailability: EnsoRoutingAvailability;
   ensoSetRoleDefaultViews: Array<EnsoDefaultView>;
   evaluateAgentTurn: AgentTurnEvaluation;
@@ -3132,6 +3134,12 @@ export type MutationEditSsoIdentityProviderArgs = {
 export type MutationEmailPasswordResetLinkArgs = {
   email: Scalars['String'];
   workspaceId?: InputMaybe<Scalars['UUID']>;
+};
+
+
+export type MutationEnsoSetMyDefaultViewArgs = {
+  objectMetadataId: Scalars['String'];
+  viewId?: InputMaybe<Scalars['String']>;
 };
 
 

@@ -14,6 +14,10 @@ export const ENSO_VIEWER_SCOPE = gql`
         viewId
       }
       defaultViewsVersion
+      personalDefaultViews {
+        objectMetadataId
+        viewId
+      }
     }
   }
 `;

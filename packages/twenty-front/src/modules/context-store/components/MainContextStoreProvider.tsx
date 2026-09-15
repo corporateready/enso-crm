@@ -44,6 +44,7 @@ export const MainContextStoreProvider = () => {
   const { getLastVisitedViewIdFromObjectNamePlural } = useLastVisitedView();
   const {
     roleDefaultViewIdByObjectMetadataId,
+    personalDefaultViewIdByObjectMetadataId,
     roleDefaultViewsVersion,
     isEnsoViewerScopeLoading,
   } = useEnsoViewerScope();
@@ -99,6 +100,18 @@ export const MainContextStoreProvider = () => {
       view.id === roleDefaultViewIdRaw && view.type !== ViewType.FIELDS_WIDGET,
   )?.id;
 
+  // Same guard as the role default: a personal default pointing at a view that
+  // has since been deleted must not strand the person on nothing.
+  const personalDefaultViewIdRaw = isDefined(objectMetadataItem)
+    ? personalDefaultViewIdByObjectMetadataId[objectMetadataItem.id]
+    : undefined;
+
+  const personalDefaultViewId = views.find(
+    (view) =>
+      view.id === personalDefaultViewIdRaw &&
+      view.type !== ViewType.FIELDS_WIDGET,
+  )?.id;
+
   // Seed once per object per version of the role's configuration.
   const shouldSeedRoleDefaultView =
     isDefined(objectMetadataItem) &&
@@ -110,6 +123,7 @@ export const MainContextStoreProvider = () => {
 
   const viewId = getViewId({
     viewIdFromQueryParams: viewIdQueryParam,
+    personalDefaultViewId,
     indexViewId,
     lastVisitedViewId,
     firstAvailableViewId,

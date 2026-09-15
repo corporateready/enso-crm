@@ -5,6 +5,7 @@ const INDEX_VIEW = 'index-view-id';
 const LAST_VISITED_VIEW = 'last-visited-view-id';
 const ROLE_DEFAULT_VIEW = 'role-default-view-id';
 const FIRST_AVAILABLE_VIEW = 'first-available-view-id';
+const PERSONAL_DEFAULT_VIEW = 'personal-default-view-id';
 
 describe('getViewId', () => {
   it('should use the URL viewId when one is given', () => {
@@ -15,6 +16,40 @@ describe('getViewId', () => {
         lastVisitedViewId: LAST_VISITED_VIEW,
         roleDefaultViewId: ROLE_DEFAULT_VIEW,
         shouldSeedRoleDefaultView: true,
+      }),
+    ).toBe(URL_VIEW);
+  });
+
+  it('should use the personal default over a role default that has not been seeded yet', () => {
+    expect(
+      getViewId({
+        viewIdFromQueryParams: null,
+        personalDefaultViewId: PERSONAL_DEFAULT_VIEW,
+        indexViewId: INDEX_VIEW,
+        lastVisitedViewId: LAST_VISITED_VIEW,
+        roleDefaultViewId: ROLE_DEFAULT_VIEW,
+        shouldSeedRoleDefaultView: true,
+      }),
+    ).toBe(PERSONAL_DEFAULT_VIEW);
+  });
+
+  it('should use the personal default over last-visited', () => {
+    expect(
+      getViewId({
+        viewIdFromQueryParams: null,
+        personalDefaultViewId: PERSONAL_DEFAULT_VIEW,
+        lastVisitedViewId: LAST_VISITED_VIEW,
+        indexViewId: INDEX_VIEW,
+      }),
+    ).toBe(PERSONAL_DEFAULT_VIEW);
+  });
+
+  it('should still let an explicit URL viewId beat the personal default', () => {
+    expect(
+      getViewId({
+        viewIdFromQueryParams: URL_VIEW,
+        personalDefaultViewId: PERSONAL_DEFAULT_VIEW,
+        indexViewId: INDEX_VIEW,
       }),
     ).toBe(URL_VIEW);
   });

@@ -8,6 +8,7 @@ type EnsoViewerScopeData = {
     hiddenNavigationObjectNameSingulars: string[];
     defaultViews: { objectMetadataId: string; viewId: string }[];
     defaultViewsVersion: string | null;
+    personalDefaultViews: { objectMetadataId: string; viewId: string }[];
   };
 };
 
@@ -34,6 +35,12 @@ export const useEnsoViewerScope = () => {
       ),
     ),
     roleDefaultViewsVersion: data?.ensoViewerScope.defaultViewsVersion ?? null,
+    // This viewer's own choice, which out-ranks their role's.
+    personalDefaultViewIdByObjectMetadataId: Object.fromEntries(
+      (data?.ensoViewerScope.personalDefaultViews ?? EMPTY_DEFAULT_VIEWS).map(
+        (defaultView) => [defaultView.objectMetadataId, defaultView.viewId],
+      ),
+    ),
     // Whoever decides which view to open MUST wait for this. Answering before
     // it lands means falling through to the INDEX view and, because landing on
     // a view records it as last-visited, pinning that wrong answer for good.

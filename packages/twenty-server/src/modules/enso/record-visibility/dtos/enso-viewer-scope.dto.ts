@@ -30,6 +30,12 @@ export class EnsoViewerScopeDTO {
   // has no defaults configured.
   @Field(() => String, { nullable: true })
   defaultViewsVersion: string | null;
+
+  // This viewer's OWN defaults, which out-rank the role's. No version stamp:
+  // a role default is inherited and has to reach people once, whereas this was
+  // chosen deliberately, so it simply keeps winning until they change it.
+  @Field(() => [EnsoDefaultViewDTO])
+  personalDefaultViews: EnsoDefaultViewDTO[];
 }
 
 @InputType('EnsoDefaultViewInput')
