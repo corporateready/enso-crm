@@ -30,6 +30,7 @@ jobs:
         packages/twenty-shared/**
         packages/twenty-sdk/**
         !packages/twenty-sdk/package.json
+        .github/workflows/ci-front.yaml
   front-sb-build:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
@@ -157,11 +158,11 @@ jobs:
       NODE_OPTIONS: '--max-old-space-size=6144'
       TASK_CACHE_KEY: front-task-${{ matrix.task }}
     strategy:
-      # Without this one task's failure cancels its siblings, so a single red
-      # job hides whether lint, typecheck and test are independently broken.
+      # Without this one task's failure cancels its sibling, so a single red
+      # job hides whether lint and test are independently broken.
       fail-fast: false
       matrix:
-        task: [lint, typecheck, test]
+        task: [lint, test]
     steps:
       - name: Fetch custom Github Actions and base branch history
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -186,6 +187,46 @@ jobs:
           tag: scope:frontend
           tasks: ${{ matrix.task }}
       - name: Save ${{ matrix.task }} cache
+        uses: ./.github/actions/save-cache
+        with:
+          key: ${{ steps.restore-task-cache.outputs.cache-primary-key }}
+  # Typecheck runs as its own plain job rather than a third matrix leg so it can
+  # be a required status check. A skipped matrix job collapses to the bare
+  # `front-task` name, so the context `front-task (typecheck)` never appears on a
+  # server-only PR — requiring it would leave every such PR pending forever.
+  # Keeps the front-task-typecheck cache key, so it reuses the warm cache.
+  front-typecheck:
+    needs: changed-files-check
+    if: needs.changed-files-check.outputs.any_changed == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: '--max-old-space-size=6144'
+      TASK_CACHE_KEY: front-task-typecheck
+    steps:
+      - name: Fetch custom Github Actions and base branch history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        uses: ./.github/actions/yarn-install
+      - name: Restore typecheck cache
+        id: restore-task-cache
+        uses: ./.github/actions/restore-cache
+        with:
+          key: ${{ env.TASK_CACHE_KEY }}
+      - name: Reset .env
+        uses: ./.github/actions/nx-affected
+        with:
+          tag: scope:frontend
+          tasks: reset:env
+      - name: Run typecheck task
+        id: run-task
+        uses: ./.github/actions/nx-affected
+        with:
+          tag: scope:frontend
+          tasks: typecheck
+      - name: Save typecheck cache
         uses: ./.github/actions/save-cache
         with:
           key: ${{ steps.restore-task-cache.outputs.cache-primary-key }}
@@ -222,6 +263,7 @@ jobs:
       [
         changed-files-check,
         front-task,
+        front-typecheck,
         front-build,
         # merge-reports-and-check-coverage,
         front-sb-test,
