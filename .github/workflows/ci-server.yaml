@@ -29,6 +29,7 @@ jobs:
         packages/twenty-client-sdk/**
         packages/twenty-emails/**
         packages/twenty-shared/**
+        .github/workflows/ci-server.yaml
 
   server-build:
     needs: changed-files-check
