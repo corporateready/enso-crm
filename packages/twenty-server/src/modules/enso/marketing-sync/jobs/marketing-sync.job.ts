@@ -8,11 +8,22 @@ import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queu
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
+  buildConsentSubscriptionChanges,
+  type ConsentChannel,
   MARKETING_EVENT_DEAL_CREATED,
   type MarketingSyncJobData,
+  type PersonProjectConsentRecord,
+  resolveProjectSubscriptionGroups,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
 import { DittofeedAdminClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-admin-client.service';
 import { DittofeedClientService } from 'src/modules/enso/marketing-sync/services/dittofeed-client.service';
+
+// Projects already reported as unmirrored, as `${workspaceId}:${projectId}`.
+// Consent rows are written on every intake, so reporting each one would be a
+// log flood — and a flood on this server stalls the event loop and drops
+// inbound leads. One line per project per process is enough to act on, and a
+// restart re-reports anything still unconfigured.
+const unmirroredProjectsReported = new Set<string>();
 
 // Worker-side executor: takes a prepared identify/track payload (built by the
 // listener) and pushes it to Dittofeed. Kept thin so BullMQ retries handle a
@@ -42,10 +53,25 @@ export class MarketingSyncJob {
     }
 
     if (data.kind === 'sync_consent') {
+      // Legacy payload queued before the mapping moved onto the Project record.
+      const changes =
+        'changes' in data
+          ? data.changes
+          : await this.buildConsentChanges(
+              data.workspaceId,
+              data.projectId,
+              data.consent,
+              data.revokedChannels,
+            );
+
+      if (Object.keys(changes).length === 0) {
+        return;
+      }
+
       await this.dittofeedAdminClientService.setSubscriptionAssignments(
         data.workspaceId,
         data.userId,
-        data.changes,
+        changes,
       );
 
       return;
@@ -82,6 +108,80 @@ export class MarketingSyncJob {
   // whether this is the person's first deal, and the project's name + code.
   // projectName/projectCode are what Dittofeed segments key on to scope a
   // journey to one development (e.g. "New Artima Leads" = projectCode ENS2301).
+  // Which subscription groups this project has is data now: read off the
+  // Project record, falling back to PROJECT_SUBSCRIPTION_GROUPS until the
+  // records are backfilled. Resolved here rather than in the listener so the
+  // listener stays off the ORM.
+  private async buildConsentChanges(
+    workspaceId: string,
+    projectId: string,
+    consent: PersonProjectConsentRecord,
+    revokedChannels: readonly ConsentChannel[],
+  ): Promise<Record<string, boolean>> {
+    const authContext = buildSystemAuthContext(workspaceId);
+
+    const project =
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          // A project is a custom object with no generated entity type; only
+          // the subscription-group columns are read, so a plain row shape does
+          // the job without reaching for `any`.
+          const projectRepository =
+            await this.globalWorkspaceOrmManager.getRepository<
+              Record<string, unknown>
+            >(workspaceId, 'project', { shouldBypassPermissionChecks: true });
+
+          return await projectRepository.findOne({ where: { id: projectId } });
+        },
+        authContext,
+      );
+
+    const groups = resolveProjectSubscriptionGroups(projectId, project);
+    const changes = buildConsentSubscriptionChanges(groups, consent);
+
+    if (Object.keys(changes).length === 0) {
+      this.reportUnmirroredProject(workspaceId, projectId, revokedChannels);
+    }
+
+    return changes;
+  }
+
+  // A grant that never reaches Dittofeed costs us marketing; a REVOCATION that
+  // never reaches it means we keep contacting someone who asked us to stop. So
+  // a revocation is reported every time and a grant once per project.
+  private reportUnmirroredProject(
+    workspaceId: string,
+    projectId: string,
+    revokedChannels: readonly ConsentChannel[],
+  ): void {
+    if (revokedChannels.length > 0) {
+      this.logger.error(
+        `consent-mirror: project ${projectId} has no Dittofeed subscription group ids ` +
+          `(none on the project record, none in the fallback map), so revoking ` +
+          `${revokedChannels.join(', ')} was NOT mirrored. If this project has live ` +
+          `journeys, suppress the person in Dittofeed by hand and set the project's ` +
+          `Dittofeed subscription group fields.`,
+      );
+
+      return;
+    }
+
+    const reportKey = `${workspaceId}:${projectId}`;
+
+    if (unmirroredProjectsReported.has(reportKey)) {
+      return;
+    }
+
+    unmirroredProjectsReported.add(reportKey);
+
+    this.logger.warn(
+      `consent-mirror: project ${projectId} has no Dittofeed subscription group ids — ` +
+        `its consent changes are not mirrored. Expected for a project that is not in ` +
+        `Dittofeed; set the project's Dittofeed subscription group fields once its ` +
+        `groups exist.`,
+    );
+  }
+
   private async buildDealCreatedProperties(
     workspaceId: string,
     opportunityId: string,

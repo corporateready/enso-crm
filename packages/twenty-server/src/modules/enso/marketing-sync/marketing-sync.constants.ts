@@ -35,14 +35,31 @@ export type MarketingSyncJobData =
       messageId: string;
     }
   | {
-      // Consent mirror: CRM personProjectConsent → Dittofeed subscription state,
-      // so a person the CRM marks opted-out is suppressed at send. `changes` is
-      // Dittofeed's {subscriptionGroupId: isSubscribed} map, pre-resolved by the
-      // listener from PROJECT_SUBSCRIPTION_GROUPS.
+      // Consent mirror, legacy payload: `changes` is Dittofeed's
+      // {subscriptionGroupId: isSubscribed} map, already resolved by the
+      // listener. Only jobs queued before subscription groups moved onto the
+      // Project record look like this — kept so a rolling deploy drains the
+      // queue instead of dropping it, and removable once the queue has turned
+      // over.
       kind: 'sync_consent';
       workspaceId: string;
       userId: string;
       changes: Record<string, boolean>;
+      messageId: string;
+    }
+  | {
+      // Consent mirror: CRM personProjectConsent → Dittofeed subscription
+      // state, so a person the CRM marks opted-out is suppressed at send. The
+      // listener carries the project and the consent row; the worker resolves
+      // which subscription groups that project has (same split as
+      // track_deal_created), because the mapping now lives on the Project
+      // record and only the worker touches the ORM.
+      kind: 'sync_consent';
+      workspaceId: string;
+      userId: string;
+      projectId: string;
+      consent: PersonProjectConsentRecord;
+      revokedChannels: ConsentChannel[];
       messageId: string;
     };
 
@@ -102,10 +119,28 @@ export type PersonProjectConsentRecord = {
   updatedAt: string | null;
 };
 
-// CRM project (id) → the Dittofeed subscription groups that scope that
-// development's marketing. Per-project × channel (user's choice): an unsubscribe
-// revokes only that project+channel. Add a project here once its groups exist in
-// Dittofeed; projects absent from the map are simply not mirrored.
+// Which Project field carries each channel's Dittofeed subscription group id.
+// Reading these off the Project record is what lets marketing configure a new
+// development in the CRM instead of editing this file and waiting for a deploy.
+// A channel with no field provisioned (or an empty one) simply resolves to no
+// group, so whatsapp/call can be added later by running the provisioning
+// script again — no code change.
+//   packages/twenty-server/scripts/provision-project-subscription-groups.mjs
+export const SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL: Readonly<
+  Record<ConsentChannel, string>
+> = {
+  email: 'dittofeedEmailSubscriptionGroupId',
+  sms: 'dittofeedSmsSubscriptionGroupId',
+  whatsapp: 'dittofeedWhatsappSubscriptionGroupId',
+  call: 'dittofeedCallSubscriptionGroupId',
+};
+
+// FALLBACK ONLY — the mapping now lives on the Project record (see
+// SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL). These entries keep the two live pilots
+// mirroring on a deploy that lands before the Project fields are provisioned
+// and backfilled. Do not add projects here: set the fields on the project
+// instead. Delete an entry once its project carries its own ids, and delete
+// this map once both are done.
 //   The live pilot is IOANA RADU (ENS1901) — see the entry below.
 export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
   Record<string, Partial<Record<ConsentChannel, string>>>
@@ -124,19 +159,38 @@ export const PROJECT_SUBSCRIPTION_GROUPS: Readonly<
   },
 };
 
-// Resolve a consent row to Dittofeed's {subscriptionGroupId: isSubscribed} map.
-// Empty when the project has no mapped groups (→ nothing to mirror). OptOut
-// groups: isSubscribed=false suppresses the person at send time.
-export const buildConsentSubscriptionChanges = (
+// A project's per-channel subscription group ids: what the project record
+// carries, then PROJECT_SUBSCRIPTION_GROUPS for anything it doesn't. Per
+// channel, not per project, so backfilling email alone does not switch sms off.
+// `project` is the raw ORM row (or null when the project is gone).
+export const resolveProjectSubscriptionGroups = (
   projectId: string,
-  record: PersonProjectConsentRecord,
-): Record<string, boolean> => {
-  const groups = PROJECT_SUBSCRIPTION_GROUPS[projectId];
+  project: Record<string, unknown> | null | undefined,
+): Partial<Record<ConsentChannel, string>> => {
+  const fallback = PROJECT_SUBSCRIPTION_GROUPS[projectId] ?? {};
+  const groups: Partial<Record<ConsentChannel, string>> = {};
 
-  if (!isDefined(groups)) {
-    return {};
+  for (const channel of CONSENT_CHANNELS) {
+    const onProject = project?.[SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL[channel]];
+    const groupId = isNonEmptyString(onProject)
+      ? onProject.trim()
+      : fallback[channel];
+
+    if (isNonEmptyString(groupId)) {
+      groups[channel] = groupId;
+    }
   }
 
+  return groups;
+};
+
+// Resolve a consent row to Dittofeed's {subscriptionGroupId: isSubscribed} map.
+// Empty when the project has no groups at all (→ nothing to mirror). OptOut
+// groups: isSubscribed=false suppresses the person at send time.
+export const buildConsentSubscriptionChanges = (
+  groups: Partial<Record<ConsentChannel, string>>,
+  record: PersonProjectConsentRecord,
+): Record<string, boolean> => {
   const changes: Record<string, boolean> = {};
 
   for (const channel of CONSENT_CHANNELS) {
@@ -152,14 +206,6 @@ export const buildConsentSubscriptionChanges = (
 
   return changes;
 };
-
-// Is this project mirrored at all? Distinguishes the two reasons
-// buildConsentSubscriptionChanges can come back empty: a project nobody has
-// mapped yet (a configuration gap worth reporting) versus a mapped project
-// whose channels have no groups (nothing to say). Kept here so the map itself
-// stays private to this module.
-export const hasProjectSubscriptionGroups = (projectId: string): boolean =>
-  isDefined(PROJECT_SUBSCRIPTION_GROUPS[projectId]);
 
 // Channels whose consent went from granted to not-granted in one edit. A grant
 // that fails to reach Dittofeed only costs us marketing; a REVOCATION that
