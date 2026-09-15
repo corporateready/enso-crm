@@ -763,7 +763,7 @@ export interface PageLayoutWidget {
     __typename: 'PageLayoutWidget'
 }
 
-export type WidgetType = 'VIEW' | 'IFRAME' | 'FIELD' | 'FIELDS' | 'GRAPH' | 'STANDALONE_RICH_TEXT' | 'TIMELINE' | 'TASKS' | 'NOTES' | 'FILES' | 'EMAILS' | 'CALENDAR' | 'FIELD_RICH_TEXT' | 'WORKFLOW' | 'WORKFLOW_VERSION' | 'WORKFLOW_RUN' | 'FRONT_COMPONENT' | 'RECORD_TABLE' | 'EMAIL_THREAD'
+export type WidgetType = 'VIEW' | 'IFRAME' | 'FIELD' | 'FIELDS' | 'GRAPH' | 'STANDALONE_RICH_TEXT' | 'TIMELINE' | 'TASKS' | 'TASK_ACTIONS' | 'NOTES' | 'FILES' | 'EMAILS' | 'CALENDAR' | 'FIELD_RICH_TEXT' | 'WORKFLOW' | 'WORKFLOW_VERSION' | 'WORKFLOW_RUN' | 'FRONT_COMPONENT' | 'RECORD_TABLE' | 'EMAIL_THREAD'
 
 export type PageLayoutWidgetPosition = (PageLayoutWidgetGridPosition | PageLayoutWidgetVerticalListPosition | PageLayoutWidgetCanvasPosition) & { __isUnion?: true }
 
@@ -2297,6 +2297,114 @@ export interface SendEmailOutput {
     __typename: 'SendEmailOutput'
 }
 
+export interface GoogleChatNotificationPreference {
+    event: Scalars['String']
+    enabled: Scalars['Boolean']
+    __typename: 'GoogleChatNotificationPreference'
+}
+
+export interface GoogleChatTestResult {
+    success: Scalars['Boolean']
+    error?: Scalars['String']
+    __typename: 'GoogleChatTestResult'
+}
+
+export interface GoogleChatWebhookSettings {
+    isConfigured: Scalars['Boolean']
+    maskedWebhookUrl?: Scalars['String']
+    __typename: 'GoogleChatWebhookSettings'
+}
+
+export interface PersonSmsContext {
+    aliases: Scalars['String'][]
+    canSend: Scalars['Boolean']
+    reason?: Scalars['String']
+    __typename: 'PersonSmsContext'
+}
+
+export interface TaskSmsContext {
+    alias?: Scalars['String']
+    canSend: Scalars['Boolean']
+    reason?: Scalars['String']
+    __typename: 'TaskSmsContext'
+}
+
+export interface ProjectChatWebhookSettings {
+    projectId: Scalars['String']
+    projectName?: Scalars['String']
+    projectCode?: Scalars['String']
+    isConfigured: Scalars['Boolean']
+    maskedWebhookUrl?: Scalars['String']
+    __typename: 'ProjectChatWebhookSettings'
+}
+
+export interface TaskEmailContext {
+    from?: Scalars['String']
+    canSend: Scalars['Boolean']
+    reason?: Scalars['String']
+    hasEmailConsent: Scalars['Boolean']
+    consentNote?: Scalars['String']
+    __typename: 'TaskEmailContext'
+}
+
+export interface EnsoDefaultView {
+    objectMetadataId: Scalars['String']
+    viewId: Scalars['String']
+    __typename: 'EnsoDefaultView'
+}
+
+export interface EnsoViewerScope {
+    isRecordScoped: Scalars['Boolean']
+    hiddenNavigationObjectNameSingulars: Scalars['String'][]
+    defaultViews: EnsoDefaultView[]
+    __typename: 'EnsoViewerScope'
+}
+
+export interface EnsoLeadLookupProject {
+    projectId?: Scalars['String']
+    projectName?: Scalars['String']
+    projectCode?: Scalars['String']
+    ownerName?: Scalars['String']
+    ownerWorkspaceMemberId?: Scalars['String']
+    isMine: Scalars['Boolean']
+    firstContactAt?: Scalars['DateTime']
+    lastTouchAt?: Scalars['DateTime']
+    dealStatus: Scalars['String']
+    __typename: 'EnsoLeadLookupProject'
+}
+
+export interface EnsoLeadLookupMatch {
+    personId: Scalars['String']
+    displayName: Scalars['String']
+    matchedOn: Scalars['String']
+    maskedPhone?: Scalars['String']
+    maskedEmail?: Scalars['String']
+    firstTouchAt?: Scalars['DateTime']
+    isMine: Scalars['Boolean']
+    projects: EnsoLeadLookupProject[]
+    __typename: 'EnsoLeadLookupMatch'
+}
+
+export interface EnsoLeadLookupResult {
+    matches: EnsoLeadLookupMatch[]
+    isRateLimited: Scalars['Boolean']
+    remainingLookupsToday: Scalars['Float']
+    isViewerScoped: Scalars['Boolean']
+    __typename: 'EnsoLeadLookupResult'
+}
+
+export interface EnsoRoutingAvailability {
+    isAvailableForRouting: Scalars['Boolean']
+    __typename: 'EnsoRoutingAvailability'
+}
+
+export interface CallViaPbxResult {
+    success: Scalars['Boolean']
+    error?: Scalars['String']
+    activityId?: Scalars['String']
+    __typename: 'CallViaPbxResult'
+}
+
 export interface EventLogRecord {
     event: Scalars['String']
     timestamp: Scalars['DateTime']
@@ -2632,6 +2740,16 @@ export interface Query {
     pieChartData: PieChartData
     lineChartData: LineChartData
     barChartData: BarChartData
+    ensoViewerScope: EnsoViewerScope
+    ensoLeadLookup: EnsoLeadLookupResult
+    taskEmailContext: TaskEmailContext
+    personEmailContext: TaskEmailContext
+    googleChatWebhookSettings: GoogleChatWebhookSettings
+    taskSmsContext: TaskSmsContext
+    recordSmsContext: TaskSmsContext
+    personSmsContext: PersonSmsContext
+    notificationPreferences: GoogleChatNotificationPreference[]
+    projectChatWebhookSettings: ProjectChatWebhookSettings[]
     getConnectedImapSmtpCaldavAccount: ConnectedImapSmtpCaldavAccount
     getAutoCompleteAddress: AutocompleteResult[]
     getAddressDetails: PlaceDetailsResult
@@ -2835,6 +2953,22 @@ export interface Mutation {
     editSSOIdentityProvider: EditSso
     duplicateDashboard: DuplicatedDashboard
     impersonate: Impersonate
+    callViaPbx: CallViaPbxResult
+    ensoSetRoleDefaultViews: EnsoDefaultView[]
+    ensoSetMyRoutingAvailability: EnsoRoutingAvailability
+    sendTaskEmail: GoogleChatTestResult
+    sendRecordEmail: GoogleChatTestResult
+    setGoogleChatWebhookUrl: GoogleChatWebhookSettings
+    deleteGoogleChatWebhookUrl: Scalars['Boolean']
+    sendGoogleChatTestNotification: GoogleChatTestResult
+    sendTaskSms: GoogleChatTestResult
+    sendRecordSms: GoogleChatTestResult
+    sendPersonSms: GoogleChatTestResult
+    sendTaskToMyPhone: GoogleChatTestResult
+    setNotificationPreference: GoogleChatNotificationPreference[]
+    setProjectChatWebhookUrl: ProjectChatWebhookSettings
+    deleteProjectChatWebhookUrl: Scalars['Boolean']
+    sendProjectChatTestNotification: GoogleChatTestResult
     sendEmail: SendEmailOutput
     startChannelSync: ChannelSyncSuccess
     saveImapSmtpCaldavAccount: ImapSmtpCaldavConnectionSuccess
@@ -5316,6 +5450,128 @@ export interface SendEmailOutputGenqlSelection{
     __scalar?: boolean | number
 }
 
+export interface GoogleChatNotificationPreferenceGenqlSelection{
+    event?: boolean | number
+    enabled?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface GoogleChatTestResultGenqlSelection{
+    success?: boolean | number
+    error?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface GoogleChatWebhookSettingsGenqlSelection{
+    isConfigured?: boolean | number
+    maskedWebhookUrl?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface PersonSmsContextGenqlSelection{
+    aliases?: boolean | number
+    canSend?: boolean | number
+    reason?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface TaskSmsContextGenqlSelection{
+    alias?: boolean | number
+    canSend?: boolean | number
+    reason?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface ProjectChatWebhookSettingsGenqlSelection{
+    projectId?: boolean | number
+    projectName?: boolean | number
+    projectCode?: boolean | number
+    isConfigured?: boolean | number
+    maskedWebhookUrl?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface TaskEmailContextGenqlSelection{
+    from?: boolean | number
+    canSend?: boolean | number
+    reason?: boolean | number
+    hasEmailConsent?: boolean | number
+    consentNote?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoDefaultViewGenqlSelection{
+    objectMetadataId?: boolean | number
+    viewId?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoViewerScopeGenqlSelection{
+    isRecordScoped?: boolean | number
+    hiddenNavigationObjectNameSingulars?: boolean | number
+    defaultViews?: EnsoDefaultViewGenqlSelection
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadLookupProjectGenqlSelection{
+    projectId?: boolean | number
+    projectName?: boolean | number
+    projectCode?: boolean | number
+    ownerName?: boolean | number
+    ownerWorkspaceMemberId?: boolean | number
+    isMine?: boolean | number
+    firstContactAt?: boolean | number
+    lastTouchAt?: boolean | number
+    dealStatus?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadLookupMatchGenqlSelection{
+    personId?: boolean | number
+    displayName?: boolean | number
+    matchedOn?: boolean | number
+    maskedPhone?: boolean | number
+    maskedEmail?: boolean | number
+    firstTouchAt?: boolean | number
+    isMine?: boolean | number
+    projects?: EnsoLeadLookupProjectGenqlSelection
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadLookupResultGenqlSelection{
+    matches?: EnsoLeadLookupMatchGenqlSelection
+    isRateLimited?: boolean | number
+    remainingLookupsToday?: boolean | number
+    isViewerScoped?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoRoutingAvailabilityGenqlSelection{
+    isAvailableForRouting?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface CallViaPbxResultGenqlSelection{
+    success?: boolean | number
+    error?: boolean | number
+    activityId?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
 export interface EventLogRecordGenqlSelection{
     event?: boolean | number
     timestamp?: boolean | number
@@ -5664,6 +5920,16 @@ export interface QueryGenqlSelection{
     pieChartData?: (PieChartDataGenqlSelection & { __args: {input: PieChartDataInput} })
     lineChartData?: (LineChartDataGenqlSelection & { __args: {input: LineChartDataInput} })
     barChartData?: (BarChartDataGenqlSelection & { __args: {input: BarChartDataInput} })
+    ensoViewerScope?: EnsoViewerScopeGenqlSelection
+    ensoLeadLookup?: (EnsoLeadLookupResultGenqlSelection & { __args: {searchTerm: Scalars['String']} })
+    taskEmailContext?: (TaskEmailContextGenqlSelection & { __args: {taskId: Scalars['String']} })
+    personEmailContext?: (TaskEmailContextGenqlSelection & { __args?: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null)} })
+    googleChatWebhookSettings?: GoogleChatWebhookSettingsGenqlSelection
+    taskSmsContext?: (TaskSmsContextGenqlSelection & { __args: {taskId: Scalars['String']} })
+    recordSmsContext?: (TaskSmsContextGenqlSelection & { __args?: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null)} })
+    personSmsContext?: (PersonSmsContextGenqlSelection & { __args?: {personId?: (Scalars['String'] | null)} })
+    notificationPreferences?: GoogleChatNotificationPreferenceGenqlSelection
+    projectChatWebhookSettings?: ProjectChatWebhookSettingsGenqlSelection
     getConnectedImapSmtpCaldavAccount?: (ConnectedImapSmtpCaldavAccountGenqlSelection & { __args: {id: Scalars['UUID']} })
     getAutoCompleteAddress?: (AutocompleteResultGenqlSelection & { __args: {address: Scalars['String'], token: Scalars['String'], country?: (Scalars['String'] | null), isFieldCity?: (Scalars['Boolean'] | null)} })
     getAddressDetails?: (PlaceDetailsResultGenqlSelection & { __args: {placeId: Scalars['String'], token: Scalars['String']} })
@@ -5888,6 +6154,22 @@ export interface MutationGenqlSelection{
     editSSOIdentityProvider?: (EditSsoGenqlSelection & { __args: {input: EditSsoInput} })
     duplicateDashboard?: (DuplicatedDashboardGenqlSelection & { __args: {id: Scalars['UUID']} })
     impersonate?: (ImpersonateGenqlSelection & { __args: {userId: Scalars['UUID'], workspaceId: Scalars['UUID']} })
+    callViaPbx?: (CallViaPbxResultGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
+    ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
+    ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
+    sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })
+    sendRecordEmail?: (GoogleChatTestResultGenqlSelection & { __args: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null), subject: Scalars['String'], body: Scalars['String']} })
+    setGoogleChatWebhookUrl?: (GoogleChatWebhookSettingsGenqlSelection & { __args: {input: SetGoogleChatWebhookUrlInput} })
+    deleteGoogleChatWebhookUrl?: boolean | number
+    sendGoogleChatTestNotification?: GoogleChatTestResultGenqlSelection
+    sendTaskSms?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], message: Scalars['String']} })
+    sendRecordSms?: (GoogleChatTestResultGenqlSelection & { __args: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null), message: Scalars['String']} })
+    sendPersonSms?: (GoogleChatTestResultGenqlSelection & { __args: {personId?: (Scalars['String'] | null), message: Scalars['String'], alias?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
+    sendTaskToMyPhone?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String']} })
+    setNotificationPreference?: (GoogleChatNotificationPreferenceGenqlSelection & { __args: {event: Scalars['String'], enabled: Scalars['Boolean']} })
+    setProjectChatWebhookUrl?: (ProjectChatWebhookSettingsGenqlSelection & { __args: {input: SetProjectChatWebhookUrlInput} })
+    deleteProjectChatWebhookUrl?: { __args: {projectId: Scalars['String']} }
+    sendProjectChatTestNotification?: (GoogleChatTestResultGenqlSelection & { __args: {projectId: Scalars['String']} })
     sendEmail?: (SendEmailOutputGenqlSelection & { __args: {input: SendEmailInput} })
     startChannelSync?: (ChannelSyncSuccessGenqlSelection & { __args: {connectedAccountId: Scalars['UUID']} })
     saveImapSmtpCaldavAccount?: (ImapSmtpCaldavConnectionSuccessGenqlSelection & { __args: {handle: Scalars['String'], connectionParameters: EmailAccountConnectionParameters, id?: (Scalars['UUID'] | null)} })
@@ -6253,6 +6535,12 @@ export interface SetupSAMLSsoInput {name: Scalars['String'],issuer: Scalars['Str
 export interface DeleteSsoInput {identityProviderId: Scalars['UUID']}
 
 export interface EditSsoInput {id: Scalars['UUID'],status: SSOIdentityProviderStatus}
+
+export interface EnsoDefaultViewInput {objectMetadataId: Scalars['String'],viewId: Scalars['String']}
+
+export interface SetGoogleChatWebhookUrlInput {webhookUrl: Scalars['String']}
+
+export interface SetProjectChatWebhookUrlInput {projectId: Scalars['String'],webhookUrl: Scalars['String']}
 
 export interface SendEmailInput {connectedAccountId: Scalars['String'],to: Scalars['String'],cc?: (Scalars['String'] | null),bcc?: (Scalars['String'] | null),subject: Scalars['String'],body: Scalars['String'],inReplyTo?: (Scalars['String'] | null),files?: (SendEmailAttachmentInput[] | null)}
 
@@ -8041,6 +8329,118 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     
 
 
+    const GoogleChatNotificationPreference_possibleTypes: string[] = ['GoogleChatNotificationPreference']
+    export const isGoogleChatNotificationPreference = (obj?: { __typename?: any } | null): obj is GoogleChatNotificationPreference => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isGoogleChatNotificationPreference"')
+      return GoogleChatNotificationPreference_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const GoogleChatTestResult_possibleTypes: string[] = ['GoogleChatTestResult']
+    export const isGoogleChatTestResult = (obj?: { __typename?: any } | null): obj is GoogleChatTestResult => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isGoogleChatTestResult"')
+      return GoogleChatTestResult_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const GoogleChatWebhookSettings_possibleTypes: string[] = ['GoogleChatWebhookSettings']
+    export const isGoogleChatWebhookSettings = (obj?: { __typename?: any } | null): obj is GoogleChatWebhookSettings => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isGoogleChatWebhookSettings"')
+      return GoogleChatWebhookSettings_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const PersonSmsContext_possibleTypes: string[] = ['PersonSmsContext']
+    export const isPersonSmsContext = (obj?: { __typename?: any } | null): obj is PersonSmsContext => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isPersonSmsContext"')
+      return PersonSmsContext_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const TaskSmsContext_possibleTypes: string[] = ['TaskSmsContext']
+    export const isTaskSmsContext = (obj?: { __typename?: any } | null): obj is TaskSmsContext => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isTaskSmsContext"')
+      return TaskSmsContext_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const ProjectChatWebhookSettings_possibleTypes: string[] = ['ProjectChatWebhookSettings']
+    export const isProjectChatWebhookSettings = (obj?: { __typename?: any } | null): obj is ProjectChatWebhookSettings => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isProjectChatWebhookSettings"')
+      return ProjectChatWebhookSettings_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const TaskEmailContext_possibleTypes: string[] = ['TaskEmailContext']
+    export const isTaskEmailContext = (obj?: { __typename?: any } | null): obj is TaskEmailContext => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isTaskEmailContext"')
+      return TaskEmailContext_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoDefaultView_possibleTypes: string[] = ['EnsoDefaultView']
+    export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
+      return EnsoDefaultView_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoViewerScope_possibleTypes: string[] = ['EnsoViewerScope']
+    export const isEnsoViewerScope = (obj?: { __typename?: any } | null): obj is EnsoViewerScope => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoViewerScope"')
+      return EnsoViewerScope_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadLookupProject_possibleTypes: string[] = ['EnsoLeadLookupProject']
+    export const isEnsoLeadLookupProject = (obj?: { __typename?: any } | null): obj is EnsoLeadLookupProject => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadLookupProject"')
+      return EnsoLeadLookupProject_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadLookupMatch_possibleTypes: string[] = ['EnsoLeadLookupMatch']
+    export const isEnsoLeadLookupMatch = (obj?: { __typename?: any } | null): obj is EnsoLeadLookupMatch => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadLookupMatch"')
+      return EnsoLeadLookupMatch_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadLookupResult_possibleTypes: string[] = ['EnsoLeadLookupResult']
+    export const isEnsoLeadLookupResult = (obj?: { __typename?: any } | null): obj is EnsoLeadLookupResult => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadLookupResult"')
+      return EnsoLeadLookupResult_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoRoutingAvailability_possibleTypes: string[] = ['EnsoRoutingAvailability']
+    export const isEnsoRoutingAvailability = (obj?: { __typename?: any } | null): obj is EnsoRoutingAvailability => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoRoutingAvailability"')
+      return EnsoRoutingAvailability_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const CallViaPbxResult_possibleTypes: string[] = ['CallViaPbxResult']
+    export const isCallViaPbxResult = (obj?: { __typename?: any } | null): obj is CallViaPbxResult => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isCallViaPbxResult"')
+      return CallViaPbxResult_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
     const EventLogRecord_possibleTypes: string[] = ['EventLogRecord']
     export const isEventLogRecord = (obj?: { __typename?: any } | null): obj is EventLogRecord => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isEventLogRecord"')
@@ -8521,6 +8921,7 @@ export const enumWidgetType = {
    STANDALONE_RICH_TEXT: 'STANDALONE_RICH_TEXT' as const,
    TIMELINE: 'TIMELINE' as const,
    TASKS: 'TASKS' as const,
+   TASK_ACTIONS: 'TASK_ACTIONS' as const,
    NOTES: 'NOTES' as const,
    FILES: 'FILES' as const,
    EMAILS: 'EMAILS' as const,
