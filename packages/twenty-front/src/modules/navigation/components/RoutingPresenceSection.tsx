@@ -6,6 +6,7 @@ import { useState } from 'react';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
 import { ENSO_SET_MY_ROUTING_AVAILABILITY } from '@/enso/routing-availability/graphql/mutations/ensoSetMyRoutingAvailability';
+import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { NavigationDrawerItem } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerItem';
 import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerSection';
@@ -16,12 +17,28 @@ import { isDefined } from 'twenty-shared/utils';
 // current workspace member's `isAvailableForRouting` so managers opt themselves
 // into / out of round-robin lead routing.
 //
+// The body is split out behind a metadata guard: useFindOneRecord resolves the
+// object metadata before its own `skip` applies, so it throws rather than no-ops
+// on any render that happens before the workspace is hydrated. Owning the
+// precondition here keeps the section safe wherever it is mounted.
+export const RoutingPresenceSection = () => {
+  const doesWorkspaceMemberMetadataExist = useDoObjectMetadataItemsExist([
+    'workspaceMember',
+  ]);
+
+  if (!doesWorkspaceMemberMetadataExist) {
+    return null;
+  }
+
+  return <RoutingPresenceSectionContent />;
+};
+
 // Read with the generic record hook (the field is custom and not on the static
 // currentWorkspaceMember type), but WRITTEN through a dedicated mutation: a
 // plain workspaceMember update is gated behind the WORKSPACE_MEMBERS settings
 // flag, so a sales manager could not toggle their own presence, and granting
 // that flag would let them edit colleagues.
-export const RoutingPresenceSection = () => {
+const RoutingPresenceSectionContent = () => {
   const { t } = useLingui();
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
   const workspaceMemberId = currentWorkspaceMember?.id;

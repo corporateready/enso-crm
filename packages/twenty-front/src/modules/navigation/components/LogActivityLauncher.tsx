@@ -7,6 +7,7 @@ import { Button } from 'twenty-ui/input';
 import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { TaskActionsWidget } from '@/page-layout/widgets/task-actions/components/TaskActionsWidget';
 import { LayoutRenderingProvider } from '@/ui/layout/contexts/LayoutRenderingContext';
@@ -85,7 +86,21 @@ const personLabel = (person: PersonRecord) =>
   `${person.name?.firstName ?? ''} ${person.name?.lastName ?? ''}`.trim() ||
   'Unnamed contact';
 
+// The body is split out behind a metadata guard: useFindManyRecords resolves the
+// object metadata before its own `skip` applies, so it throws rather than no-ops
+// on any render that happens before the workspace is hydrated. There is nothing
+// to launch without the person object anyway.
 export const LogActivityLauncher = () => {
+  const doesPersonMetadataExist = useDoObjectMetadataItemsExist(['person']);
+
+  if (!doesPersonMetadataExist) {
+    return null;
+  }
+
+  return <LogActivityLauncherContent />;
+};
+
+const LogActivityLauncherContent = () => {
   const { openModal, closeModal } = useModal();
   const [pickedPersonId, setPickedPersonId] = useState<string | null>(null);
   const [search, setSearch] = useState('');

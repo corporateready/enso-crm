@@ -1,6 +1,5 @@
 import { objectMetadataItemsBySingularNameSelector } from '@/object-metadata/states/objectMetadataItemsBySingularNameSelector';
 import { useAtomFamilySelectorValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilySelectorValue';
-import { isDefined } from 'twenty-shared/utils';
 
 export const useDoObjectMetadataItemsExist = (
   objectNameSingulars: string[],
@@ -10,7 +9,9 @@ export const useDoObjectMetadataItemsExist = (
     objectNameSingulars,
   );
 
-  return objectMetadataItems.every((objectMetadataItem) =>
-    isDefined(objectMetadataItem),
-  );
+  // The selector flatMaps a name it cannot resolve to [] rather than to
+  // [undefined], so an `every(isDefined)` here was vacuously true for every
+  // missing item — including when the metadata has not loaded at all and the
+  // result is empty. Count what came back instead.
+  return objectMetadataItems.length === objectNameSingulars.length;
 };
