@@ -33,9 +33,9 @@ type CompanyRow = Record<string, any> & {
 //   backfill the keeper's empty fields from a duplicate,
 //   soft-delete the duplicates.
 // Idempotent: re-running with an already-merged set is a no-op (the duplicates
-// are gone). Relation reassignments are best-effort so a unique-constraint clash
-// on one junction (e.g. two opportunities for the same person×company) can't
-// strand the whole merge.
+// are gone). If any relation reassignment fails — a unique-constraint clash on
+// one junction, say, two opportunities for the same person×company — the whole
+// merge is abandoned and nothing is deleted; see the comment on that branch.
 @Injectable()
 export class CompanyMergeExecutorService {
   private readonly logger = new Logger(CompanyMergeExecutorService.name);
@@ -81,6 +81,8 @@ export class CompanyMergeExecutorService {
 
         // 1) Re-point every company-FK relation from the duplicates to the keeper.
         // These FKs are flat columns on the related objects, not composites.
+        const failedReassignments: string[] = [];
+
         for (const { object, field } of COMPANY_RELATION_REASSIGNMENTS) {
           try {
             const repository =
@@ -95,12 +97,30 @@ export class CompanyMergeExecutorService {
               { [field]: keeper.id, updatedBy: SYSTEM_ACTOR },
             );
           } catch (error) {
+            failedReassignments.push(`${object}.${field}`);
             this.logger.warn(
               `Reassign ${object}.${field} → keeper ${keeper.id} failed: ${
                 (error as Error).message
               }`,
             );
           }
+        }
+
+        // Nothing below this point is safe once a reassignment has failed: the
+        // soft-delete would remove the record those rows still point at, and
+        // they would be reachable from no live company at all. A visible
+        // duplicate is a much cheaper failure than a stranded relation, so give
+        // up on the whole merge and leave every record where it is. The finder
+        // re-triggers on the next write to either company, so a merge that
+        // fails for a transient reason still happens later.
+        if (failedReassignments.length > 0) {
+          this.logger.error(
+            `Company merge into keeper ${keeper.id} ABORTED: could not reassign ${failedReassignments.join(
+              ', ',
+            )}. ${duplicateIds.length} duplicate(s) left live and unmerged.`,
+          );
+
+          return null;
         }
 
         // 2) Backfill the keeper's empty fields from a duplicate.

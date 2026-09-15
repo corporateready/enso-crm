@@ -31,8 +31,9 @@ type PersonRow = {
 //   backfill the keeper's empty contact/name/company fields from a duplicate,
 //   soft-delete the duplicates.
 // Idempotent: re-running with an already-merged set is a no-op (the duplicates
-// are gone). Relation reassignments are best-effort so a unique-constraint clash
-// on one junction can't strand the whole merge.
+// are gone). If any relation reassignment fails the whole merge is abandoned
+// and nothing is deleted — see the comment on that branch for why a surviving
+// duplicate beats a stranded relation.
 @Injectable()
 export class PersonMergeExecutorService {
   private readonly logger = new Logger(PersonMergeExecutorService.name);
@@ -79,6 +80,8 @@ export class PersonMergeExecutorService {
         // 1) Re-point every person-FK relation from the duplicates to the keeper.
         // These FKs (personId / pointOfContactId / relatedPersonId) are flat
         // columns on the related objects, not composites.
+        const failedReassignments: string[] = [];
+
         for (const { object, field } of PERSON_RELATION_REASSIGNMENTS) {
           try {
             const repository =
@@ -93,12 +96,30 @@ export class PersonMergeExecutorService {
               { [field]: keeper.id, updatedBy: SYSTEM_ACTOR },
             );
           } catch (error) {
+            failedReassignments.push(`${object}.${field}`);
             this.logger.warn(
               `Reassign ${object}.${field} → keeper ${keeper.id} failed: ${
                 (error as Error).message
               }`,
             );
           }
+        }
+
+        // Nothing below this point is safe once a reassignment has failed: the
+        // soft-delete would remove the record those rows still point at, and
+        // they would be reachable from no live person at all. A visible
+        // duplicate is a much cheaper failure than a stranded relation, so give
+        // up on the whole merge and leave every record where it is. The finder
+        // re-triggers on the next write to either person, so a merge that fails
+        // for a transient reason still happens later.
+        if (failedReassignments.length > 0) {
+          this.logger.error(
+            `Person merge into keeper ${keeper.id} ABORTED: could not reassign ${failedReassignments.join(
+              ', ',
+            )}. ${duplicateIds.length} duplicate(s) left live and unmerged.`,
+          );
+
+          return null;
         }
 
         // 2) Backfill the keeper's empty contact/name/company from a duplicate.
