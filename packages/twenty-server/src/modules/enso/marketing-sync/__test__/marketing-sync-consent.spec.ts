@@ -1,21 +1,22 @@
 import {
   buildConsentSubscriptionChanges,
   CONSENT_CHANNELS,
-  hasProjectSubscriptionGroups,
   type PersonProjectConsentRecord,
   PROJECT_SUBSCRIPTION_GROUPS,
+  resolveProjectSubscriptionGroups,
   revokedConsentChannels,
+  SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL,
 } from 'src/modules/enso/marketing-sync/marketing-sync.constants';
 
-const MAPPED_PROJECT_ID = Object.keys(PROJECT_SUBSCRIPTION_GROUPS)[0];
-const UNMAPPED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
+const FALLBACK_PROJECT_ID = Object.keys(PROJECT_SUBSCRIPTION_GROUPS)[0];
+const UNCONFIGURED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 const consent = (
   overrides: Partial<PersonProjectConsentRecord> = {},
 ): PersonProjectConsentRecord => ({
   id: 'consent-1',
   personId: 'person-1',
-  projectId: MAPPED_PROJECT_ID,
+  projectId: FALLBACK_PROJECT_ID,
   emailMarketingConsent: null,
   smsMarketingConsent: null,
   whatsappMarketingConsent: null,
@@ -24,36 +25,141 @@ const consent = (
   ...overrides,
 });
 
-// An unmapped project produces no subscription changes, which is why its
-// consent edits used to pass silently. The listener tells the two cases apart
-// through hasProjectSubscriptionGroups, so that predicate must stay in step
-// with the map it guards.
-describe('hasProjectSubscriptionGroups', () => {
-  it('should be true for every project in the map', () => {
-    for (const projectId of Object.keys(PROJECT_SUBSCRIPTION_GROUPS)) {
-      expect(hasProjectSubscriptionGroups(projectId)).toBe(true);
-    }
+const projectWith = (
+  groups: Partial<Record<(typeof CONSENT_CHANNELS)[number], string>>,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(groups).map(([channel, groupId]) => [
+      SUBSCRIPTION_GROUP_FIELD_BY_CHANNEL[
+        channel as (typeof CONSENT_CHANNELS)[number]
+      ],
+      groupId,
+    ]),
+  );
+
+// Subscription groups are configured per project in the CRM now, with the
+// hardcoded map left as a fallback until the records are backfilled. Getting
+// the precedence wrong either ignores what marketing configured or silently
+// stops mirroring a live pilot, so it is pinned per channel here.
+describe('resolveProjectSubscriptionGroups', () => {
+  it('should prefer the ids on the project record', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      FALLBACK_PROJECT_ID,
+      projectWith({ email: 'from-project' }),
+    );
+
+    expect(groups.email).toBe('from-project');
   });
 
-  it('should be false for a project nobody has mapped', () => {
-    expect(hasProjectSubscriptionGroups(UNMAPPED_PROJECT_ID)).toBe(false);
+  it('should fall back per channel, not per project', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      FALLBACK_PROJECT_ID,
+      projectWith({ email: 'from-project' }),
+    );
+
+    // email came from the record; sms must still come from the fallback rather
+    // than being switched off because the record only carried one channel.
+    expect(groups.email).toBe('from-project');
+    expect(groups.sms).toBe(
+      PROJECT_SUBSCRIPTION_GROUPS[FALLBACK_PROJECT_ID].sms,
+    );
   });
 
-  it('should agree with buildConsentSubscriptionChanges being empty', () => {
-    const record = consent({
-      projectId: UNMAPPED_PROJECT_ID,
-      emailMarketingConsent: true,
-    });
+  it('should use the fallback when the project carries nothing', () => {
+    expect(resolveProjectSubscriptionGroups(FALLBACK_PROJECT_ID, null)).toEqual(
+      PROJECT_SUBSCRIPTION_GROUPS[FALLBACK_PROJECT_ID],
+    );
+  });
 
-    expect(hasProjectSubscriptionGroups(UNMAPPED_PROJECT_ID)).toBe(false);
+  it('should keep mirroring a fallback project when its record is missing', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      FALLBACK_PROJECT_ID,
+      undefined,
+    );
+
+    expect(Object.keys(groups).length).toBeGreaterThan(0);
+  });
+
+  it('should resolve nothing for a project configured nowhere', () => {
     expect(
-      buildConsentSubscriptionChanges(UNMAPPED_PROJECT_ID, record),
+      resolveProjectSubscriptionGroups(UNCONFIGURED_PROJECT_ID, null),
+    ).toEqual({});
+  });
+
+  it('should let a project outside the fallback map configure itself', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      UNCONFIGURED_PROJECT_ID,
+      projectWith({ email: 'new-project-email', sms: 'new-project-sms' }),
+    );
+
+    expect(groups).toEqual({
+      email: 'new-project-email',
+      sms: 'new-project-sms',
+    });
+  });
+
+  it.each(['', '   '])(
+    'should treat a blank field (%p) as unconfigured',
+    (blank) => {
+      expect(
+        resolveProjectSubscriptionGroups(
+          UNCONFIGURED_PROJECT_ID,
+          projectWith({ email: blank }),
+        ),
+      ).toEqual({});
+    },
+  );
+
+  it('should trim a pasted id', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      UNCONFIGURED_PROJECT_ID,
+      projectWith({ email: '  padded-id\n' }),
+    );
+
+    expect(groups.email).toBe('padded-id');
+  });
+
+  it('should support a channel no project has been provisioned for yet', () => {
+    const groups = resolveProjectSubscriptionGroups(
+      UNCONFIGURED_PROJECT_ID,
+      projectWith({ whatsapp: 'whatsapp-group' }),
+    );
+
+    expect(groups.whatsapp).toBe('whatsapp-group');
+  });
+});
+
+describe('buildConsentSubscriptionChanges', () => {
+  it('should map each configured channel to its consent boolean', () => {
+    const changes = buildConsentSubscriptionChanges(
+      { email: 'email-group', sms: 'sms-group' },
+      consent({ emailMarketingConsent: true, smsMarketingConsent: false }),
+    );
+
+    expect(changes).toEqual({ 'email-group': true, 'sms-group': false });
+  });
+
+  it('should treat a null consent as not subscribed', () => {
+    const changes = buildConsentSubscriptionChanges(
+      { email: 'email-group' },
+      consent({ emailMarketingConsent: null }),
+    );
+
+    expect(changes).toEqual({ 'email-group': false });
+  });
+
+  it('should be empty when no channel is configured', () => {
+    expect(
+      buildConsentSubscriptionChanges(
+        {},
+        consent({ emailMarketingConsent: true }),
+      ),
     ).toEqual({});
   });
 });
 
 // A grant that misses Dittofeed costs us marketing; a revocation that misses it
-// means we keep sending to someone who opted out. Only the second is escalated,
+// means we keep contacting someone who opted out. Only the second is escalated,
 // so this helper decides which events get reported loudly.
 describe('revokedConsentChannels', () => {
   it.each(CONSENT_CHANNELS)(

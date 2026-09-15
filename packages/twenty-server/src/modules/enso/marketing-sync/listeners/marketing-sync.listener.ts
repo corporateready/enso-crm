@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import {
   type ObjectRecordCreateEvent,
@@ -14,11 +14,9 @@ import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queu
 import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
 import { MarketingSyncJob } from 'src/modules/enso/marketing-sync/jobs/marketing-sync.job';
 import {
-  buildConsentSubscriptionChanges,
   buildPersonTraits,
   type ConsentChannel,
   CONSENT_CONSENT_FIELDS,
-  hasProjectSubscriptionGroups,
   INBOUND_ACTIVITY_EVENT_BY_KIND,
   type InboundActivityRecord,
   MARKETING_EVENT_DEAL_STAGE_CHANGED,
@@ -42,13 +40,6 @@ const TRAIT_FIELDS = new Set([
   'languages',
 ]);
 
-// Projects already reported as unmirrored, as `${workspaceId}:${projectId}`.
-// Consent rows are written on every intake, so reporting each one would be a
-// log flood — and a flood on this server stalls the event loop and drops
-// inbound leads. One line per project per process is enough to act on, and a
-// restart re-reports anything still unmapped.
-const unmirroredProjectsReported = new Set<string>();
-
 // CRM → Dittofeed connection (connection #1 in the spec). Listens to the
 // workspace event bus — which the TwentyORM layer emits on for BOTH GraphQL
 // writes and raw ORM saves — so intake-pipeline and scanner-created records are
@@ -56,8 +47,6 @@ const unmirroredProjectsReported = new Set<string>();
 // enqueues; the worker job does the Dittofeed HTTP call (with retries).
 @Injectable()
 export class MarketingSyncListener {
-  private readonly logger = new Logger(MarketingSyncListener.name);
-
   constructor(
     @InjectMessageQueue(MessageQueue.ensoMarketingSyncQueue)
     private readonly messageQueueService: MessageQueueService,
@@ -268,48 +257,19 @@ export class MarketingSyncListener {
 
   // A newly created row cannot revoke a consent it never had, so CREATED passes
   // no revoked channels.
+  //
+  // Every consent change is enqueued, including projects that turn out to have
+  // no subscription groups: which groups a project has is now data on the
+  // Project record, and only the worker reads the ORM (same split as
+  // track_deal_created). That trades a cheap no-op job for letting marketing
+  // configure a development without a deploy — and the worker, not this
+  // listener, is where an unmirrored project gets reported.
   private async enqueueConsentSync(
     workspaceId: string,
     record: PersonProjectConsentRecord,
     revokedChannels: readonly ConsentChannel[] = [],
   ): Promise<void> {
     if (!isDefined(record.personId) || !isDefined(record.projectId)) {
-      return;
-    }
-
-    // Nobody has mapped this project's subscription groups, so its consent is
-    // not mirrored at all. Silent until now, which is the dangerous half: an
-    // opt-out recorded in the CRM never reaches Dittofeed, and if that project
-    // has live journeys we keep sending. Say so — loudly for a revocation,
-    // once for anything else.
-    if (!hasProjectSubscriptionGroups(record.projectId)) {
-      if (revokedChannels.length > 0) {
-        this.logger.error(
-          `consent-mirror: project ${record.projectId} has no Dittofeed subscription groups, ` +
-            `so revoking ${revokedChannels.join(', ')} for person ${record.personId} was NOT mirrored. ` +
-            `If this project has live journeys, suppress the person in Dittofeed by hand and add the ` +
-            `project to PROJECT_SUBSCRIPTION_GROUPS.`,
-        );
-      } else {
-        const reportKey = `${workspaceId}:${record.projectId}`;
-
-        if (!unmirroredProjectsReported.has(reportKey)) {
-          unmirroredProjectsReported.add(reportKey);
-          this.logger.warn(
-            `consent-mirror: project ${record.projectId} has no Dittofeed subscription groups — ` +
-              `its consent changes are not mirrored. Expected for a project that is not in Dittofeed; ` +
-              `add it to PROJECT_SUBSCRIPTION_GROUPS once its groups exist.`,
-          );
-        }
-      }
-
-      return;
-    }
-
-    const changes = buildConsentSubscriptionChanges(record.projectId, record);
-
-    // Mapped project, but none of its channels carry a group id → nothing to say.
-    if (Object.keys(changes).length === 0) {
       return;
     }
 
@@ -321,7 +281,9 @@ export class MarketingSyncListener {
         kind: 'sync_consent',
         workspaceId,
         userId: record.personId,
-        changes,
+        projectId: record.projectId,
+        consent: record,
+        revokedChannels: [...revokedChannels],
         // Re-pushes the full current state, so the latest write wins; the
         // timestamp keeps retries idempotent without dropping real changes.
         messageId: `sync_consent:${record.id}:${timestamp}`,
