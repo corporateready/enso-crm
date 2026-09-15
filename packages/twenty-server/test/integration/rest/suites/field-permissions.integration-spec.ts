@@ -19,6 +19,9 @@ describe('Restricted fields', () => {
   beforeAll(async () => {
     personCity = generateRecordName(TEST_PERSON_1_ID);
 
+    // Asserted, not fire-and-forget: if a fixture fails to create, the tests
+    // below fail with a 404 on read, which reads as a permissions bug and sends
+    // you looking in the wrong place entirely.
     await makeRestAPIRequest({
       method: 'post',
       path: '/companies',
@@ -28,7 +31,7 @@ describe('Restricted fields', () => {
           primaryLinkUrl: TEST_PRIMARY_LINK_URL,
         },
       },
-    });
+    }).expect(201);
 
     await makeRestAPIRequest({
       method: 'post',
@@ -49,7 +52,7 @@ describe('Restricted fields', () => {
           primaryPhoneCallingCode: '+1',
         },
       },
-    });
+    }).expect(201);
 
     // Get object metadata IDs for Person and Company
     const getObjectMetadataOperation = {
