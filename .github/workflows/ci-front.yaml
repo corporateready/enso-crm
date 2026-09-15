@@ -157,6 +157,9 @@ jobs:
       NODE_OPTIONS: '--max-old-space-size=6144'
       TASK_CACHE_KEY: front-task-${{ matrix.task }}
     strategy:
+      # Without this one task's failure cancels its siblings, so a single red
+      # job hides whether lint, typecheck and test are independently broken.
+      fail-fast: false
       matrix:
         task: [lint, typecheck, test]
     steps:
