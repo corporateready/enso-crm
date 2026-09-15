@@ -800,31 +800,105 @@ export const PersonConsentCard = () => {
         </StyledAddRow>
       )}
 
-      {isDefined(pending) &&
-        createPortal(
-          <StyledModalOverlay>
-            <StyledModalDialog>
-              <StyledModalTitle>
-                {pending.kind === 'grant'
-                  ? t`Grant ${pending.channelLabel} for ${pending.projectLabel}`
-                  : t`Opt ${pending.projectLabel} out of ${pending.channelLabel}`}
-              </StyledModalTitle>
+      {/* The fragment keeps the portal out of a union: a bare portal is
+          accepted as a JSX child, `ReactPortal | null` is not. */}
+      {isDefined(pending) ? (
+        <>
+          {createPortal(
+            <StyledModalOverlay>
+              <StyledModalDialog>
+                <StyledModalTitle>
+                  {pending.kind === 'grant'
+                    ? t`Grant ${pending.channelLabel} for ${pending.projectLabel}`
+                    : t`Opt ${pending.projectLabel} out of ${pending.channelLabel}`}
+                </StyledModalTitle>
 
-              {pending.kind === 'revoke' ? (
+                {pending.kind === 'revoke' ? (
+                  <StyledSelect
+                    value={pendingChoice}
+                    onChange={(event) => setPendingChoice(event.target.value)}
+                  >
+                    {REVOKE_METHODS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </StyledSelect>
+                ) : pending.neverConsented ? (
+                  <StyledSelect
+                    value={pendingChoice}
+                    onChange={(event) => setPendingChoice(event.target.value)}
+                  >
+                    {GRANT_SOURCES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </StyledSelect>
+                ) : (
+                  <StyledModalText>
+                    {t`Re-enabling — the original consent source is preserved.`}
+                  </StyledModalText>
+                )}
+
+                <StyledNoteInput
+                  value={pendingNote}
+                  placeholder={t`Note / proof (optional)`}
+                  onChange={(event) => setPendingNote(event.target.value)}
+                />
+
+                <StyledActions>
+                  <StyledCancelButton onClick={cancelPending}>
+                    {t`Cancel`}
+                  </StyledCancelButton>
+                  <StyledAddButton onClick={confirmPending} disabled={saving}>
+                    {pending.kind === 'grant' ? t`Grant` : t`Opt out`}
+                  </StyledAddButton>
+                </StyledActions>
+              </StyledModalDialog>
+            </StyledModalOverlay>,
+            document.body,
+          )}
+        </>
+      ) : null}
+
+      {/* The fragment keeps the portal out of a union: a bare portal is
+          accepted as a JSX child, `ReactPortal | null` is not. */}
+      {isDefined(addModal) ? (
+        <>
+          {createPortal(
+            <StyledModalOverlay>
+              <StyledModalDialog>
+                <StyledModalTitle>
+                  {t`Record consent for ${addModal.projectLabel}`}
+                </StyledModalTitle>
+                <StyledModalText>
+                  {t`Tick the channels they agreed to. Cancel adds nothing.`}
+                </StyledModalText>
+                {addModal.channels.length > 0 ? (
+                  <StyledCheckList>
+                    {addModal.channels.map((channel) => (
+                      <StyledCheckLabel key={channel.key}>
+                        <input
+                          type="checkbox"
+                          checked={isChannelSelected(
+                            addModal.projectId,
+                            channel.key,
+                          )}
+                          onChange={() =>
+                            toggleChannel(addModal.projectId, channel.key)
+                          }
+                        />
+                        {channel.label}
+                      </StyledCheckLabel>
+                    ))}
+                  </StyledCheckList>
+                ) : (
+                  <StyledHint>{t`No phone or email on file yet.`}</StyledHint>
+                )}
                 <StyledSelect
-                  value={pendingChoice}
-                  onChange={(event) => setPendingChoice(event.target.value)}
-                >
-                  {REVOKE_METHODS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </StyledSelect>
-              ) : pending.neverConsented ? (
-                <StyledSelect
-                  value={pendingChoice}
-                  onChange={(event) => setPendingChoice(event.target.value)}
+                  value={modalSource}
+                  onChange={(event) => setModalSource(event.target.value)}
                 >
                   {GRANT_SOURCES.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -832,155 +906,96 @@ export const PersonConsentCard = () => {
                     </option>
                   ))}
                 </StyledSelect>
-              ) : (
+                <StyledNoteInput
+                  value={modalNote}
+                  placeholder={t`Note / proof (optional)`}
+                  onChange={(event) => setModalNote(event.target.value)}
+                />
+                <StyledActions>
+                  <StyledCancelButton onClick={cancelAddModal}>
+                    {t`Cancel`}
+                  </StyledCancelButton>
+                  <StyledAddButton onClick={confirmAddModal} disabled={saving}>
+                    {t`Add`}
+                  </StyledAddButton>
+                </StyledActions>
+              </StyledModalDialog>
+            </StyledModalOverlay>,
+            document.body,
+          )}
+        </>
+      ) : null}
+
+      {/* The fragment keeps the portal out of a union: a bare portal is
+          accepted as a JSX child, `ReactPortal | null` is not. */}
+      {checkRows.length > 0 ? (
+        <>
+          {createPortal(
+            <StyledModalOverlay>
+              <StyledModalDialog>
+                <StyledModalTitle>{t`Consent check`}</StyledModalTitle>
+                {personName !== '' && (
+                  <StyledPersonLink to={personHref}>
+                    {personName}
+                  </StyledPersonLink>
+                )}
                 <StyledModalText>
-                  {t`Re-enabling — the original consent source is preserved.`}
+                  {t`We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now.`}
                 </StyledModalText>
-              )}
-
-              <StyledNoteInput
-                value={pendingNote}
-                placeholder={t`Note / proof (optional)`}
-                onChange={(event) => setPendingNote(event.target.value)}
-              />
-
-              <StyledActions>
-                <StyledCancelButton onClick={cancelPending}>
-                  {t`Cancel`}
-                </StyledCancelButton>
-                <StyledAddButton onClick={confirmPending} disabled={saving}>
-                  {pending.kind === 'grant' ? t`Grant` : t`Opt out`}
-                </StyledAddButton>
-              </StyledActions>
-            </StyledModalDialog>
-          </StyledModalOverlay>,
-          document.body,
-        )}
-
-      {isDefined(addModal) &&
-        createPortal(
-          <StyledModalOverlay>
-            <StyledModalDialog>
-              <StyledModalTitle>
-                {t`Record consent for ${addModal.projectLabel}`}
-              </StyledModalTitle>
-              <StyledModalText>
-                {t`Tick the channels they agreed to. Cancel adds nothing.`}
-              </StyledModalText>
-              {addModal.channels.length > 0 ? (
-                <StyledCheckList>
-                  {addModal.channels.map((channel) => (
-                    <StyledCheckLabel key={channel.key}>
-                      <input
-                        type="checkbox"
-                        checked={isChannelSelected(
-                          addModal.projectId,
-                          channel.key,
-                        )}
-                        onChange={() =>
-                          toggleChannel(addModal.projectId, channel.key)
-                        }
-                      />
-                      {channel.label}
-                    </StyledCheckLabel>
-                  ))}
-                </StyledCheckList>
-              ) : (
-                <StyledHint>{t`No phone or email on file yet.`}</StyledHint>
-              )}
-              <StyledSelect
-                value={modalSource}
-                onChange={(event) => setModalSource(event.target.value)}
-              >
-                {GRANT_SOURCES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                {checkRows.map((row) => (
+                  <StyledCheckGroup key={row.consent.id as string}>
+                    <StyledCheckGroupTitle>
+                      {row.projectLabel}
+                    </StyledCheckGroupTitle>
+                    {row.channels.map((channel) => (
+                      <StyledCheckLabel key={channel.key}>
+                        <input
+                          type="checkbox"
+                          checked={isChannelSelected(
+                            row.consent.id as string,
+                            channel.key,
+                          )}
+                          onChange={() =>
+                            toggleChannel(row.consent.id as string, channel.key)
+                          }
+                        />
+                        {channel.label}
+                      </StyledCheckLabel>
+                    ))}
+                  </StyledCheckGroup>
                 ))}
-              </StyledSelect>
-              <StyledNoteInput
-                value={modalNote}
-                placeholder={t`Note / proof (optional)`}
-                onChange={(event) => setModalNote(event.target.value)}
-              />
-              <StyledActions>
-                <StyledCancelButton onClick={cancelAddModal}>
-                  {t`Cancel`}
-                </StyledCancelButton>
-                <StyledAddButton onClick={confirmAddModal} disabled={saving}>
-                  {t`Add`}
-                </StyledAddButton>
-              </StyledActions>
-            </StyledModalDialog>
-          </StyledModalOverlay>,
-          document.body,
-        )}
-
-      {checkRows.length > 0 &&
-        createPortal(
-          <StyledModalOverlay>
-            <StyledModalDialog>
-              <StyledModalTitle>{t`Consent check`}</StyledModalTitle>
-              {personName !== '' && (
-                <StyledPersonLink to={personHref}>
-                  {personName}
-                </StyledPersonLink>
-              )}
-              <StyledModalText>
-                {t`We can reach this person, but some projects have no marketing consent on record. Tick the channels they agreed to, or choose Not now.`}
-              </StyledModalText>
-              {checkRows.map((row) => (
-                <StyledCheckGroup key={row.consent.id as string}>
-                  <StyledCheckGroupTitle>
-                    {row.projectLabel}
-                  </StyledCheckGroupTitle>
-                  {row.channels.map((channel) => (
-                    <StyledCheckLabel key={channel.key}>
-                      <input
-                        type="checkbox"
-                        checked={isChannelSelected(
-                          row.consent.id as string,
-                          channel.key,
-                        )}
-                        onChange={() =>
-                          toggleChannel(row.consent.id as string, channel.key)
-                        }
-                      />
-                      {channel.label}
-                    </StyledCheckLabel>
-                  ))}
-                </StyledCheckGroup>
-              ))}
-              <StyledSelect
-                value={modalSource}
-                onChange={(event) => setModalSource(event.target.value)}
-              >
-                {GRANT_SOURCES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </StyledSelect>
-              <StyledNoteInput
-                value={modalNote}
-                placeholder={t`Note / proof (optional)`}
-                onChange={(event) => setModalNote(event.target.value)}
-              />
-              <StyledActions>
-                <StyledCancelButton onClick={dismissAllChecks}>
-                  {t`Not now`}
-                </StyledCancelButton>
-                <StyledAddButton
-                  onClick={recordAllChecks}
-                  disabled={saving || checkSelectedCount === 0}
+                <StyledSelect
+                  value={modalSource}
+                  onChange={(event) => setModalSource(event.target.value)}
                 >
-                  {t`Record consent`}
-                </StyledAddButton>
-              </StyledActions>
-            </StyledModalDialog>
-          </StyledModalOverlay>,
-          document.body,
-        )}
+                  {GRANT_SOURCES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </StyledSelect>
+                <StyledNoteInput
+                  value={modalNote}
+                  placeholder={t`Note / proof (optional)`}
+                  onChange={(event) => setModalNote(event.target.value)}
+                />
+                <StyledActions>
+                  <StyledCancelButton onClick={dismissAllChecks}>
+                    {t`Not now`}
+                  </StyledCancelButton>
+                  <StyledAddButton
+                    onClick={recordAllChecks}
+                    disabled={saving || checkSelectedCount === 0}
+                  >
+                    {t`Record consent`}
+                  </StyledAddButton>
+                </StyledActions>
+              </StyledModalDialog>
+            </StyledModalOverlay>,
+            document.body,
+          )}
+        </>
+      ) : null}
     </StyledContainer>
   );
 };
