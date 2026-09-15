@@ -74,6 +74,11 @@ const ALL_STREAMS = [
 
 type Stream = (typeof ALL_STREAMS)[number];
 
+// Rows read vs jobs actually enqueued. They differ whenever a stream reads a
+// broad set and keeps a subset — stage-changed reads every opportunity.updated
+// timeline row and keeps only those whose diff touched `stage`.
+type StreamResult = { examined: number; enqueued: number };
+
 // Workspace entities type datetime columns as ISO strings, not Dates, so every
 // window filter below is built with Between(from.toISOString(), …).
 
@@ -196,10 +201,10 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
       }`,
     );
 
-    const counts: Record<string, number> = {};
+    const results: Record<string, StreamResult> = {};
 
     if (selected.includes('identify')) {
-      counts.identify = await this.backfillIdentify(
+      results.identify = await this.backfillIdentify(
         workspaceId,
         from,
         to,
@@ -208,7 +213,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     }
 
     if (selected.includes('deal-created')) {
-      counts['deal-created'] = await this.backfillDealCreated(
+      results['deal-created'] = await this.backfillDealCreated(
         workspaceId,
         from,
         to,
@@ -217,7 +222,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     }
 
     if (selected.includes('inbound')) {
-      counts.inbound = await this.backfillInboundActivity(
+      results.inbound = await this.backfillInboundActivity(
         workspaceId,
         from,
         to,
@@ -226,7 +231,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     }
 
     if (selected.includes('stage-changed')) {
-      counts['stage-changed'] = await this.backfillStageChanged(
+      results['stage-changed'] = await this.backfillStageChanged(
         workspaceId,
         from,
         to,
@@ -235,7 +240,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     }
 
     if (selected.includes('consent')) {
-      counts.consent = await this.backfillConsent(
+      results.consent = await this.backfillConsent(
         workspaceId,
         from,
         to,
@@ -243,14 +248,23 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
       );
     }
 
-    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    const total = Object.values(results).reduce(
+      (sum, result) => sum + result.enqueued,
+      0,
+    );
 
+    // Each stream reports enqueued/examined, because a stream that reads a
+    // broad set and keeps a subset would otherwise look like it did far more
+    // than it did.
     this.logger.log(
       `${dryRun === true ? 'Would enqueue' : 'Enqueued'} ${total} job(s): ${Object.entries(
-        counts,
+        results,
       )
-        .map(([stream, n]) => `${stream}=${n}`)
-        .join(' ')}`,
+        .map(
+          ([stream, result]) =>
+            `${stream}=${result.enqueued}/${result.examined}`,
+        )
+        .join(' ')} (enqueued/rows read)`,
     );
   }
 
@@ -287,7 +301,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     from: Date,
     to: Date,
     dryRun: boolean,
-  ): Promise<number> {
+  ): Promise<StreamResult> {
     return this.forEachPage<PersonWorkspaceEntity>(
       workspaceId,
       'person',
@@ -308,6 +322,8 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
           },
           dryRun,
         );
+
+        return true;
       },
     );
   }
@@ -317,7 +333,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     from: Date,
     to: Date,
     dryRun: boolean,
-  ): Promise<number> {
+  ): Promise<StreamResult> {
     return this.forEachPage<OpportunityWorkspaceEntity>(
       workspaceId,
       'opportunity',
@@ -329,7 +345,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
       async (opportunity) => {
         // Guarded by the query, but the ORM row type still allows null.
         if (!isDefined(opportunity.pointOfContactId)) {
-          return;
+          return false;
         }
 
         await this.enqueue(
@@ -343,6 +359,8 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
           },
           dryRun,
         );
+
+        return true;
       },
     );
   }
@@ -352,7 +370,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     from: Date,
     to: Date,
     dryRun: boolean,
-  ): Promise<number> {
+  ): Promise<StreamResult> {
     return this.forEachPage<InboundActivityRow>(
       workspaceId,
       'inboundActivity',
@@ -363,14 +381,14 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
       },
       async (activity) => {
         if (!isDefined(activity.personId) || !isDefined(activity.kind)) {
-          return;
+          return false;
         }
 
         const eventName = INBOUND_ACTIVITY_EVENT_BY_KIND[activity.kind];
 
         // An unmapped kind is not a marketing event; the listener skips it too.
         if (!isDefined(eventName)) {
-          return;
+          return false;
         }
 
         const timestamp = this.toIso(activity.occurredAt ?? activity.createdAt);
@@ -393,6 +411,8 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
           },
           dryRun,
         );
+
+        return true;
       },
     );
   }
@@ -405,7 +425,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     from: Date,
     to: Date,
     dryRun: boolean,
-  ): Promise<number> {
+  ): Promise<StreamResult> {
     const pointOfContactByOpportunityId = new Map<string, string>();
 
     return this.forEachPage<TimelineActivityRow>(
@@ -421,7 +441,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
         const opportunityId = row.targetOpportunityId;
 
         if (!isDefined(stageDiff) || !isDefined(opportunityId)) {
-          return;
+          return false;
         }
 
         const pointOfContactId = await this.resolvePointOfContact(
@@ -433,7 +453,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
         // No point of contact → no person to attribute the event to, same as
         // the listener.
         if (!isDefined(pointOfContactId)) {
-          return;
+          return false;
         }
 
         const timestamp = this.toIso(row.happensAt ?? row.createdAt);
@@ -454,6 +474,8 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
           },
           dryRun,
         );
+
+        return true;
       },
     );
   }
@@ -466,7 +488,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     from: Date,
     to: Date,
     dryRun: boolean,
-  ): Promise<number> {
+  ): Promise<StreamResult> {
     return this.forEachPage<PersonProjectConsentRow>(
       workspaceId,
       'personProjectConsent',
@@ -476,7 +498,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
       },
       async (consent) => {
         if (!isDefined(consent.personId) || !isDefined(consent.projectId)) {
-          return;
+          return false;
         }
 
         const timestamp = this.toIso(consent.updatedAt);
@@ -493,6 +515,8 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
           },
           dryRun,
         );
+
+        return true;
       },
     );
   }
@@ -534,15 +558,21 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
     return pointOfContactId;
   }
 
-  // Pages through one object's matching rows, calling `handle` per row, and
-  // returns how many rows were handled.
+  // Pages through one object's matching rows, calling `handle` per row.
+  //
+  // `handle` reports whether it actually enqueued, because a row can be read
+  // and then skipped (no stage in the diff, an inbound kind that is not a
+  // marketing event). Counting reads instead of enqueues reported 360
+  // stage-changed jobs for a window that holds 3, which is worth more than a
+  // cosmetic fix: this count is what a re-run is verified against.
   private async forEachPage<TRow extends { createdAt?: unknown }>(
     workspaceId: string,
     objectName: string,
     where: FindOptionsWhere<TRow>,
-    handle: (row: TRow) => Promise<void>,
-  ): Promise<number> {
-    let handled = 0;
+    handle: (row: TRow) => Promise<boolean>,
+  ): Promise<StreamResult> {
+    let examined = 0;
+    let enqueued = 0;
     let skip = 0;
 
     for (;;) {
@@ -569,12 +599,17 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
         );
 
       if (rows.length === 0) {
-        return handled;
+        return { examined, enqueued };
       }
 
       for (const row of rows) {
-        await handle(row);
-        handled += 1;
+        const didEnqueue = await handle(row);
+
+        examined += 1;
+
+        if (didEnqueue) {
+          enqueued += 1;
+        }
       }
 
       skip += rows.length;
