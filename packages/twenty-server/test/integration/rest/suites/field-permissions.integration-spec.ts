@@ -39,8 +39,12 @@ describe('Restricted fields', () => {
         emails: {
           primaryEmail: 'test@test.com',
         },
+        // Not '123456789': the enso person-merge dedup matches on the last 9
+        // phone digits, so that number is a suffix of the seeded '2123456789'
+        // and this fixture gets merged away and soft-deleted before the first
+        // assertion runs.
         phones: {
-          primaryPhoneNumber: '123456789',
+          primaryPhoneNumber: '700000001',
           primaryPhoneCountryCode: 'US',
           primaryPhoneCallingCode: '+1',
         },
