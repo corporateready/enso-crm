@@ -1,5 +1,6 @@
 import { QueryFailedError } from 'typeorm';
 
+import { MAX_AUTO_MERGE_SET_SIZE } from 'src/modules/enso/person-merge/person-merge.constants';
 import { PersonMergeExecutorService } from 'src/modules/enso/person-merge/services/person-merge-executor.service';
 
 // The merge soft-deletes the duplicates only after their relations have been
@@ -37,11 +38,16 @@ const buildUniqueViolation = () => {
 type Options = {
   unreachableObject?: string;
   clashingObject?: string;
+  livePersons?: unknown[];
 };
 
-const buildManager = ({ unreachableObject, clashingObject }: Options = {}) => {
+const buildManager = ({
+  unreachableObject,
+  clashingObject,
+  livePersons = [KEEPER, DUPLICATE],
+}: Options = {}) => {
   const personRepository = {
-    find: jest.fn().mockResolvedValue([KEEPER, DUPLICATE]),
+    find: jest.fn().mockResolvedValue(livePersons),
     update: jest.fn().mockResolvedValue(undefined),
     softDelete: jest.fn().mockResolvedValue(undefined),
   };
@@ -77,10 +83,13 @@ const buildManager = ({ unreachableObject, clashingObject }: Options = {}) => {
 
 const AUTH_CONTEXT = { workspace: { id: 'workspace-id' } } as never;
 
-const merge = (globalWorkspaceOrmManager: unknown) =>
+const merge = (
+  globalWorkspaceOrmManager: unknown,
+  personIds: string[] = [KEEPER.id, DUPLICATE.id],
+) =>
   new PersonMergeExecutorService(
     globalWorkspaceOrmManager as never,
-  ).mergeDuplicates(AUTH_CONTEXT, [KEEPER.id, DUPLICATE.id]);
+  ).mergeDuplicates(AUTH_CONTEXT, personIds);
 
 describe('PersonMergeExecutorService', () => {
   it('should soft-delete the duplicate when every reassignment succeeds', async () => {
@@ -131,5 +140,60 @@ describe('PersonMergeExecutorService', () => {
     expect(personRepository.softDelete).toHaveBeenCalledWith({
       id: DUPLICATE.id,
     });
+  });
+
+  // The ceiling is a circuit breaker, not a matcher refinement: a group this
+  // large means the match is wrong, and the damage from acting on a wrong match
+  // is permanent. This is what turned one bad trigger into 17 soft-deleted
+  // contacts before the ceiling existed.
+  it('should refuse the whole merge when the set is above the ceiling', async () => {
+    const livePersons = Array.from(
+      { length: MAX_AUTO_MERGE_SET_SIZE + 1 },
+      (_, index) => ({
+        ...KEEPER,
+        id: `person-${index}`,
+        createdAt: new Date(`2026-01-0${index + 1}`),
+      }),
+    );
+
+    const { globalWorkspaceOrmManager, personRepository } = buildManager({
+      livePersons,
+    });
+
+    const result = await merge(
+      globalWorkspaceOrmManager,
+      livePersons.map((person) => person.id),
+    );
+
+    expect(result).toBeNull();
+    expect(personRepository.softDelete).not.toHaveBeenCalled();
+    // Not even the keeper is touched — the set is not trustworthy enough to
+    // backfill from either.
+    expect(personRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('should still merge a set exactly at the ceiling', async () => {
+    const livePersons = Array.from(
+      { length: MAX_AUTO_MERGE_SET_SIZE },
+      (_, index) => ({
+        ...KEEPER,
+        id: `person-${index}`,
+        createdAt: new Date(`2026-01-0${index + 1}`),
+      }),
+    );
+
+    const { globalWorkspaceOrmManager, personRepository } = buildManager({
+      livePersons,
+    });
+
+    const result = await merge(
+      globalWorkspaceOrmManager,
+      livePersons.map((person) => person.id),
+    );
+
+    expect(result?.mergedIds).toHaveLength(MAX_AUTO_MERGE_SET_SIZE - 1);
+    expect(personRepository.softDelete).toHaveBeenCalledTimes(
+      MAX_AUTO_MERGE_SET_SIZE - 1,
+    );
   });
 });

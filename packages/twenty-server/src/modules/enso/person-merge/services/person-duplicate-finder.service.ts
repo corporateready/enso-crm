@@ -6,7 +6,11 @@ import { ILike, IsNull, Not } from 'typeorm';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
-import { PHONE_MATCH_DIGITS } from 'src/modules/enso/person-merge/person-merge.constants';
+import {
+  arePhonesSameLine,
+  phoneShortlistSuffix,
+} from 'src/modules/enso/person-merge/utils/phone-match.util';
+import { escapeLikePattern } from 'src/modules/enso/shared/utils/escape-like-pattern.util';
 
 // Person rows come back from the workspace ORM with NESTED composite fields
 // (emails.primaryEmail, phones.primaryPhoneNumber), not flat columns.
@@ -16,9 +20,13 @@ type PersonRow = {
   phones?: { primaryPhoneNumber?: string | null } | null;
 };
 
-// Finds OTHER active people that share the trigger person's email or phone
-// (last-9 national digits). Returns the full duplicate set (trigger + matches)
-// or null when there's nothing to reconcile.
+// Finds OTHER active people that share the trigger person's email or phone.
+// Returns the full duplicate set (trigger + matches) or null when there's
+// nothing to reconcile.
+//
+// The phone arm shortlists in SQL and CONFIRMS in code, because stored phones
+// are inconsistently shaped and a suffix test alone both over- and under-matches
+// (see phone-match.util). Same split as call-identity.service.
 @Injectable()
 export class PersonDuplicateFinderService {
   private readonly logger = new Logger(PersonDuplicateFinderService.name);
@@ -57,18 +65,12 @@ export class PersonDuplicateFinderService {
         }
 
         const email = (me.emails?.primaryEmail || '').trim().toLowerCase();
-        const phoneDigits = (me.phones?.primaryPhoneNumber || '').replace(
-          /\D/g,
-          '',
-        );
-        const last9 =
-          phoneDigits.length >= 7
-            ? phoneDigits.slice(-PHONE_MATCH_DIGITS)
-            : null;
+        const myPhone = me.phones?.primaryPhoneNumber;
+        const phoneSuffix = phoneShortlistSuffix(myPhone);
 
         // No contact key to dedup on (e.g. a name-only social contact) → nothing
         // to do until a phone/email is added.
-        if (!email && !last9) {
+        if (!email && !phoneSuffix) {
           return null;
         }
 
@@ -78,7 +80,7 @@ export class PersonDuplicateFinderService {
         if (email) {
           const byEmail: PersonRow[] = await personRepository.find({
             where: {
-              emails: { primaryEmail: ILike(email) },
+              emails: { primaryEmail: ILike(escapeLikePattern(email)) },
               id: Not(personId),
               deletedAt: IsNull(),
             },
@@ -87,16 +89,23 @@ export class PersonDuplicateFinderService {
           for (const p of byEmail) matchIds.add(p.id);
         }
 
-        if (last9) {
-          const byPhone: PersonRow[] = await personRepository.find({
+        if (phoneSuffix) {
+          const candidates: PersonRow[] = await personRepository.find({
             where: {
-              phones: { primaryPhoneNumber: ILike(`%${last9}`) },
+              phones: { primaryPhoneNumber: ILike(`%${phoneSuffix}`) },
               id: Not(personId),
               deletedAt: IsNull(),
             },
           });
 
-          for (const p of byPhone) matchIds.add(p.id);
+          // The shortlist is deliberately wide: it also returns longer numbers
+          // that merely END with the same digits ('2123456789' for '123456789'),
+          // which are different lines. Only confirmed matches count.
+          for (const p of candidates) {
+            if (arePhonesSameLine(myPhone, p.phones?.primaryPhoneNumber)) {
+              matchIds.add(p.id);
+            }
+          }
         }
 
         if (matchIds.size === 0) {
