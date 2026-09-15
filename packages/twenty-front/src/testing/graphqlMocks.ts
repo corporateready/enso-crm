@@ -158,6 +158,7 @@ export const graphqlMocks = {
             hiddenNavigationObjectNameSingulars: [],
             defaultViews: [],
             defaultViewsVersion: null,
+            personalDefaultViews: [],
           },
         },
       });

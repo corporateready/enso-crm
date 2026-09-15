@@ -4,7 +4,10 @@ import { isDefined } from 'twenty-shared/utils';
 
 import { KeyValuePairType } from 'src/engine/core-modules/key-value-pair/key-value-pair.entity';
 import { KeyValuePairService } from 'src/engine/core-modules/key-value-pair/key-value-pair.service';
-import { ensoRoleDefaultViewsKey } from 'src/modules/enso/default-views/constants/enso-default-views.constants';
+import {
+  ENSO_USER_DEFAULT_VIEWS_KEY,
+  ensoRoleDefaultViewsKey,
+} from 'src/modules/enso/default-views/constants/enso-default-views.constants';
 
 export type EnsoRoleDefaultViews = {
   defaultViewIdByObjectMetadataId: Record<string, string>;
@@ -54,13 +57,7 @@ export class EnsoDefaultViewsService {
     }
 
     return {
-      // Stored by a provisioning script, so treat it as untrusted shape rather
-      // than assuming: a malformed entry should drop out, not break the sidebar.
-      defaultViewIdByObjectMetadataId: Object.fromEntries(
-        Object.entries(stored as Record<string, unknown>).filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string',
-        ),
-      ),
+      defaultViewIdByObjectMetadataId: this.readViewMap(stored),
       version: this.readVersion(row?.updatedAt),
     };
   }
@@ -94,6 +91,60 @@ export class EnsoDefaultViewsService {
 
     this.logger.log(
       `role ${roleId} default views set for ${Object.keys(defaultViewIdByObjectMetadataId).length} object(s)`,
+    );
+  }
+
+  // A person's own default for an object, which out-ranks the one their role
+  // gives them: an explicit choice beats an inherited one. Kept server-side
+  // rather than in the browser so it follows them between devices, unlike
+  // last-visited.
+  async getUserDefaultViews({
+    workspaceId,
+    userId,
+  }: {
+    workspaceId: string;
+    userId: string;
+  }): Promise<Record<string, string>> {
+    const rows = await this.keyValuePairService.get({
+      type: KeyValuePairType.USER_VARIABLE,
+      userId,
+      workspaceId,
+      key: ENSO_USER_DEFAULT_VIEWS_KEY,
+    });
+
+    return this.readViewMap(rows?.[0]?.value);
+  }
+
+  async setUserDefaultViews({
+    workspaceId,
+    userId,
+    defaultViewIdByObjectMetadataId,
+  }: {
+    workspaceId: string;
+    userId: string;
+    defaultViewIdByObjectMetadataId: Record<string, string>;
+  }): Promise<void> {
+    await this.keyValuePairService.set({
+      userId,
+      workspaceId,
+      key: ENSO_USER_DEFAULT_VIEWS_KEY,
+      value: defaultViewIdByObjectMetadataId,
+      type: KeyValuePairType.USER_VARIABLE,
+    });
+  }
+
+  // Written by a provisioning script or by a person's own client, so treat the
+  // shape as untrusted rather than assuming: a malformed entry should drop out,
+  // not break the sidebar.
+  private readViewMap(stored: unknown): Record<string, string> {
+    if (!isDefined(stored) || typeof stored !== 'object') {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(stored as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
     );
   }
 }

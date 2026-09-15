@@ -1,3 +1,5 @@
+import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
+import { useSetMyDefaultView } from '@/enso/viewer-scope/hooks/useSetMyDefaultView';
 import { useCreateManyNavigationMenuItems } from '@/navigation-menu-item/common/hooks/useCreateManyNavigationMenuItems';
 import { useNavigationMenuItemsData } from '@/navigation-menu-item/display/hooks/useNavigationMenuItemsData';
 import { useHasPermissionFlag } from '@/settings/roles/hooks/useHasPermissionFlag';
@@ -17,6 +19,8 @@ import {
   IconHeart,
   IconLock,
   IconPencil,
+  IconPin,
+  IconPinnedOff,
   IconTrash,
   useIcons,
 } from 'twenty-ui/display';
@@ -31,7 +35,12 @@ type ViewPickerOptionDropdownProps = {
   isLastView: boolean;
   view: Pick<
     View,
-    'id' | 'name' | 'icon' | 'visibility' | 'createdByUserWorkspaceId'
+    | 'id'
+    | 'name'
+    | 'icon'
+    | 'visibility'
+    | 'createdByUserWorkspaceId'
+    | 'objectMetadataId'
   >;
   onEdit: (event: React.MouseEvent<HTMLElement>, viewId: string) => void;
   handleViewSelect: (viewId: string) => void;
@@ -54,6 +63,20 @@ export const ViewPickerOptionDropdown = ({
     viewPickerReferenceViewIdComponentState,
   );
   const hasViewsPermission = useHasPermissionFlag(PermissionFlagType.VIEWS);
+
+  const { personalDefaultViewIdByObjectMetadataId } = useEnsoViewerScope();
+  const { setMyDefaultView } = useSetMyDefaultView();
+
+  const isMyDefaultView =
+    personalDefaultViewIdByObjectMetadataId[view.objectMetadataId] === view.id;
+
+  const handleToggleMyDefaultView = () => {
+    setMyDefaultView({
+      objectMetadataId: view.objectMetadataId,
+      viewId: isMyDefaultView ? null : view.id,
+    });
+    closeDropdown(dropdownId);
+  };
 
   const { createManyNavigationMenuItems } = useCreateManyNavigationMenuItems();
   const { navigationMenuItems, currentWorkspaceMemberId } =
@@ -124,17 +147,37 @@ export const ViewPickerOptionDropdown = ({
           <DropdownContent>
             <DropdownMenuItemsContainer>
               {isIndexView ? (
-                <MenuItem
-                  LeftIcon={IconHeart}
-                  text={isFavorite ? t`Manage favorite` : t`Add to Favorite`}
-                  onClick={handleAddToFavorites}
-                />
+                <>
+                  <MenuItem
+                    LeftIcon={IconHeart}
+                    text={isFavorite ? t`Manage favorite` : t`Add to Favorite`}
+                    onClick={handleAddToFavorites}
+                  />
+                  <MenuItem
+                    LeftIcon={isMyDefaultView ? IconPinnedOff : IconPin}
+                    text={
+                      isMyDefaultView
+                        ? t`Remove my default`
+                        : t`Set as my default`
+                    }
+                    onClick={handleToggleMyDefaultView}
+                  />
+                </>
               ) : (
                 <>
                   <MenuItem
                     LeftIcon={IconHeart}
                     text={isFavorite ? t`Manage favorite` : t`Add to Favorite`}
                     onClick={handleAddToFavorites}
+                  />
+                  <MenuItem
+                    LeftIcon={isMyDefaultView ? IconPinnedOff : IconPin}
+                    text={
+                      isMyDefaultView
+                        ? t`Remove my default`
+                        : t`Set as my default`
+                    }
+                    onClick={handleToggleMyDefaultView}
                   />
 
                   {canEditView && (

@@ -4,12 +4,15 @@ import { Args, Mutation, Query } from '@nestjs/graphql';
 import { MetadataResolver } from 'src/engine/api/graphql/graphql-config/decorators/metadata-resolver.decorator';
 import { AuthGraphqlApiExceptionFilter } from 'src/engine/core-modules/auth/filters/auth-graphql-api-exception.filter';
 import { ResolverValidationPipe } from 'src/engine/core-modules/graphql/pipes/resolver-validation.pipe';
+import { UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
+import { AuthUser } from 'src/engine/decorators/auth/auth-user.decorator';
 import { AuthUserWorkspaceId } from 'src/engine/decorators/auth/auth-user-workspace-id.decorator';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { SettingsPermissionGuard } from 'src/engine/guards/settings-permission.guard';
 import { PermissionFlagType } from 'twenty-shared/constants';
+import { isDefined } from 'twenty-shared/utils';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { ENSO_HIDDEN_NAVIGATION_OBJECT_NAME_SINGULARS } from 'src/modules/enso/record-visibility/constants/enso-hidden-navigation-objects.constant';
 import {
@@ -41,6 +44,7 @@ export class EnsoViewerScopeResolver {
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUserWorkspaceId({ allowUndefined: true })
     userWorkspaceId: string | undefined,
+    @AuthUser({ allowUndefined: true }) user: UserEntity | undefined,
   ): Promise<EnsoViewerScopeDTO> {
     const isRecordScoped = await this.ensoViewerScopeService.isViewerScoped({
       workspaceId: workspace.id,
@@ -61,6 +65,14 @@ export class EnsoViewerScopeResolver {
         })
       : { defaultViewIdByObjectMetadataId: {}, version: null };
 
+    // An API key has no person behind it, so it simply has no own defaults.
+    const personalDefaultViews = user
+      ? await this.ensoDefaultViewsService.getUserDefaultViews({
+          workspaceId: workspace.id,
+          userId: user.id,
+        })
+      : {};
+
     return {
       isRecordScoped,
       hiddenNavigationObjectNameSingulars: isRecordScoped
@@ -70,7 +82,47 @@ export class EnsoViewerScopeResolver {
         ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
       ),
       defaultViewsVersion: version,
+      personalDefaultViews: Object.entries(personalDefaultViews).map(
+        ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
+      ),
     };
+  }
+
+  // Setting your OWN landing view is not an administrative act, so unlike the
+  // role mutation this is gated on nothing but being a signed-in person.
+  // Passing a null viewId clears it and hands the object back to the role
+  // default.
+  @Mutation(() => [EnsoDefaultViewDTO])
+  async ensoSetMyDefaultView(
+    @Args('objectMetadataId', { type: () => String }) objectMetadataId: string,
+    @Args('viewId', { type: () => String, nullable: true })
+    viewId: string | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthUser() user: UserEntity,
+  ): Promise<EnsoDefaultViewDTO[]> {
+    const current = await this.ensoDefaultViewsService.getUserDefaultViews({
+      workspaceId: workspace.id,
+      userId: user.id,
+    });
+
+    const next = { ...current };
+
+    if (isDefined(viewId)) {
+      next[objectMetadataId] = viewId;
+    } else {
+      delete next[objectMetadataId];
+    }
+
+    await this.ensoDefaultViewsService.setUserDefaultViews({
+      workspaceId: workspace.id,
+      userId: user.id,
+      defaultViewIdByObjectMetadataId: next,
+    });
+
+    return Object.entries(next).map(([objectId, view]) => ({
+      objectMetadataId: objectId,
+      viewId: view,
+    }));
   }
 
   // Configuring what a whole ROLE lands on is an administrative act, so unlike
