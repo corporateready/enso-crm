@@ -2654,6 +2654,7 @@ type EnsoViewerScope {
   hiddenNavigationObjectNameSingulars: [String!]!
   defaultViews: [EnsoDefaultView!]!
   defaultViewsVersion: String
+  personalDefaultViews: [EnsoDefaultView!]!
 }
 
 type EnsoLeadLookupProject {
@@ -3409,6 +3410,7 @@ type Mutation {
   duplicateDashboard(id: UUID!): DuplicatedDashboard!
   impersonate(userId: UUID!, workspaceId: UUID!): Impersonate!
   callViaPbx(personId: String, opportunityId: String, taskId: String): CallViaPbxResult!
+  ensoSetMyDefaultView(objectMetadataId: String!, viewId: String): [EnsoDefaultView!]!
   ensoSetRoleDefaultViews(roleId: String!, defaultViews: [EnsoDefaultViewInput!]!): [EnsoDefaultView!]!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
   sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!

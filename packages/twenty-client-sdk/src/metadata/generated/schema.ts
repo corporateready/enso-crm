@@ -2358,6 +2358,7 @@ export interface EnsoViewerScope {
     hiddenNavigationObjectNameSingulars: Scalars['String'][]
     defaultViews: EnsoDefaultView[]
     defaultViewsVersion?: Scalars['String']
+    personalDefaultViews: EnsoDefaultView[]
     __typename: 'EnsoViewerScope'
 }
 
@@ -2955,6 +2956,7 @@ export interface Mutation {
     duplicateDashboard: DuplicatedDashboard
     impersonate: Impersonate
     callViaPbx: CallViaPbxResult
+    ensoSetMyDefaultView: EnsoDefaultView[]
     ensoSetRoleDefaultViews: EnsoDefaultView[]
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
     sendTaskEmail: GoogleChatTestResult
@@ -5520,6 +5522,7 @@ export interface EnsoViewerScopeGenqlSelection{
     hiddenNavigationObjectNameSingulars?: boolean | number
     defaultViews?: EnsoDefaultViewGenqlSelection
     defaultViewsVersion?: boolean | number
+    personalDefaultViews?: EnsoDefaultViewGenqlSelection
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -6157,6 +6160,7 @@ export interface MutationGenqlSelection{
     duplicateDashboard?: (DuplicatedDashboardGenqlSelection & { __args: {id: Scalars['UUID']} })
     impersonate?: (ImpersonateGenqlSelection & { __args: {userId: Scalars['UUID'], workspaceId: Scalars['UUID']} })
     callViaPbx?: (CallViaPbxResultGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
+    ensoSetMyDefaultView?: (EnsoDefaultViewGenqlSelection & { __args: {objectMetadataId: Scalars['String'], viewId?: (Scalars['String'] | null)} })
     ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
     sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })

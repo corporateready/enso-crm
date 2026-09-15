@@ -5357,6 +5357,9 @@ export default {
             "defaultViewsVersion": [
                 1
             ],
+            "personalDefaultViews": [
+                294
+            ],
             "__typename": [
                 1
             ]
@@ -8772,6 +8775,18 @@ export default {
                         1
                     ],
                     "taskId": [
+                        1
+                    ]
+                }
+            ],
+            "ensoSetMyDefaultView": [
+                294,
+                {
+                    "objectMetadataId": [
+                        1,
+                        "String!"
+                    ],
+                    "viewId": [
                         1
                     ]
                 }
