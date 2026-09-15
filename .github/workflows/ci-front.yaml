@@ -34,7 +34,7 @@ jobs:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
     timeout-minutes: 30
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
     env:
       REACT_APP_SERVER_BASE_URL: http://localhost:3000
     steps:
@@ -48,8 +48,15 @@ jobs:
         run: df -h
       - name: Front / Write .env
         run: npx nx reset:env twenty-front
+      - name: Diagnostic memory and cpu
+        run: |
+          free -h
+          nproc
       - name: Front / Build storybook
         run: npx nx storybook:build twenty-front
+      - name: Diagnostic disk after storybook build
+        if: always()
+        run: df -h
       - name: Upload storybook build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -190,7 +197,7 @@ jobs:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
     timeout-minutes: 30
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: "--max-old-space-size=10240"
       ANALYZE: "true"
@@ -201,10 +208,18 @@ jobs:
           fetch-depth: 10
       - name: Install dependencies
         uses: ./.github/actions/yarn-install
+      - name: Diagnostic disk and memory
+        run: |
+          df -h
+          free -h
+          nproc
       - name: Front / Write .env
         run: npx nx reset:env twenty-front
       - name: Build frontend
         run: npx nx build twenty-front
+      - name: Diagnostic disk after build
+        if: always()
+        run: df -h
       # - name: Upload frontend build artifact
       #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       #   with:
