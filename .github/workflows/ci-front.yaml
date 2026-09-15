@@ -34,7 +34,11 @@ jobs:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
     timeout-minutes: 30
-    runs-on: ubuntu-latest-8-cores
+    # Standard runner, not ubuntu-latest-8-cores: the larger runners are rarely
+    # available to this fork, so these jobs sat queued far more often than they
+    # ran — several were cancelled at GitHub's 24h queue limit. Slower per run,
+    # but they actually start.
+    runs-on: ubuntu-latest
     env:
       REACT_APP_SERVER_BASE_URL: http://localhost:3000
     steps:
@@ -193,7 +197,9 @@ jobs:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
     timeout-minutes: 30
-    runs-on: ubuntu-latest-8-cores
+    # See front-sb-build above. A public repo's standard runner has 16GB, so the
+    # 10GB heap below still fits.
+    runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: "--max-old-space-size=10240"
       ANALYZE: "true"
