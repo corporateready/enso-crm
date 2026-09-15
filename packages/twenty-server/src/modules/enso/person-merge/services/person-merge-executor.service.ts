@@ -11,6 +11,7 @@ import {
   PHONE_MATCH_DIGITS,
 } from 'src/modules/enso/person-merge/person-merge.constants';
 import { buildMergeTimelineActivityInsert } from 'src/modules/enso/record-merge/merge-timeline.util';
+import { reassignRelations } from 'src/modules/enso/record-merge/reassign-relations.util';
 
 // Composite fields come back nested from the workspace ORM.
 type PersonRow = {
@@ -31,9 +32,9 @@ type PersonRow = {
 //   backfill the keeper's empty contact/name/company fields from a duplicate,
 //   soft-delete the duplicates.
 // Idempotent: re-running with an already-merged set is a no-op (the duplicates
-// are gone). If any relation reassignment fails the whole merge is abandoned
-// and nothing is deleted — see the comment on that branch for why a surviving
-// duplicate beats a stranded relation.
+// are gone). A unique-constraint clash on one junction is survivable and the
+// merge finishes; any other reassignment failure abandons the merge with
+// nothing deleted, because a surviving duplicate beats a stranded relation.
 @Injectable()
 export class PersonMergeExecutorService {
   private readonly logger = new Logger(PersonMergeExecutorService.name);
@@ -80,46 +81,39 @@ export class PersonMergeExecutorService {
         // 1) Re-point every person-FK relation from the duplicates to the keeper.
         // These FKs (personId / pointOfContactId / relatedPersonId) are flat
         // columns on the related objects, not composites.
-        const failedReassignments: string[] = [];
-
-        for (const { object, field } of PERSON_RELATION_REASSIGNMENTS) {
-          try {
-            const repository =
-              await this.globalWorkspaceOrmManager.getRepository<any>(
+        const { blockingFailures, redundantRowCount } = await reassignRelations(
+          {
+            targets: PERSON_RELATION_REASSIGNMENTS,
+            duplicateIds,
+            keeperId: keeper.id,
+            actor: SYSTEM_ACTOR,
+            getRepository: (object) =>
+              this.globalWorkspaceOrmManager.getRepository<any>(
                 workspaceId,
                 object,
                 { shouldBypassPermissionChecks: true },
-              );
+              ),
+          },
+        );
 
-            await repository.update(
-              { [field]: In(duplicateIds) },
-              { [field]: keeper.id, updatedBy: SYSTEM_ACTOR },
-            );
-          } catch (error) {
-            failedReassignments.push(`${object}.${field}`);
-            this.logger.warn(
-              `Reassign ${object}.${field} → keeper ${keeper.id} failed: ${
-                (error as Error).message
-              }`,
-            );
-          }
-        }
-
-        // Nothing below this point is safe once a reassignment has failed: the
-        // soft-delete would remove the record those rows still point at, and
-        // they would be reachable from no live person at all. A visible
-        // duplicate is a much cheaper failure than a stranded relation, so give
-        // up on the whole merge and leave every record where it is. The finder
-        // re-triggers on the next write to either person, so a merge that fails
-        // for a transient reason still happens later.
-        if (failedReassignments.length > 0) {
+        // A clash is survivable — the keeper already holds an equivalent row.
+        // Anything else leaves us unable to say what the soft-delete would
+        // strand, so abandon the merge with every record untouched. The finder
+        // re-triggers on the next write to either person.
+        if (blockingFailures.length > 0) {
           this.logger.error(
-            `Person merge into keeper ${keeper.id} ABORTED: could not reassign ${failedReassignments.join(
-              ', ',
+            `Person merge into keeper ${keeper.id} ABORTED: ${blockingFailures.join(
+              '; ',
             )}. ${duplicateIds.length} duplicate(s) left live and unmerged.`,
           );
 
           return null;
+        }
+
+        if (redundantRowCount > 0) {
+          this.logger.log(
+            `Person merge into keeper ${keeper.id}: left ${redundantRowCount} redundant row(s) on the duplicates; the keeper already had an equivalent.`,
+          );
         }
 
         // 2) Backfill the keeper's empty contact/name/company from a duplicate.
