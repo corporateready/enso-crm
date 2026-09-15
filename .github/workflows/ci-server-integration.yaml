@@ -1,0 +1,117 @@
+name: CI Server Integration
+
+# The ten-shard backend integration suite, moved off the per-PR path.
+#
+# It was never a required check -- branch protection asks for server-validation,
+# server-boot, server-lint-typecheck, front-typecheck and server-test -- so on a
+# pull request it could not block a merge however red it went. What it did do
+# was occupy ten runners, each with its own postgres, redis and clickhouse and a
+# full server build, which is what left the five blocking checks sitting in
+# `queued`.
+#
+# So it runs after the merge instead, on main, where a red result still reaches
+# us in time to act on and costs nobody a wait. Put the `ci:integration` label
+# on a pull request to run it before the merge when a change warrants it.
+#
+# Note the suite is run directly rather than through ./.github/actions/nx-affected.
+# That action derives its base from origin/main, which on a push to main is the
+# commit under test: every project would resolve as unaffected and the suite
+# would pass having run nothing at all. Post-merge we want all of it anyway.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  SERVER_BUILD_CACHE_KEY: server-build
+
+jobs:
+  server-integration-test:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:integration')
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.8.8
+        env:
+          CLICKHOUSE_PASSWORD: clickhousePassword
+          CLICKHOUSE_URL: "http://default:clickhousePassword@localhost:8123/twenty"
+        ports:
+          - 8123:8123
+          - 9000:9000
+        options: >-
+          --health-cmd "clickhouse-client --host=localhost --port=9000 --user=default --password=clickhousePassword --query='SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      ANALYTICS_ENABLED: true
+      CLICKHOUSE_URL: "http://default:clickhousePassword@localhost:8123/twenty"
+      CLICKHOUSE_PASSWORD: clickhousePassword
+      SHARD_COUNTER: 10
+    steps:
+      - name: Fetch custom Github Actions and base branch history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        uses: ./.github/actions/yarn-install
+      - name: Update .env.test for integrations tests
+        run: |
+          echo "" >> .env.test
+          echo "IS_BILLING_ENABLED=true" >> .env.test
+          echo "BILLING_STRIPE_API_KEY=test-api-key" >> .env.test
+          echo "BILLING_STRIPE_BASE_PLAN_PRODUCT_ID=test-base-plan-product-id" >> .env.test
+          echo "BILLING_STRIPE_WEBHOOK_SECRET=test-webhook-secret" >> .env.test
+          echo "BILLING_PLAN_REQUIRED_LINK=http://localhost:3001/stripe-redirection" >> .env.test
+      - name: Restore server build cache
+        uses: ./.github/actions/restore-cache
+        with:
+          key: ${{ env.SERVER_BUILD_CACHE_KEY }}
+      - name: Server / Build
+        run: npx nx build twenty-server
+      - name: Build dependencies
+        run: |
+          npx nx build twenty-shared
+          npx nx build twenty-emails
+      - name: Server / Create Test DB
+        run: |
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -c 'CREATE DATABASE "test";'
+      - name: Run ClickHouse migrations
+        run: npx nx clickhouse:migrate twenty-server
+      - name: Run ClickHouse seeds
+        run: npx nx clickhouse:seed twenty-server
+      - name: Server / Run Integration Tests
+        run: npx nx run twenty-server:test:integration:with-db-reset --shard=${{ matrix.shard }}/${{ env.SHARD_COUNTER }}

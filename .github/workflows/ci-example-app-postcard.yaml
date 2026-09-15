@@ -1,5 +1,13 @@
 name: CI Example App Postcard
 
+# This fork does not ship the postcard example app: it is not published, not
+# deployed, and no enso change has ever touched it. The workflow used to be
+# triggered by packages/twenty-server/** as well, so it ran on essentially
+# every PR we open -- a multi-minute job with its own service containers,
+# competing for the runner pool with the five checks that can actually block a
+# merge. That trigger is gone. A change to the postcard example app itself
+# still runs it.
+
 on:
   push:
     branches:
@@ -23,11 +31,9 @@ jobs:
         packages/twenty-sdk/**
         packages/twenty-client-sdk/**
         packages/twenty-shared/**
-        packages/twenty-server/**
         !packages/twenty-sdk/package.json
         !packages/twenty-client-sdk/package.json
         !packages/twenty-shared/package.json
-        !packages/twenty-server/package.json
         .github/workflows/ci-example-app-postcard.yaml
 
   example-app-postcard:

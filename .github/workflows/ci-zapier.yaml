@@ -1,5 +1,12 @@
 name: CI Zapier
 
+# This fork does not ship twenty-zapier: it is not published, not deployed,
+# and no enso change has ever touched it. The workflow used to be triggered by
+# packages/twenty-server/** as well, so it ran on essentially every PR we open
+# -- a multi-minute job with its own service containers, competing for the
+# runner pool with the five checks that can actually block a merge. That
+# trigger is gone. A change to twenty-zapier itself still runs it.
+
 on:
   pull_request:
 
@@ -19,7 +26,6 @@ jobs:
     with:
       files: |
         packages/twenty-zapier/**
-        packages/twenty-server/**
         !packages/twenty-zapier/package.json
         !packages/twenty-zapier/CHANGELOG.md
         .github/workflows/ci-zapier.yaml
