@@ -54,21 +54,22 @@ export class EnsoViewerScopeResolver {
       userWorkspaceId,
     });
 
-    const roleDefaultViews = roleId
+    const { defaultViewIdByObjectMetadataId, version } = roleId
       ? await this.ensoDefaultViewsService.getRoleDefaultViews({
           workspaceId: workspace.id,
           roleId,
         })
-      : {};
+      : { defaultViewIdByObjectMetadataId: {}, version: null };
 
     return {
       isRecordScoped,
       hiddenNavigationObjectNameSingulars: isRecordScoped
         ? ENSO_HIDDEN_NAVIGATION_OBJECT_NAME_SINGULARS
         : [],
-      defaultViews: Object.entries(roleDefaultViews).map(
+      defaultViews: Object.entries(defaultViewIdByObjectMetadataId).map(
         ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
       ),
+      defaultViewsVersion: version,
     };
   }
 

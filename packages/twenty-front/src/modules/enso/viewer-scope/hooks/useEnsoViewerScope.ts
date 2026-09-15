@@ -7,6 +7,7 @@ type EnsoViewerScopeData = {
     isRecordScoped: boolean;
     hiddenNavigationObjectNameSingulars: string[];
     defaultViews: { objectMetadataId: string; viewId: string }[];
+    defaultViewsVersion: string | null;
   };
 };
 
@@ -16,7 +17,7 @@ const EMPTY_DEFAULT_VIEWS: { objectMetadataId: string; viewId: string }[] = [];
 // Cached for the session: a viewer's role does not change under them, and the
 // sidebar renders on every page.
 export const useEnsoViewerScope = () => {
-  const { data } = useQuery<EnsoViewerScopeData>(ENSO_VIEWER_SCOPE, {
+  const { data, loading } = useQuery<EnsoViewerScopeData>(ENSO_VIEWER_SCOPE, {
     fetchPolicy: 'cache-first',
   });
 
@@ -32,5 +33,12 @@ export const useEnsoViewerScope = () => {
         (defaultView) => [defaultView.objectMetadataId, defaultView.viewId],
       ),
     ),
+    roleDefaultViewsVersion: data?.ensoViewerScope.defaultViewsVersion ?? null,
+    // Whoever decides which view to open MUST wait for this. Answering before
+    // it lands means falling through to the INDEX view and, because landing on
+    // a view records it as last-visited, pinning that wrong answer for good.
+    // Errors settle it too: a viewer-scope failure should degrade to the plain
+    // workspace defaults, not hang the app.
+    isEnsoViewerScopeLoading: loading,
   };
 };

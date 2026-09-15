@@ -44,6 +44,7 @@ import {
   workflowQueryResult,
 } from '~/testing/mock-data/workflow';
 import { oneSucceededWorkflowRunQueryResult } from '~/testing/mock-data/workflow-run';
+import { ENSO_VIEWER_SCOPE } from '@/enso/viewer-scope/graphql/queries/ensoViewerScope';
 
 const peopleMock = [...mockedPersonRecords];
 const companiesMock = [...mockedCompanyRecords];
@@ -144,6 +145,23 @@ export const graphqlMocks = {
       });
     }),
 
+    // The view resolver waits for this before deciding which view to open, so
+    // leaving it unhandled would stall every record page in Storybook on a
+    // failing request. Stories render as an unscoped viewer with no role
+    // defaults, which is the pre-enso behaviour.
+    graphql.query(getOperationName(ENSO_VIEWER_SCOPE) ?? '', () => {
+      return HttpResponse.json({
+        data: {
+          ensoViewerScope: {
+            __typename: 'EnsoViewerScope',
+            isRecordScoped: false,
+            hiddenNavigationObjectNameSingulars: [],
+            defaultViews: [],
+            defaultViewsVersion: null,
+          },
+        },
+      });
+    }),
     graphql.query(getOperationName(GET_CURRENT_USER) ?? '', () => {
       return HttpResponse.json({
         data: {

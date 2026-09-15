@@ -24,6 +24,12 @@ export class EnsoViewerScopeDTO {
   // INDEX view. Empty when their role has no defaults configured.
   @Field(() => [EnsoDefaultViewDTO])
   defaultViews: EnsoDefaultViewDTO[];
+
+  // Version stamp for the defaults above, so the client can apply a new default
+  // once to someone who already has a last-visited view. Null when their role
+  // has no defaults configured.
+  @Field(() => String, { nullable: true })
+  defaultViewsVersion: string | null;
 }
 
 @InputType('EnsoDefaultViewInput')
