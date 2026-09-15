@@ -22,6 +22,7 @@ jobs:
         packages/twenty-server/**
         !packages/twenty-zapier/package.json
         !packages/twenty-zapier/CHANGELOG.md
+        .github/workflows/ci-zapier.yaml
   server-setup:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'

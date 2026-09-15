@@ -26,6 +26,7 @@ jobs:
         !packages/twenty-sdk/package.json
         !packages/twenty-client-sdk/package.json
         !packages/twenty-shared/package.json
+        .github/workflows/ci-example-app-hello-world.yaml
 
   example-app-hello-world:
     needs: changed-files-check
