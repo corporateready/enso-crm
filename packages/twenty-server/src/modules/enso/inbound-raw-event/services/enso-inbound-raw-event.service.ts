@@ -84,6 +84,10 @@ export class EnsoInboundRawEventService {
 
   // Returns the row id so the caller can stamp an outcome on it, or undefined
   // if logging failed — callers must treat undefined as "carry on regardless".
+  //
+  // `initialStatus` is what the row says until an outcome is stamped. A caller
+  // that will never stamp one must pass NOT_TRACKED, so its rows do not read as
+  // stalled RECEIVED rows forever.
   async record({
     workspaceId,
     channel,
@@ -91,6 +95,7 @@ export class EnsoInboundRawEventService {
     externalId,
     occurredAt,
     payload,
+    initialStatus = 'RECEIVED',
   }: {
     workspaceId: string;
     channel: InboundRawEventChannel;
@@ -98,6 +103,7 @@ export class EnsoInboundRawEventService {
     externalId?: string;
     occurredAt?: Date;
     payload: unknown;
+    initialStatus?: InboundRawEventStatus;
   }): Promise<string | undefined> {
     try {
       return await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -118,7 +124,7 @@ export class EnsoInboundRawEventService {
             externalId: externalId ?? null,
             occurredAt: occurredAt ?? null,
             payload: redactPayloadSecrets(payload),
-            processingStatus: 'RECEIVED' satisfies InboundRawEventStatus,
+            processingStatus: initialStatus,
             createdBy: SYSTEM_ACTOR,
             updatedBy: SYSTEM_ACTOR,
           });

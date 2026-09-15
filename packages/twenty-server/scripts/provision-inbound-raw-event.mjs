@@ -25,7 +25,16 @@
 //
 //   Add --dry-run to print the plan without writing.
 //
-// The field NAMES here must match what EnsoInboundRawEventService writes.
+// The field NAMES here must match what EnsoInboundRawEventService writes, and
+// so must the SELECT option VALUES — a write of an option the field does not
+// have is rejected. Re-running this adds options that were introduced after the
+// object was first provisioned; it never removes or renames an existing one,
+// because that would orphan the rows already carrying it.
+//
+// NOTE: after this adds an option, REDEPLOY twenty-server (and twenty-worker if
+// it writes the object) so the ORM metadata cache picks it up.
+
+import { randomUUID } from 'node:crypto';
 
 const API_URL = (process.env.TWENTY_API_URL ?? 'https://crm.enso.ro').replace(
   /\/$/,
@@ -111,9 +120,15 @@ const FIELDS = [
     type: 'SELECT',
     icon: 'IconCircleDot',
     description:
-      'What became of this payload. IGNORED and FAILED are the rows that used to disappear without trace.',
+      'What became of this payload. IGNORED and FAILED are the rows that used to disappear without trace; RECEIVED is a row whose outcome never landed, which is itself a fault worth chasing.',
     options: toOptions([
       ['RECEIVED', 'Received', 'gray'],
+      // Logged on a path that never stamps an outcome — today only the PBX
+      // `contact` push, which must answer a ringing call and cannot wait for a
+      // second round trip. Distinct from RECEIVED on purpose: without it the
+      // busiest source in the log would sit at RECEIVED forever and bury the
+      // rows that are stuck for a real reason.
+      ['NOT_TRACKED', 'Not tracked', 'gray'],
       ['ENQUEUED', 'Enqueued', 'blue'],
       ['IGNORED', 'Ignored', 'orange'],
       ['FAILED', 'Failed', 'red'],
@@ -164,29 +179,99 @@ const findObject = async () => {
 // silently truncates, so it reports fields as absent that plainly exist, and
 // this script would then try to re-create them on every run. Ask the top-level
 // `fields` query for one object instead.
-const findFieldNames = async (objectMetadataId) => {
+const findFields = async (objectMetadataId) => {
   const { fields } = await gql(
     `query FieldsForObject($objectMetadataId: UUID!) {
       fields(
         paging: { first: 200 }
         filter: { objectMetadataId: { eq: $objectMetadataId } }
       ) {
-        edges { node { name } }
+        edges { node { id name type options } }
       }
     }`,
     { objectMetadataId },
   );
 
-  return new Set(fields.edges.map((edge) => edge.node.name));
+  return fields.edges.map((edge) => edge.node);
+};
+
+// Adds SELECT options that were introduced after the field was created. An
+// update REPLACES the whole option list, so every existing option is sent back
+// with its own id — drop one and every row already holding that value is
+// orphaned. An existing option keeps its label and colour too, so a tweak made
+// in the UI survives a re-run; only the order is rewritten, to the order
+// declared above.
+const addMissingOptions = async (field, expected) => {
+  const current = field.options ?? [];
+  const liveByValue = new Map(current.map((option) => [option.value, option]));
+  const missing = expected.filter((option) => !liveByValue.has(option.value));
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  const expectedValues = new Set(expected.map((option) => option.value));
+
+  const nextOptions = [
+    ...expected.map((option) => {
+      const live = liveByValue.get(option.value);
+
+      return live
+        ? {
+            id: live.id,
+            value: live.value,
+            label: live.label,
+            color: live.color,
+          }
+        : {
+            // Options carry their own stable id; a new one has to be minted.
+            id: randomUUID(),
+            value: option.value,
+            label: option.label,
+            color: option.color,
+          };
+    }),
+    // An option this script no longer declares is still kept: rows may be using
+    // it, and removing values is not this script's job.
+    ...current
+      .filter((option) => !expectedValues.has(option.value))
+      .map((option) => ({
+        id: option.id,
+        value: option.value,
+        label: option.label,
+        color: option.color,
+      })),
+  ].map((option, position) => ({ ...option, position }));
+
+  const added = missing.map((option) => option.value).join(', ');
+
+  if (DRY_RUN) {
+    console.log(`  would add option(s) to ${field.name}: ${added}`);
+
+    return;
+  }
+
+  await gql(
+    `mutation UpdateOneField($input: UpdateOneFieldMetadataInput!) {
+      updateOneField(input: $input) { id name }
+    }`,
+    { input: { id: field.id, update: { options: nextOptions } } },
+  );
+
+  console.log(`  added option(s) to ${field.name}: ${added}`);
 };
 
 const main = async () => {
-  console.log(`Metadata endpoint: ${METADATA_ENDPOINT}${DRY_RUN ? ' (dry-run)' : ''}`);
+  console.log(
+    `Metadata endpoint: ${METADATA_ENDPOINT}${DRY_RUN ? ' (dry-run)' : ''}`,
+  );
 
   let object = await findObject();
 
   if (!object) {
-    console.log(`Object "${OBJECT.nameSingular}" does not exist — will create.`);
+    console.log(
+      `Object "${OBJECT.nameSingular}" does not exist — will create.`,
+    );
 
     if (!DRY_RUN) {
       const { createOneObject } = await gql(
@@ -213,12 +298,23 @@ const main = async () => {
     return;
   }
 
-  const existing = await findFieldNames(object.id);
-  const missing = FIELDS.filter((field) => !existing.has(field.name));
+  const existing = await findFields(object.id);
+  const existingByName = new Map(existing.map((field) => [field.name, field]));
+  const missing = FIELDS.filter((field) => !existingByName.has(field.name));
 
   console.log(
     `${FIELDS.length} expected field(s): ${FIELDS.length - missing.length} present, ${missing.length} to create`,
   );
+
+  // A field that already exists still needs reconciling: a SELECT that gained a
+  // value in the code rejects writes of it until the option exists here too.
+  for (const field of FIELDS) {
+    const live = existingByName.get(field.name);
+
+    if (live && field.options) {
+      await addMissingOptions(live, field.options);
+    }
+  }
 
   if (DRY_RUN) {
     for (const field of missing) {
@@ -254,7 +350,10 @@ const main = async () => {
 
   console.log('\nDone.');
   console.log(
-    'Next: re-run provision-sales-manager-role.mjs so the role cannot read it,',
+    'Next: redeploy twenty-server if an option was added (the ORM caches metadata),',
+  );
+  console.log(
+    're-run provision-sales-manager-role.mjs so the role cannot read it,',
   );
   console.log(
     'and add inboundRawEvent to the dlt curated slice if reconciliation needs it sooner than the next full sync.',

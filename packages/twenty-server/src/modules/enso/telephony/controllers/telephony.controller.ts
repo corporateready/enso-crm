@@ -21,6 +21,7 @@ import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 import { IngestCallEventJob } from 'src/modules/enso/telephony/jobs/ingest-call-event.job';
 import { EnsoInboundRawEventService } from 'src/modules/enso/inbound-raw-event/services/enso-inbound-raw-event.service';
+import { type InboundRawEventStatus } from 'src/modules/enso/inbound-raw-event/types/inbound-raw-event.types';
 import { TelephonyContactService } from 'src/modules/enso/telephony/services/telephony-contact.service';
 import {
   type IngestCallEventJobData,
@@ -73,10 +74,15 @@ export class TelephonyController {
   // Writes the body down before anything interprets it, and hands back the id
   // so the handler can stamp what became of it. Best-effort by contract: a
   // failure here returns undefined and the call proceeds untouched.
+  //
+  // `initialStatus` is what the row says until an outcome is stamped, so a
+  // caller that never stamps one has to say so up front — see the contact
+  // branch.
   private async recordRaw(
     channel: 'PBX' | 'ROISTAT',
     source: string,
     body: unknown,
+    initialStatus?: InboundRawEventStatus,
   ): Promise<string | undefined> {
     if (!isNonEmptyString(TELEPHONY_WORKSPACE_ID)) {
       return undefined;
@@ -88,9 +94,13 @@ export class TelephonyController {
       source,
       externalId: (body as { callid?: string } | undefined)?.callid,
       payload: body,
+      ...(isDefined(initialStatus) ? { initialStatus } : {}),
     });
   }
 
+  // Only terminal statuses here: RECEIVED and NOT_TRACKED describe how a row
+  // was born, and stamping either of them on afterwards would erase the outcome
+  // rather than record one.
   private async stampRaw(
     rawEventId: string | undefined,
     status: 'ENQUEUED' | 'IGNORED' | 'FAILED',
@@ -132,7 +142,12 @@ export class TelephonyController {
       // call. The contact push is also the least interesting one to
       // reconcile: every call it precedes arrives again as `event`/`history`,
       // which are logged synchronously below.
-      void this.recordRaw('PBX', 'moldcell:contact', body);
+      //
+      // Which is exactly why the row is born NOT_TRACKED rather than RECEIVED:
+      // no outcome is ever stamped on it, so leaving it at RECEIVED would make
+      // "by design" look identical to a handler that died before stamping, on
+      // the single highest-volume source in the log.
+      void this.recordRaw('PBX', 'moldcell:contact', body, 'NOT_TRACKED');
 
       try {
         await this.enqueue(
