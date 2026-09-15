@@ -21,6 +21,7 @@ jobs:
       files: |
         package.json
         packages/twenty-docs/**
+        .github/workflows/ci-docs.yaml
 
   docs-lint:
     needs: changed-files-check

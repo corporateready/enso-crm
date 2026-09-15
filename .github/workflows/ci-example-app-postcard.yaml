@@ -28,6 +28,7 @@ jobs:
         !packages/twenty-client-sdk/package.json
         !packages/twenty-shared/package.json
         !packages/twenty-server/package.json
+        .github/workflows/ci-example-app-postcard.yaml
 
   example-app-postcard:
     needs: changed-files-check

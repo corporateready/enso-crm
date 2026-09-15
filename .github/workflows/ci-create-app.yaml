@@ -21,6 +21,7 @@ jobs:
       files: |
         packages/create-twenty-app/**
         !packages/create-twenty-app/package.json
+        .github/workflows/ci-create-app.yaml
   create-app-test:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'

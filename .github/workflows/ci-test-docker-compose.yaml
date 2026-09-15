@@ -19,6 +19,7 @@ jobs:
       files: |
         packages/twenty-docker/**
         docker-compose.yml
+        .github/workflows/ci-test-docker-compose.yaml
   test-compose:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'

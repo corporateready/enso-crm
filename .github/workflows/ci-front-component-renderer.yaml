@@ -23,6 +23,7 @@ jobs:
         packages/twenty-sdk/**
         packages/twenty-shared/**
         !packages/twenty-sdk/package.json
+        .github/workflows/ci-front-component-renderer.yaml
   renderer-task:
     needs: changed-files-check
     if: needs.changed-files-check.outputs.any_changed == 'true'
