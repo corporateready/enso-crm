@@ -2653,6 +2653,7 @@ type EnsoViewerScope {
   isRecordScoped: Boolean!
   hiddenNavigationObjectNameSingulars: [String!]!
   defaultViews: [EnsoDefaultView!]!
+  defaultViewsVersion: String
 }
 
 type EnsoLeadLookupProject {
