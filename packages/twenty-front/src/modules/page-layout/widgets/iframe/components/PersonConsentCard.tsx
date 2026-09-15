@@ -712,93 +712,100 @@ export const PersonConsentCard = () => {
     0,
   );
 
+  // The three confirm-first modals portal into document.body, so they render
+  // as siblings of the card rather than inside it: `createPortal`'s return
+  // type is only accepted among the children of a fragment, because
+  // @types/react-dom@18 resolves its own nested @types/react@19 whose
+  // ReactNode is wider than the one this package compiles against.
   return (
-    <StyledContainer>
-      <StyledHeader>
-        <StyledHint>
-          {editMode
-            ? t`Click a channel, then confirm. Cancel writes nothing.`
-            : t`Read-only. Click Edit to record verbal consent or an opt-out.`}
-        </StyledHint>
-        {consents.length > 0 && (
-          <StyledEditButton onClick={() => setEditMode((value) => !value)}>
-            {editMode ? t`Done` : t`Edit`}
-          </StyledEditButton>
+    <>
+      <StyledContainer>
+        <StyledHeader>
+          <StyledHint>
+            {editMode
+              ? t`Click a channel, then confirm. Cancel writes nothing.`
+              : t`Read-only. Click Edit to record verbal consent or an opt-out.`}
+          </StyledHint>
+          {consents.length > 0 && (
+            <StyledEditButton onClick={() => setEditMode((value) => !value)}>
+              {editMode ? t`Done` : t`Edit`}
+            </StyledEditButton>
+          )}
+        </StyledHeader>
+
+        {loading ? (
+          <StyledHint>{t`Loading…`}</StyledHint>
+        ) : (
+          consents.map((consent) => {
+            const projectLabel =
+              ((consent.name as string) ?? '').split(' · ')[1] ??
+              (consent.name as string) ??
+              t`project`;
+
+            return (
+              <StyledRow key={consent.id as string}>
+                <StyledProjectName>
+                  {(consent.name as string) ?? t`Consent`}
+                </StyledProjectName>
+                {CHANNELS.map((channel) => {
+                  const { state, text } = channelState(
+                    consent,
+                    channel.key,
+                    channel.contact,
+                  );
+
+                  return (
+                    <StyledChannelLine key={channel.key}>
+                      <StyledChannelLabel>{channel.label}</StyledChannelLabel>
+                      <StyledStatus
+                        $state={state}
+                        $editable={editMode}
+                        onClick={() =>
+                          editMode &&
+                          startAction(
+                            consent,
+                            channel.key,
+                            channel.label,
+                            projectLabel,
+                          )
+                        }
+                      >
+                        {editMode
+                          ? state === 'on'
+                            ? t`${text} — opt out`
+                            : t`Grant`
+                          : text}
+                      </StyledStatus>
+                    </StyledChannelLine>
+                  );
+                })}
+              </StyledRow>
+            );
+          })
         )}
-      </StyledHeader>
 
-      {loading ? (
-        <StyledHint>{t`Loading…`}</StyledHint>
-      ) : (
-        consents.map((consent) => {
-          const projectLabel =
-            ((consent.name as string) ?? '').split(' · ')[1] ??
-            (consent.name as string) ??
-            t`project`;
-
-          return (
-            <StyledRow key={consent.id as string}>
-              <StyledProjectName>
-                {(consent.name as string) ?? t`Consent`}
-              </StyledProjectName>
-              {CHANNELS.map((channel) => {
-                const { state, text } = channelState(
-                  consent,
-                  channel.key,
-                  channel.contact,
-                );
-
-                return (
-                  <StyledChannelLine key={channel.key}>
-                    <StyledChannelLabel>{channel.label}</StyledChannelLabel>
-                    <StyledStatus
-                      $state={state}
-                      $editable={editMode}
-                      onClick={() =>
-                        editMode &&
-                        startAction(
-                          consent,
-                          channel.key,
-                          channel.label,
-                          projectLabel,
-                        )
-                      }
-                    >
-                      {editMode
-                        ? state === 'on'
-                          ? t`${text} — opt out`
-                          : t`Grant`
-                        : text}
-                    </StyledStatus>
-                  </StyledChannelLine>
-                );
-              })}
-            </StyledRow>
-          );
-        })
-      )}
-
-      {addableProjects.length > 0 && (
-        <StyledAddRow>
-          <StyledSelect
-            value={addProjectId}
-            onChange={(event) => setAddProjectId(event.target.value)}
-          >
-            <option value="">{t`Add consent for a project…`}</option>
-            {addableProjects.map((project) => (
-              <option key={project.id} value={project.id as string}>
-                {project.name as string}
-              </option>
-            ))}
-          </StyledSelect>
-          <StyledAddButton
-            onClick={openAddModal}
-            disabled={addProjectId === ''}
-          >
-            {t`Add`}
-          </StyledAddButton>
-        </StyledAddRow>
-      )}
+        {addableProjects.length > 0 && (
+          <StyledAddRow>
+            <StyledSelect
+              value={addProjectId}
+              onChange={(event) => setAddProjectId(event.target.value)}
+            >
+              <option value="">{t`Add consent for a project…`}</option>
+              {addableProjects.map((project) => (
+                <option key={project.id} value={project.id as string}>
+                  {project.name as string}
+                </option>
+              ))}
+            </StyledSelect>
+            <StyledAddButton
+              onClick={openAddModal}
+              disabled={addProjectId === ''}
+            >
+              {t`Add`}
+            </StyledAddButton>
+          </StyledAddRow>
+        )}
+      </StyledContainer>
 
       {isDefined(pending) &&
         createPortal(
@@ -981,6 +988,6 @@ export const PersonConsentCard = () => {
           </StyledModalOverlay>,
           document.body,
         )}
-    </StyledContainer>
+    </>
   );
 };
