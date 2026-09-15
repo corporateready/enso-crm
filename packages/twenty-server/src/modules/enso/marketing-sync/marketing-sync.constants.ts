@@ -82,7 +82,7 @@ export type InboundActivityRecord = {
 // The four marketing-consent channels on personProjectConsent. The per-channel
 // boolean field is `${channel}MarketingConsent`.
 export const CONSENT_CHANNELS = ['email', 'sms', 'whatsapp', 'call'] as const;
-type ConsentChannel = (typeof CONSENT_CHANNELS)[number];
+export type ConsentChannel = (typeof CONSENT_CHANNELS)[number];
 
 // personProjectConsent boolean fields a consent change re-syncs on (a row edit
 // that touches none of these — e.g. just `name` — must not re-push).
@@ -152,6 +152,28 @@ export const buildConsentSubscriptionChanges = (
 
   return changes;
 };
+
+// Is this project mirrored at all? Distinguishes the two reasons
+// buildConsentSubscriptionChanges can come back empty: a project nobody has
+// mapped yet (a configuration gap worth reporting) versus a mapped project
+// whose channels have no groups (nothing to say). Kept here so the map itself
+// stays private to this module.
+export const hasProjectSubscriptionGroups = (projectId: string): boolean =>
+  isDefined(PROJECT_SUBSCRIPTION_GROUPS[projectId]);
+
+// Channels whose consent went from granted to not-granted in one edit. A grant
+// that fails to reach Dittofeed only costs us marketing; a REVOCATION that
+// fails to reach it means we keep sending to someone who asked us to stop, so
+// the two cases are reported at different volumes and severities.
+export const revokedConsentChannels = (
+  before: PersonProjectConsentRecord,
+  after: PersonProjectConsentRecord,
+): ConsentChannel[] =>
+  CONSENT_CHANNELS.filter(
+    (channel) =>
+      before[`${channel}MarketingConsent`] === true &&
+      after[`${channel}MarketingConsent`] !== true,
+  );
 
 // Curated v1 trait set — only fields that currently exist on Person and that
 // marketing segments / templates actually use. Grows as custom fields land
