@@ -13,10 +13,12 @@ import { TelephonyContactService } from 'src/modules/enso/telephony/services/tel
 //
 // The `contact` branch is the exception and must stay that way: it answers the
 // PBX with a routing decision while the phone is ringing, so its raw-log write
-// is deliberately NOT awaited. Everything else is a fire-and-forget ack from
-// the PBX's side, so those are logged synchronously. The worker side
-// (the ingest job) lives in TelephonyJobsModule, loaded by JobsModule; the
-// worker boots QueueWorkerModule and does not import this graph.
+// is deliberately NOT awaited — and, since nothing comes back to stamp an
+// outcome on it, its rows are written NOT_TRACKED rather than RECEIVED.
+// Everything else is a fire-and-forget ack from the PBX's side, so those are
+// logged synchronously. The worker side (the ingest job) lives in
+// TelephonyJobsModule, loaded by JobsModule; the worker boots QueueWorkerModule
+// and does not import this graph.
 @Module({
   controllers: [TelephonyController],
   // The contact responder runs on the server, not the worker: it answers the PBX
