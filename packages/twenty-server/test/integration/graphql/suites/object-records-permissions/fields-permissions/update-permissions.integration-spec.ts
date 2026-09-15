@@ -234,6 +234,17 @@ describe('Field update permissions restrictions', () => {
 
   afterEach(async () => {
     if (customRoleId) {
+      // Move JONY back to Member before deleting the custom role, not after.
+      // Deleting it while the member is still assigned leaves JONY pointing at
+      // a role that no longer exists until afterAll runs, and any suite that
+      // authenticates as JONY in that window reads person records with no
+      // effective permissions - which the API reports as 404, not 403.
+      await updateWorkspaceMemberRole({
+        client,
+        roleId: originalMemberRoleId,
+        workspaceMemberId: WORKSPACE_MEMBER_DATA_SEED_IDS.JONY,
+      });
+
       await deleteRole(client, customRoleId);
       customRoleId = '';
     }
