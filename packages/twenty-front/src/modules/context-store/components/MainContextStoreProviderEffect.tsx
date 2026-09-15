@@ -83,24 +83,26 @@ export const MainContextStoreProviderEffect = ({
       return;
     }
 
-    setLastVisitedViewForObjectMetadataNamePlural({
+    // A role default gets ONE application per version, and recording it is what
+    // makes the landing stick. If the last-visited write declined — it re-reads
+    // the view list, which can lag the render that chose this view — then
+    // spending the seed anyway would strand the person on their old view with
+    // no application left to correct it.
+    void setLastVisitedViewForObjectMetadataNamePlural({
       objectNamePlural: objectMetadataItem.namePlural,
       viewId: viewId ?? '',
+    }).then((didRecordLanding) => {
+      if (didRecordLanding && isDefined(roleDefaultViewVersionToMark)) {
+        markRoleDefaultViewApplied({
+          objectMetadataItemId: objectMetadataItem.id,
+          version: roleDefaultViewVersionToMark,
+        });
+      }
     });
 
     setLastVisitedObjectMetadataId({
       objectMetadataItemId: objectMetadataItem.id,
     });
-
-    // After the last-visited write above, never before: that write is what
-    // makes this landing stick, and marking the seeding spent immediately stops
-    // the role default out-ranking it on the next render.
-    if (isDefined(roleDefaultViewVersionToMark)) {
-      markRoleDefaultViewApplied({
-        objectMetadataItemId: objectMetadataItem.id,
-        version: roleDefaultViewVersionToMark,
-      });
-    }
   }, [
     contextStoreCurrentObjectMetadataItemId,
     markRoleDefaultViewApplied,

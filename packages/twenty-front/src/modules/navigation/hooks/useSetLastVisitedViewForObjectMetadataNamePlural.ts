@@ -15,7 +15,7 @@ export const useSetLastVisitedViewForObjectMetadataNamePlural = () => {
     }: {
       objectNamePlural: string;
       viewId: string;
-    }) => {
+    }): Promise<boolean> => {
       const views = store.get(viewsSelector.atom);
 
       const view = views.find((view: ViewWithRelations) => view.id === viewId);
@@ -26,12 +26,16 @@ export const useSetLastVisitedViewForObjectMetadataNamePlural = () => {
         (item) => item.namePlural === objectNamePlural,
       );
 
+      // Reports whether this landing was recorded. The view list is re-read
+      // here rather than taken from the render that chose `viewId`, so the two
+      // can disagree while metadata is refreshing — and a caller that treats a
+      // silent bail as success loses whatever it was pairing with the write.
       if (!isDefined(objectMetadataItem) || !isDefined(view)) {
-        return;
+        return false;
       }
 
       if (view.objectMetadataId !== objectMetadataItem.id) {
-        return;
+        return false;
       }
 
       const lastVisitedViewPerObjectMetadataItem = store.get(
@@ -47,6 +51,8 @@ export const useSetLastVisitedViewForObjectMetadataNamePlural = () => {
           [objectMetadataItem.id]: viewId,
         });
       }
+
+      return true;
     },
     [store],
   );
