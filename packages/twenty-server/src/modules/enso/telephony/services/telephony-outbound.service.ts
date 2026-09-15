@@ -8,6 +8,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { INTERNATIONAL_PHONE_DIGITS } from 'src/modules/enso/shared/utils/person-phone.util';
 import { MOLDCELL_EXTERNAL_ID_PREFIX } from 'src/modules/enso/telephony/telephony.constants';
 import { MoldcellPbxClientService } from 'src/modules/enso/telephony/services/moldcell-pbx-client.service';
 import { type OutboundActivityRow } from 'src/modules/enso/telephony/services/outbound-call-ingest.service';
@@ -206,8 +207,9 @@ export class TelephonyOutboundService {
     // Phone storage in this workspace is inconsistent: some rows keep the
     // country code inside primaryPhoneNumber alongside a wrong calling code (see
     // findPersonByPhone). A number long enough to already be international is
-    // taken as-is rather than having a second country code stapled on.
-    if (number.length >= 11) {
+    // taken as-is rather than having a second country code stapled on. Same
+    // threshold as toE164, named once so the two cannot drift apart.
+    if (number.length >= INTERNATIONAL_PHONE_DIGITS) {
       return `+${number}`;
     }
 
