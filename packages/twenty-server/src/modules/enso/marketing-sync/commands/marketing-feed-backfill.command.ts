@@ -89,6 +89,7 @@ const PAGE_SIZE = 200;
 // the before/after of every changed column, which is where a stage transition
 // survives.
 type TimelineActivityRow = {
+  id: string;
   name: string | null;
   targetOpportunityId: string | null;
   happensAt: string | null;
@@ -565,7 +566,7 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
   // marketing event). Counting reads instead of enqueues reported 360
   // stage-changed jobs for a window that holds 3, which is worth more than a
   // cosmetic fix: this count is what a re-run is verified against.
-  private async forEachPage<TRow extends { createdAt?: unknown }>(
+  private async forEachPage<TRow extends { id?: unknown; createdAt?: unknown }>(
     workspaceId: string,
     objectName: string,
     where: FindOptionsWhere<TRow>,
@@ -588,9 +589,17 @@ export class MarketingFeedBackfillCommand extends CommandRunner {
 
             return repository.find({
               where,
-              // Every object here has createdAt; TRow is too open for the
-              // mapped FindOptionsOrder to see it.
-              order: { createdAt: 'ASC' } as FindOptionsOrder<TRow>,
+              // createdAt is not unique — several records can share a
+              // millisecond when intake writes a batch — and offset paging over
+              // a non-deterministic order silently skips and repeats rows at
+              // page boundaries. `id` breaks the tie so the total order is
+              // stable across pages. (A row whose own update pushes it out of
+              // the window mid-run can still shift offsets; the fix for that
+              // would be keyset paging, which collides with the Between filter
+              // these streams already put on the same column.)
+              // Every object here has both columns; TRow is too open for the
+              // mapped FindOptionsOrder to see them.
+              order: { createdAt: 'ASC', id: 'ASC' } as FindOptionsOrder<TRow>,
               take: PAGE_SIZE,
               skip,
             });
