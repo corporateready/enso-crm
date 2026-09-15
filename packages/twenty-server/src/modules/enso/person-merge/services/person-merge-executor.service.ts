@@ -7,9 +7,10 @@ import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspac
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
+  MAX_AUTO_MERGE_SET_SIZE,
   PERSON_RELATION_REASSIGNMENTS,
-  PHONE_MATCH_DIGITS,
 } from 'src/modules/enso/person-merge/person-merge.constants';
+import { arePhonesSameLine } from 'src/modules/enso/person-merge/utils/phone-match.util';
 import { buildMergeTimelineActivityInsert } from 'src/modules/enso/record-merge/merge-timeline.util';
 import { reassignRelations } from 'src/modules/enso/record-merge/reassign-relations.util';
 
@@ -71,6 +72,21 @@ export class PersonMergeExecutorService {
 
         // Need at least two live records to merge.
         if (persons.length < 2) {
+          return null;
+        }
+
+        // A set this large is not one human with several records, it is a broken
+        // match — a shared placeholder number, an import that put one phone on
+        // every row. Refuse the whole set rather than soft-delete a pile of real
+        // contacts; a merge that never happened is recoverable, and the finder
+        // re-triggers on the next write once someone fixes the data.
+        if (persons.length > MAX_AUTO_MERGE_SET_SIZE) {
+          this.logger.error(
+            `Person merge ABORTED: ${persons.length} live records matched as one person, above the ceiling of ${MAX_AUTO_MERGE_SET_SIZE}. Nothing deleted. Ids: ${persons
+              .map((person) => person.id)
+              .join(', ')}`,
+          );
+
           return null;
         }
 
@@ -208,20 +224,14 @@ export class PersonMergeExecutorService {
     );
   }
 
-  // Last-N national digits of a phone (formatting/calling-code agnostic), or ''.
-  private phoneLast(value: string | null | undefined): string {
-    const digits = (value ?? '').replace(/\D/g, '');
-
-    return digits.length >= 7 ? digits.slice(-PHONE_MATCH_DIGITS) : '';
-  }
-
   // Best-effort: which identity key the duplicates shared with the keeper, for
-  // the timeline summary. Falls back to the generic combined label.
+  // the timeline summary. Uses the finder's own phone comparison so the label
+  // can't claim a reason the matcher wouldn't have accepted.
   private deriveMatchedOn(keeper: PersonRow, duplicates: PersonRow[]): string {
     const keeperEmail = (keeper.emails?.primaryEmail || '')
       .trim()
       .toLowerCase();
-    const keeperPhone = this.phoneLast(keeper.phones?.primaryPhoneNumber);
+    const keeperPhone = keeper.phones?.primaryPhoneNumber;
 
     const byEmail =
       keeperEmail.length > 0 &&
@@ -229,11 +239,9 @@ export class PersonMergeExecutorService {
         (d) =>
           (d.emails?.primaryEmail || '').trim().toLowerCase() === keeperEmail,
       );
-    const byPhone =
-      keeperPhone.length > 0 &&
-      duplicates.some(
-        (d) => this.phoneLast(d.phones?.primaryPhoneNumber) === keeperPhone,
-      );
+    const byPhone = duplicates.some((d) =>
+      arePhonesSameLine(keeperPhone, d.phones?.primaryPhoneNumber),
+    );
 
     if (byEmail && byPhone) return 'email/phone';
     if (byEmail) return 'email';
