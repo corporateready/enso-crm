@@ -7,6 +7,7 @@ import { ILike, Not, In } from 'typeorm';
 
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number.service';
+import { buildPersonPhones } from 'src/modules/enso/telephony/utils/build-person-phones.util';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
@@ -19,12 +20,6 @@ import {
   ENTRY_POINT_BY_DID,
   ENTRY_POINT_BY_PBX_GROUP,
   ENTRY_POINT_BY_ROISTAT_SCENARIO,
-  MOLDOVA_CALLING_CODE,
-  MOLDOVA_COUNTRY_CODE,
-  MOLDOVA_DIAL_PREFIX,
-  ROMANIA_CALLING_CODE,
-  ROMANIA_COUNTRY_CODE,
-  ROMANIA_DIAL_PREFIX,
 } from 'src/modules/enso/telephony/telephony.constants';
 
 type ActorValue = { source: string; name: string; context?: object };
@@ -66,27 +61,6 @@ type PersonRepository = WorkspaceRepository<PersonRow>;
 
 const digitsOnly = (value: unknown): string =>
   String(value ?? '').replace(/\D/g, '');
-
-// Split "+37368879173" into its country prefix and subscriber part.
-const splitE164 = (e164: string): { dialPrefix?: string; national: string } => {
-  const digits = digitsOnly(e164);
-
-  if (digits.startsWith(MOLDOVA_DIAL_PREFIX)) {
-    return {
-      dialPrefix: MOLDOVA_DIAL_PREFIX,
-      national: digits.slice(MOLDOVA_DIAL_PREFIX.length),
-    };
-  }
-
-  if (digits.startsWith(ROMANIA_DIAL_PREFIX)) {
-    return {
-      dialPrefix: ROMANIA_DIAL_PREFIX,
-      national: digits.slice(ROMANIA_DIAL_PREFIX.length),
-    };
-  }
-
-  return { national: digits };
-};
 
 @Injectable()
 export class CallIdentityService {
@@ -154,11 +128,16 @@ export class CallIdentityService {
   // (`37368969113` / `+40`), and some keep a trunk zero. An equality test on the
   // composite therefore misses most real matches, so we shortlist on the
   // subscriber-number suffix in SQL and confirm the match in code.
+  //
+  // The suffix comes from the same split createPerson stores, so a caller whose
+  // row holds the true national part of a foreign number (`977020236` / `+380`)
+  // is still found; shortlisting on the whole international string would miss
+  // it and create a second person on every call.
   private async findPersonByPhone(
     repository: PersonRepository,
     callerE164: string,
   ): Promise<PersonRow | undefined> {
-    const { national } = splitE164(callerE164);
+    const national = buildPersonPhones(callerE164)?.primaryPhoneNumber ?? '';
 
     if (national.length < 6) {
       return undefined;
@@ -202,43 +181,22 @@ export class CallIdentityService {
     repository: PersonRepository,
     callerE164: string,
   ): Promise<string | undefined> {
-    const { dialPrefix, national } = splitE164(callerE164);
+    // Store the canonical split shape (national number + calling code + ISO
+    // country) rather than the embedded-country-code variant that makes
+    // existing rows hard to match — for the caller's real country, not only
+    // Moldova and Romania.
+    const phones = buildPersonPhones(callerE164);
 
-    if (!national) {
+    if (!phones) {
       return undefined;
     }
 
     const id = randomUUID();
     const lastPosition = await repository.maximum('position', undefined);
 
-    // Store the canonical split shape (national number + calling code) rather
-    // than repeating the embedded-country-code variant that makes existing rows
-    // hard to match.
-    const callingCode =
-      dialPrefix === ROMANIA_DIAL_PREFIX
-        ? ROMANIA_CALLING_CODE
-        : dialPrefix === MOLDOVA_DIAL_PREFIX
-          ? MOLDOVA_CALLING_CODE
-          : undefined;
-
-    const countryCode =
-      dialPrefix === ROMANIA_DIAL_PREFIX
-        ? ROMANIA_COUNTRY_CODE
-        : dialPrefix === MOLDOVA_DIAL_PREFIX
-          ? MOLDOVA_COUNTRY_CODE
-          : undefined;
-
     await repository.insert({
       id,
-      phones: {
-        primaryPhoneNumber: national,
-        ...(isDefined(callingCode)
-          ? { primaryPhoneCallingCode: callingCode }
-          : {}),
-        ...(isDefined(countryCode)
-          ? { primaryPhoneCountryCode: countryCode }
-          : {}),
-      },
+      phones,
       position: (lastPosition ?? 0) + 1,
       createdBy: SYSTEM_ACTOR,
       updatedBy: SYSTEM_ACTOR,
