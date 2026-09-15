@@ -21,6 +21,45 @@ describe('If/Else Workflow (e2e)', () => {
   let elseIfBranchEmptyNodeId: string | null = null;
   let elseIfBranchId: string | null = null;
 
+  // `activateWorkflowVersion` returns as soon as the VERSION is active. The
+  // workflow's own `statuses` array is written afterwards, by
+  // WorkflowStatusesUpdateJob via workflow-version-status.listener — so reading
+  // `workflow.statuses` straight after activation races that job. Poll instead,
+  // matching waitForWorkflowCompletion's 30 x 500ms budget.
+  const waitForWorkflowStatus = async (
+    status: string,
+    maxAttempts = 30,
+    intervalMs = 500,
+  ): Promise<string[]> => {
+    let statuses: string[] = [];
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const response = await client
+        .post('/graphql')
+        .set('Authorization', `Bearer ${APPLE_JANE_ADMIN_ACCESS_TOKEN}`)
+        .send({
+          query: `
+            query FindWorkflow($id: UUID!) {
+              workflow(filter: { id: { eq: $id } }) {
+                statuses
+              }
+            }
+          `,
+          variables: { id: createdWorkflowId },
+        });
+
+      statuses = response.body.data?.workflow?.statuses ?? [];
+
+      if (statuses.includes(status)) {
+        return statuses;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    return statuses;
+  };
+
   beforeAll(async () => {
     const createWorkflowResponse = await client
       .post('/graphql')
@@ -387,6 +426,9 @@ describe('If/Else Workflow (e2e)', () => {
 
     expect(activateResponse.body.errors).toBeUndefined();
     expect(activateResponse.body.data.activateWorkflowVersion).toBe(true);
+
+    // Settle the asynchronous status write before any test reads it.
+    expect(await waitForWorkflowStatus('ACTIVE')).toContain('ACTIVE');
   });
 
   afterAll(async () => {
