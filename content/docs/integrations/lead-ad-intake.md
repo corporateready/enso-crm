@@ -163,7 +163,7 @@ What the data does say (2026-09-17):
 | page | lead-gen adsets | active | has ever delivered |
 |---|---|---|---|
 | Vânzări Imobiliare `585329244673786` | 1 | **1** | yes — all 106 leads |
-| Artima `104832627735882` | 20 | 0 (all paused) | no |
+| Artima `104832627735882` | 29 | 0 (all paused, none planned) | no |
 | Avram Iancu, ENSO Dev Moldova, ENSO Dev România | 0 | 0 | no |
 
 **Exactly one active lead-gen adset exists** — `Newton Buiucani | Leads | Oferta
@@ -172,11 +172,34 @@ is running on them, not necessarily because they are unsubscribed. Note this inv
 the old note: the page actually delivering is Vânzări, one of the "remaining four",
 while the page recorded as confirmed has delivered nothing.
 
-**Artima is the one that matters.** It has 20 paused lead adsets, so it is the page
-most likely to start producing — and an unsubscribed page fails *silently*, with no
-error and no leads. Verify Artima's subscription **before** those adsets are resumed,
-not after. (The social channel learned this the hard way: a 0-of-N "no data" reading
-there turned out to be a producer-side bug, not an absence of demand.)
+**Chatwoot's page tokens do not answer this either** — worth knowing before anyone
+tries it. Chatwoot manages page webhooks, so its tokens *do* carry
+`pages_manage_metadata` and the call succeeds. But Graph scopes `subscribed_apps` to the
+**app that issued the token**: asked with a Chatwoot page token, all five pages report
+exactly one app, `ENSO Chatwoot`, and ENSO Lead Ads as absent. That answer is false, and
+Vânzări is the control that proves it — it reads "not subscribed" while delivering 107
+leads through the Lead Ads app's own `leadgen` webhook, which cannot happen without a
+subscription. **Reading a given app's page subscription requires a token issued by that
+app.**
+
+That leaves two ways to answer it, and the cheaper one is better:
+
+1. **Send a test lead** on an Artima form with Meta's Lead Ads Testing Tool and watch
+   for the n8n execution. This tests the thing we actually care about — delivery —
+   rather than the flag, and needs no new credential.
+2. Mint a new system user on ENSO Lead Ads carrying `pages_manage_metadata` (the
+   `Meta Ads Read` pattern) if the flag itself is wanted in a dashboard.
+
+**Nothing is blocked on this today.** Vânzări is the only page running lead ads, and it
+demonstrably works. Artima's 29 lead adsets (14 campaigns, RO + RU) are all paused and
+**there are no Artima lead ads planned** — so its subscription state costs nothing while
+it stays that way.
+
+Treat the check as a **precondition for starting lead ads on any new page**, not as
+open work. It matters at that moment because an unsubscribed page fails *silently* — no
+error, no leads, just a campaign that appears to underperform. (The social channel
+learned this the hard way: a 0-of-N "no data" reading there turned out to be a
+producer-side bug, not an absence of demand.)
 
 ## UTMs come from the form, not from Meta
 
