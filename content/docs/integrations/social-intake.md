@@ -174,11 +174,51 @@ and the person lookup):
 | tier | source | fills |
 |---|---|---|
 | 1 | `referral.ref` | everything, exactly as before — always wins |
-| 2 | `GET /{ad_id}?fields=name,adset{name},campaign{name}` | `utm_campaign` = campaign name, `utm_content` = ad name, `utm_term` = adset name |
+| 2 | `GET /{ad_id}?fields=name,adset{name},campaign{name}` | `utm_content` = ad name — **and nothing else**, see below |
 | 3 | `referral.ads_context_data.ad_title` | `utm_content` = the ad's headline |
 
 Any tier that fires also sets `utm_source` = `instagram`/`facebook` from the
 platform and `utm_medium` = `paid_social`.
+
+### ⚠️ `utm_campaign` is ENSO's taxonomy, not Meta's names
+
+ENSO's utm values are **hand-authored slugs**, and BI groups on them:
+
+```
+google   | cpc                  | brand_search_ro | hero_cta
+facebook | static_call_tracking | artima_facebook | facebook_page_description
+```
+
+A Meta campaign *name* — `Artima | Messages | Vanzare 12 parcari subterane| Chisinau`
+— is a different kind of thing. It is useful, but it is not a `utm_campaign`, and
+putting it in that column splits the taxonomy reporting depends on. **Only
+marketing knows the canonical slug for a campaign; deriving one by transforming the
+Meta name invents a value, which is worse than leaving it empty.**
+
+So tier 2 fills `utm_content` (the creative) and deliberately leaves
+`utm_campaign` / `utm_term` empty. The Meta names are kept on the n8n item as
+`metaCampaignName` / `metaAdsetName` for the execution log, and never written to
+the CRM. *(Tier 2 briefly did write them on 2026-09-17; corrected the same day, and
+the 23 backfilled rows had those two columns cleared to NULL.)*
+
+**The real slugs come from the ad's `ref`.** Marketing sets it per click-to-message
+ad, n8n parses it as a URL-encoded query string, and tier 1 then writes the exact
+taxonomy:
+
+```
+proj=ENS2301&utm_source=instagram&utm_medium=paid_social&utm_campaign=<slug>&utm_content=<slug>&utm_term=<slug>
+```
+
+`proj` carries its own weight: it **routes the lead to the right project straight
+from the ad** (ENS2301 ARTIMA, ENS2502 ENSO Estate MD, ENS2501 ENSO Living RO,
+ENS2402 Avram Iancu, ENSVI Vânzări) — which matters most on Vânzări, whose inbox
+has no default project, so an unrouted lead stays activity-only per D9.
+
+⚠️ **`Lead Ad Intake → CRM` has the same category error and is untouched**: it sets
+`utmCampaign: lead.campaign_name`, so every lead-ad row in the CRM and in BigQuery
+carries a Meta name rather than a slug. It predates this work. The `ref` fix does
+not apply there (lead forms have no `ref`) — it needs either hidden form fields
+carrying the slugs or a campaign→slug map, plus a decision about the history.
 
 **Tier 2 went live 2026-09-17**, on its own credential **`Meta Ads Read`**
 (`g5md2cl23iSeIftU`) — a separate system user whose token carries `ads_read` +
@@ -607,9 +647,11 @@ was in the chatwoot-web logs the whole time.
 Chatwoot's deploy logs print the full webhook, so `sender.id` + `ad_id` were
 recoverable and matched to `platformUserId` on the CRM activity with 0–1s
 timestamp gaps. **23 activities + 19 opportunities repaired** (20 Instagram, 3
-Facebook; 3 of 4 ads resolved to full campaign/ad/adset names via the Ads API, the
-fourth fell back to the webhook's `ad_title` because its ad account is not granted
-to the token). One activity was skipped: its nearest referral was 2.5 days away, so
+Facebook) — set to `PAID` + `utm_source` + `utm_medium` + the creative in
+`utm_content`. 3 of 4 ads resolved through the Ads API; the fourth fell back to the
+webhook's `ad_title` because its ad account is not granted to the token. The first
+pass also wrote Meta campaign/adset names into `utm_campaign` / `utm_term`; those
+two columns were cleared to NULL the same day — see the taxonomy note above. One activity was skipped: its nearest referral was 2.5 days away, so
 it is a separate later conversation and stays `SOCIAL`. The window since 2026-09-08
 now reads 23 `PAID` / 13 `SOCIAL`.
 
