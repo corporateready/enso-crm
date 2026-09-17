@@ -568,12 +568,71 @@ Lead Ads system token* (`bMIbvMPFyVcJEUPV`) also re-tokens the live Lead Ad
 intake, and a regenerated token missing `leads_retrieval` or
 `pages_read_engagement` breaks lead fetching. To find which ad account to grant,
 look up ad id `120243558339980604` (a real one from a recent lead) in Ads Manager.
-- The subscription gap is **not proof** that paid social leads were mis-attributed:
-  an ads-initiated *first* message carries its referral inside the `messages` event
-  we already had. The likelier reason no referral has ever appeared is that no
-  click-to-Messenger / click-to-Direct ads have been running with a `ref` — paid
-  social spend currently goes through the Lead Ads channel, whose activities do
-  arrive `PAID` with full UTMs. **Open question for marketing.**
+- ~~The likelier reason no referral has ever appeared is that no
+  click-to-Messenger / click-to-Direct ads have been running.~~ **Wrong — see the
+  root cause below.** The ads were running the whole time; the zero was our own bug.
+
+### ⚠️ ROOT CAUSE (2026-09-17): the referral is nested inside the message
+
+PATCH 1 read `messaging.referral` and `postback.referral`. Meta puts it
+**inside the message** on an ad-initiated thread:
+
+```ruby
+"messaging" => [{ "sender" => {...},
+  "message" => { "mid" => "...", "text" => "1–2 locuri",
+    "referral" => { "source" => "ADS", "type" => "OPEN_THREAD",
+                    "ad_id" => "120250262785360604",
+                    "ads_context_data" => { "ad_title" => "Vanzare 12 parcari subterane| Chisinau" } } } }]
+```
+
+So the read resolved to `nil`, `additional_attributes` stayed `{}`, and **every
+click-to-Messenger / click-to-Direct lead was filed as organic** — on both
+channels. Fixed in corporateready/chatwoot#2 (`message.referral` first, the two
+old paths kept as fallbacks for `m.me?ref` and Get Started postbacks); merged and
+deployed as **`063cfa0`** (rollback `f4102ca`), both files confirmed in the running
+image.
+
+**The ads were always there.** Asking Meta with the `ads_read` token: 4 of 5 active
+ad sets on ad account `4844346675581776` are `MESSENGER` / `INSTAGRAM_DIRECT`
+(campaign *"Artima | Messages | Vanzare 12 parcari subterane"*), and the
+*"1–2 locuri"* messages filling the Artima inbox are that ad's ice-breaker reply.
+
+**The lesson worth keeping:** "0 of 854 conversations carry a referral" was read as
+evidence that no message ads were running. It was evidence that our reader was
+broken. Check the producer before concluding a channel is idle — the raw webhook
+was in the chatwoot-web logs the whole time.
+
+### Backfill (2026-09-17)
+
+Chatwoot's deploy logs print the full webhook, so `sender.id` + `ad_id` were
+recoverable and matched to `platformUserId` on the CRM activity with 0–1s
+timestamp gaps. **23 activities + 19 opportunities repaired** (20 Instagram, 3
+Facebook; 3 of 4 ads resolved to full campaign/ad/adset names via the Ads API, the
+fourth fell back to the webhook's `ad_title` because its ad account is not granted
+to the token). One activity was skipped: its nearest referral was 2.5 days away, so
+it is a separate later conversation and stays `SOCIAL`. The window since 2026-09-08
+now reads 23 `PAID` / 13 `SOCIAL`.
+
+Written as **direct SQL** against `workspace_71ociw77rfv6fazubi4nnuo1k`
+(`_inboundActivity` + `opportunity`), deliberately:
+
+- `notifyNewDeal` is creation-only (one call site, gated on `result.created`), so an
+  update posts nothing to a marketing room — but `opportunity.updateOne` carries a
+  post-hook that pushes assignment into Chatwoot. SQL runs no hooks at all, so the
+  backfill sent no Google Chat message and touched no Chatwoot conversation.
+- Every statement was guarded to rows still showing `SOCIAL` with empty utm_*, so a
+  re-run cannot overwrite real data. All 42 updated exactly one row, one transaction.
+  Before-state: `scratchpad/backfill-before-2026-09-17.txt`.
+
+⚠️ **The backfill window is perishable.** Railway log retention is per-deployment,
+so the payloads only reached back to the 2026-09-08 redeploy, and this deploy
+started a fresh window. Anything earlier is unrecoverable.
+
+Not covered: standalone referral events (an ad click that opens a thread *without*
+a message). The `messaging_referrals` subscription does deliver them, but the
+facebook-messenger gem logs *"Ignoring referral (no hook registered)"* and drops
+them. No attribution is lost today, since the referral also rides on the message
+that follows.
 - Also fixed CRM-side: the marketing-room post now names the platform
   (`Instagram Social Message` — `platformPrefix` had been reading `source`, always
   `CHATWOOT`, instead of `platform`) and distinguishes an organic DM from a lost
