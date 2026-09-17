@@ -1,6 +1,7 @@
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
+import { normalizeReferrer } from 'src/modules/enso/shared/utils/referrer.util';
 import {
   ANSWERED_CALL_STATUS,
   SALES_PICKUP_CALL_STATUS,
@@ -38,6 +39,7 @@ export type ProjectDealActivityFacts = {
   durationS?: number;
   calleeDid?: string;
   landingPage?: string;
+  referrer?: string;
   occurredAt?: Date | string;
   m2Requested?: number;
   utmSource?: string;
@@ -212,6 +214,10 @@ export const buildProjectDealMessage = (
   }
 
   push('Landing Page', activity.landingPage);
+  // Kept next to Landing Page: the pair is "where they landed" and "what sent
+  // them", and a referrer is the only attribution a dynamic call or an untagged
+  // form carries when the utm_* block below comes back empty.
+  push('Referrer', normalizeReferrer(activity.referrer));
   push('Timestamp', formatProjectDealTimestamp(activity.occurredAt));
 
   lines.push(BLOCK_SEPARATOR, '');
