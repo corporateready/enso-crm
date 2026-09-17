@@ -172,6 +172,24 @@ is running on them, not necessarily because they are unsubscribed. Note this inv
 the old note: the page actually delivering is Vânzări, one of the "remaining four",
 while the page recorded as confirmed has delivered nothing.
 
+**Chatwoot's page tokens do not answer this either** — worth knowing before anyone
+tries it. Chatwoot manages page webhooks, so its tokens *do* carry
+`pages_manage_metadata` and the call succeeds. But Graph scopes `subscribed_apps` to the
+**app that issued the token**: asked with a Chatwoot page token, all five pages report
+exactly one app, `ENSO Chatwoot`, and ENSO Lead Ads as absent. That answer is false, and
+Vânzări is the control that proves it — it reads "not subscribed" while delivering 107
+leads through the Lead Ads app's own `leadgen` webhook, which cannot happen without a
+subscription. **Reading a given app's page subscription requires a token issued by that
+app.**
+
+That leaves two ways to answer it, and the cheaper one is better:
+
+1. **Send a test lead** on an Artima form with Meta's Lead Ads Testing Tool and watch
+   for the n8n execution. This tests the thing we actually care about — delivery —
+   rather than the flag, and needs no new credential.
+2. Mint a new system user on ENSO Lead Ads carrying `pages_manage_metadata` (the
+   `Meta Ads Read` pattern) if the flag itself is wanted in a dashboard.
+
 **Artima is the one that matters.** It has 20 paused lead adsets, so it is the page
 most likely to start producing — and an unsubscribed page fails *silently*, with no
 error and no leads. Verify Artima's subscription **before** those adsets are resumed,
