@@ -1,5 +1,5 @@
 import { UseFilters, UseGuards, UsePipes } from '@nestjs/common';
-import { Args, Mutation, Query } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query } from '@nestjs/graphql';
 
 import { MetadataResolver } from 'src/engine/api/graphql/graphql-config/decorators/metadata-resolver.decorator';
 import { AuthGraphqlApiExceptionFilter } from 'src/engine/core-modules/auth/filters/auth-graphql-api-exception.filter';
@@ -16,12 +16,28 @@ import { isDefined } from 'twenty-shared/utils';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { ENSO_HIDDEN_NAVIGATION_OBJECT_NAME_SINGULARS } from 'src/modules/enso/record-visibility/constants/enso-hidden-navigation-objects.constant';
 import {
+  EnsoColumnWidthDTO,
   EnsoDefaultViewDTO,
   EnsoDefaultViewInput,
   EnsoViewerScopeDTO,
 } from 'src/modules/enso/record-visibility/dtos/enso-viewer-scope.dto';
+import { EnsoColumnWidthsService } from 'src/modules/enso/column-widths/services/enso-column-widths.service';
+import { type EnsoUserColumnWidths } from 'src/modules/enso/column-widths/utils/enso-column-widths.util';
 import { EnsoDefaultViewsService } from 'src/modules/enso/default-views/services/enso-default-views.service';
 import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/services/enso-viewer-scope.service';
+
+// The store nests widths per view; GraphQL gets one flat list, which is what
+// the client indexes anyway.
+const flattenEnsoColumnWidths = (
+  widths: EnsoUserColumnWidths,
+): EnsoColumnWidthDTO[] =>
+  Object.entries(widths).flatMap(([viewId, viewWidths]) =>
+    Object.entries(viewWidths).map(([fieldMetadataId, size]) => ({
+      viewId,
+      fieldMetadataId,
+      size,
+    })),
+  );
 
 // Lets the client know whether it is rendering for someone limited to their own
 // records, and what to leave out of their sidebar. Reveals nothing about anyone
@@ -37,6 +53,7 @@ export class EnsoViewerScopeResolver {
   constructor(
     private readonly ensoViewerScopeService: EnsoViewerScopeService,
     private readonly ensoDefaultViewsService: EnsoDefaultViewsService,
+    private readonly ensoColumnWidthsService: EnsoColumnWidthsService,
   ) {}
 
   @Query(() => EnsoViewerScopeDTO)
@@ -73,6 +90,13 @@ export class EnsoViewerScopeResolver {
         })
       : {};
 
+    const personalColumnWidths = user
+      ? await this.ensoColumnWidthsService.getUserColumnWidths({
+          workspaceId: workspace.id,
+          userId: user.id,
+        })
+      : {};
+
     return {
       isRecordScoped,
       hiddenNavigationObjectNameSingulars: isRecordScoped
@@ -85,6 +109,7 @@ export class EnsoViewerScopeResolver {
       personalDefaultViews: Object.entries(personalDefaultViews).map(
         ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
       ),
+      personalColumnWidths: flattenEnsoColumnWidths(personalColumnWidths),
     };
   }
 
@@ -123,6 +148,29 @@ export class EnsoViewerScopeResolver {
       objectMetadataId: objectId,
       viewId: view,
     }));
+  }
+
+  // Remembering how wide YOU made a column is not an administrative act either:
+  // it writes only to this person's own row, never to the shared view, so a
+  // member who cannot edit a role view can still keep their own layout.
+  // A null size clears the override and hands the column back to the view.
+  @Mutation(() => [EnsoColumnWidthDTO])
+  async ensoSetMyColumnWidth(
+    @Args('viewId', { type: () => String }) viewId: string,
+    @Args('fieldMetadataId', { type: () => String }) fieldMetadataId: string,
+    @Args('size', { type: () => Int, nullable: true }) size: number | null,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthUser() user: UserEntity,
+  ): Promise<EnsoColumnWidthDTO[]> {
+    const nextWidths = await this.ensoColumnWidthsService.setUserColumnWidth({
+      workspaceId: workspace.id,
+      userId: user.id,
+      viewId,
+      fieldMetadataId,
+      size,
+    });
+
+    return flattenEnsoColumnWidths(nextWidths);
   }
 
   // Configuring what a whole ROLE lands on is an administrative act, so unlike

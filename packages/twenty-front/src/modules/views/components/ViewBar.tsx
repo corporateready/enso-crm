@@ -8,6 +8,7 @@ import { QueryParamsSortsEffect } from '@/views/components/QueryParamsSortsEffec
 import { ViewBarPageTitle } from '@/views/components/ViewBarPageTitle';
 import { ViewPickerDropdown } from '@/views/view-picker/components/ViewPickerDropdown';
 
+import { EnsoPersonalColumnWidthsEffect } from '@/enso/column-widths/components/EnsoPersonalColumnWidthsEffect';
 import { ObjectFilterDropdownComponentInstanceContext } from '@/object-record/object-filter-dropdown/states/contexts/ObjectFilterDropdownComponentInstanceContext';
 import { VIEW_SORT_DROPDOWN_ID } from '@/object-record/object-sort-dropdown/constants/ViewSortDropdownId';
 import { ObjectSortDropdownComponentInstanceContext } from '@/object-record/object-sort-dropdown/states/context/ObjectSortDropdownComponentInstanceContext';
@@ -54,6 +55,7 @@ export const ViewBar = ({
       <ViewBarRecordFilterGroupEffect />
       <ViewBarAnyFieldFilterEffect />
       <ViewBarRecordFieldEffect />
+      <EnsoPersonalColumnWidthsEffect />
       <ViewBarRecordFilterEffect />
       <ViewBarRecordSortEffect />
       <QueryParamsFiltersEffect />
