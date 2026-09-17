@@ -14,6 +14,7 @@ import {
   IconShield,
   IconSparkles,
   IconSpy,
+  IconTable,
   IconUsers,
 } from 'twenty-ui/display';
 import { PermissionFlagType } from '~/generated-metadata/graphql';
@@ -134,6 +135,15 @@ export const useSettingsRolePermissionFlagConfig = ({
         name: t`Layouts`,
         description: t`Customize page layouts and UI structure`,
         Icon: IconLayoutSidebarRightCollapse,
+        isRelevantForAgents: true,
+        isRelevantForApiKeys: true,
+        isRelevantForUsers: true,
+      },
+      {
+        key: PermissionFlagType.VIEWS,
+        name: t`Manage Views`,
+        description: t`Create, edit, and delete workspace views`,
+        Icon: IconTable,
         isRelevantForAgents: true,
         isRelevantForApiKeys: true,
         isRelevantForUsers: true,

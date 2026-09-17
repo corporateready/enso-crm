@@ -10,7 +10,6 @@ import {
   IconFileUpload,
   IconMail,
   IconSparkles,
-  IconTable,
   IconUser,
 } from 'twenty-ui/display';
 import { PermissionFlagType } from '~/generated-metadata/graphql';
@@ -124,16 +123,6 @@ export const useActionRolePermissionFlagConfig = ({
         isToolPermission: true,
         isRelevantForAgents: false,
         isRelevantForApiKeys: false,
-        isRelevantForUsers: true,
-      },
-      {
-        key: PermissionFlagType.VIEWS,
-        name: t`Manage Views`,
-        description: t`Create, edit, and delete workspace views`,
-        Icon: IconTable,
-        isToolPermission: true,
-        isRelevantForAgents: true,
-        isRelevantForApiKeys: true,
         isRelevantForUsers: true,
       },
     ];
