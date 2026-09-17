@@ -24,6 +24,14 @@ export type ResolveOpportunityFromActivityJobData = {
   };
 };
 
+// The marketing-room post for a newly created deal. `attempt` counts the polls
+// spent waiting for a call's closing push — see PostProjectDealJob.
+export type PostProjectDealJobData = {
+  workspaceId: string;
+  opportunityId: string;
+  attempt?: number;
+};
+
 export type RouteOpportunityJobData = {
   workspaceId: string;
   opportunityId: string;

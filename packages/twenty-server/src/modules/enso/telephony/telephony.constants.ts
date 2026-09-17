@@ -203,6 +203,27 @@ export const MOLDCELL_NON_PERSON_LOGINS = new Set(['pbx']);
 // Statuses that mean a human actually spoke to the caller.
 export const ANSWERED_CALL_STATUSES = ['ANSWERED', 'SALES_PICKUP'];
 
+// The two statuses the per-leg pushes can put on a row before the call is over.
+// SALES_PICKUP is what an ACCEPTED push means — an individual has the caller on
+// the line, the call is still running, and no closing push has said how it ended.
+// ABANDONED is what a CANCELLED push means, and on a call that rings several
+// extensions it is only ever true OF THAT LEG.
+export const SALES_PICKUP_CALL_STATUS = 'SALES_PICKUP';
+export const ABANDONED_CALL_STATUS = 'ABANDONED';
+// What the closing push says when the call was picked up and talked through.
+export const ANSWERED_CALL_STATUS = 'ANSWERED';
+
+// `eventKey` of the one push per provider that reports how a call actually went.
+// Everything else about a call is provisional: the `event` pushes are per-leg and
+// carry no duration, so until one of these lands the row holds whatever the last
+// leg claimed. Anything that reports a call's outcome outwards should wait for it.
+export const MOLDCELL_HISTORY_EVENT_KEY = 'moldcell:history';
+export const ROISTAT_AFTER_CALL_EVENT_KEY = 'roistat:after-call';
+export const AUTHORITATIVE_CALL_EVENT_KEYS = [
+  MOLDCELL_HISTORY_EVENT_KEY,
+  ROISTAT_AFTER_CALL_EVENT_KEY,
+];
+
 // The two countries we operate in.
 export const MOLDOVA_DIAL_PREFIX = '373';
 export const ROMANIA_DIAL_PREFIX = '40';

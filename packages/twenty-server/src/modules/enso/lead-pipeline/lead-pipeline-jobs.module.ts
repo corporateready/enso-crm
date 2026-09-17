@@ -4,6 +4,7 @@ import { GoogleChatWebhookModule } from 'src/modules/enso/notifications/google-c
 import { ClaimCheckJob } from 'src/modules/enso/lead-pipeline/jobs/claim-check.job';
 import { ManagerNotifyJob } from 'src/modules/enso/lead-pipeline/jobs/manager-notify.job';
 import { NotifyManagerAssignmentJob } from 'src/modules/enso/lead-pipeline/jobs/notify-manager-assignment.job';
+import { PostProjectDealJob } from 'src/modules/enso/lead-pipeline/jobs/post-project-deal.job';
 import { RecordActivityAttributionJob } from 'src/modules/enso/lead-pipeline/jobs/record-activity-attribution.job';
 import { ResolveOpportunityFromActivityJob } from 'src/modules/enso/lead-pipeline/jobs/resolve-opportunity-from-activity.job';
 import { RouteOpportunityJob } from 'src/modules/enso/lead-pipeline/jobs/route-opportunity.job';
@@ -51,13 +52,14 @@ import { PersonProjectConsentNameService } from 'src/modules/enso/person-project
     PersonProjectConsentNameService,
     ConsentEventService,
     ManagerNotificationService,
-    // The marketing lane's poster. Same reason OpportunityClaimService is
-    // listed here: OpportunityResolutionService depends on it, and this graph
-    // resolves independently of the server one.
+    // The marketing lane's poster, driven by PostProjectDealJob. Listed here for
+    // the same reason OpportunityClaimService is: this graph resolves
+    // independently of the server one.
     ProjectNotificationService,
     RecordActivityAttributionJob,
     ResolveOpportunityFromActivityJob,
     RouteOpportunityJob,
+    PostProjectDealJob,
     NotifyManagerAssignmentJob,
     ClaimCheckJob,
     ManagerNotifyJob,

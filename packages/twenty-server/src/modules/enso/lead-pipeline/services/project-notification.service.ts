@@ -11,6 +11,28 @@ import {
 } from 'src/modules/enso/lead-pipeline/utils/build-project-deal-message.util';
 import { ProjectChatWebhookService } from 'src/modules/enso/notifications/services/project-chat-webhook.service';
 import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.util';
+import { hasAuthoritativeCallPush } from 'src/modules/enso/telephony/utils/call-outcome.util';
+
+// Whether a call's outcome is still provisional — see `hasAuthoritativeCallPush`.
+//
+// Only INCOMING_CALL waits. A form, a DM or a lead ad is complete the instant it
+// arrives, and a CALLBACK_REQUEST is a web form too, not a PBX call.
+const awaitsCallOutcome = (
+  activityRow: { kind?: string | null; submittedPayload?: unknown } | undefined,
+): boolean => {
+  if (activityRow?.kind !== 'INCOMING_CALL') {
+    return false;
+  }
+
+  return !hasAuthoritativeCallPush(activityRow.submittedPayload);
+};
+
+// 'awaiting-call-outcome' is the only non-terminal answer: the caller is expected
+// to come back later.
+export type ProjectDealPostOutcome =
+  | 'posted'
+  | 'skipped'
+  | 'awaiting-call-outcome';
 
 // The MARKETING lane: one shared Google Chat space per development, posting
 // every new deal with the attribution that opened it.
@@ -29,6 +51,12 @@ import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.
 // Posts only on deal CREATION. A re-engagement on an existing deal is not new
 // demand, so counting it here would inflate whatever marketing measures from
 // this feed.
+//
+// A CALL's deal is opened the moment an individual accepts — about twenty
+// seconds in, with the conversation still going — so at that point the row holds
+// nothing final: no duration, and a status that may belong to a losing leg. This
+// service therefore reports back that it is still waiting, and PostProjectDealJob
+// asks again until the provider's closing push lands. See `awaitsCallOutcome`.
 @Injectable()
 export class ProjectNotificationService {
   private readonly logger = new Logger(ProjectNotificationService.name);
@@ -50,26 +78,36 @@ export class ProjectNotificationService {
 
   async notifyNewDeal(
     authContext: WorkspaceAuthContext,
-    params: { opportunityId: string },
-  ): Promise<void> {
+    params: {
+      opportunityId: string;
+      // Set once the wait for the call's closing push has run out of patience.
+      // The room hears about the lead either way — late and complete is the
+      // goal, but silent is not an option.
+      postWithoutFinalCallOutcome?: boolean;
+    },
+  ): Promise<ProjectDealPostOutcome> {
     const workspaceId = authContext.workspace?.id;
 
     if (!isDefined(workspaceId)) {
-      return;
+      return 'skipped';
     }
 
     const loaded = await this.loadFacts(workspaceId, params.opportunityId);
 
     if (!isDefined(loaded)) {
-      return;
+      return 'skipped';
     }
 
-    const { projectId, facts } = loaded;
+    const { projectId, facts, isAwaitingCallOutcome } = loaded;
+
+    if (isAwaitingCallOutcome && params.postWithoutFinalCallOutcome !== true) {
+      return 'awaiting-call-outcome';
+    }
 
     // A deal with no project has no room to post to. Not an error: unattributed
     // inbound exists, and the manager lane still covers it.
     if (!isDefined(projectId)) {
-      return;
+      return 'skipped';
     }
 
     const webhookUrl = await this.projectChatWebhookService.getWebhookUrl({
@@ -78,7 +116,7 @@ export class ProjectNotificationService {
     });
 
     if (!isDefined(webhookUrl)) {
-      return;
+      return 'skipped';
     }
 
     const posted = await this.projectChatWebhookService.post(webhookUrl, {
@@ -93,13 +131,20 @@ export class ProjectNotificationService {
         `Posted new deal ${params.opportunityId} to the ${facts.projectName ?? projectId} marketing space.`,
       );
     }
+
+    return posted ? 'posted' : 'skipped';
   }
 
   private async loadFacts(
     workspaceId: string,
     opportunityId: string,
   ): Promise<
-    { projectId: string | undefined; facts: ProjectDealFacts } | undefined
+    | {
+        projectId: string | undefined;
+        facts: ProjectDealFacts;
+        isAwaitingCallOutcome: boolean;
+      }
+    | undefined
   > {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
@@ -179,6 +224,7 @@ export class ProjectNotificationService {
 
         return {
           projectId: opportunity.projectId ?? undefined,
+          isAwaitingCallOutcome: awaitsCallOutcome(activityRow),
           facts: {
             projectName,
             fullName,
@@ -197,6 +243,7 @@ export class ProjectNotificationService {
                 opportunity.firstTrafficType ??
                 undefined,
               callStatus: activityRow?.callStatus ?? undefined,
+              salesPickup: activityRow?.salesPickup === true,
               durationS: activityRow?.durationS ?? undefined,
               calleeDid: activityRow?.calleeDid ?? undefined,
               landingPage:
