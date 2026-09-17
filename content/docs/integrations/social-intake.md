@@ -180,18 +180,29 @@ and the person lookup):
 Any tier that fires also sets `utm_source` = `instagram`/`facebook` from the
 platform and `utm_medium` = `paid_social`.
 
-⚠️ **Tier 2 is dark today.** It reuses the `Facebook Lead Ads system token`
-credential, which has no `ads_read` / `ads_management` scope on the ad account:
-the call returns `GraphMethodException` code 100 subcode 33 (*"cannot be loaded
-due to missing permissions"*), the node is `neverError` + `onError:
-continueRegularOutput`, and the flow drops to tier 3. Grant that scope (or point
-the credential at a system-user token that has it) and tier 2 starts working with
-no workflow change. The failure text is kept on the item as `adLookupError` for
-the execution log; it is never written to the CRM.
+**Tier 2 went live 2026-09-17**, on its own credential **`Meta Ads Read`**
+(`g5md2cl23iSeIftU`) — a separate system user whose token carries `ads_read` +
+`public_profile` and nothing else. The `Read Ad` node uses it; `Lead Ad Intake →
+CRM` keeps its own `Facebook Lead Ads system token`, so rotating one cannot break
+the other. (Until then tier 2 was dark: the Lead Ads token had no `ads_read` and
+the call returned `GraphMethodException` 100/33.)
 
-Verified live with two synthetic conversations (both cleaned up): `ad_id` only →
-`PAID` + `instagram` / `paid_social` / ad title in `utm_content`; full `ref` →
-the `ref` values untouched.
+The node is `neverError` + `onError: continueRegularOutput`, so a lookup failure —
+an ad in an ad account the token was never granted, say — costs nothing: the flow
+drops to tier 3 and the reason is kept on the item as `adLookupError` for the
+execution log. It is never written to the CRM.
+
+Verified live with three synthetic conversations (all cleaned up):
+
+| input | result |
+|---|---|
+| `ad_id` only, before the grant | `PAID` + `instagram` / `paid_social` + ad title in `utm_content` (tier 3) |
+| full `ref` | the `ref` values untouched (tier 1) |
+| `ad_id` only, after the grant | real campaign / ad / adset names in `utm_campaign` / `utm_content` / `utm_term` (tier 2) |
+
+The third case carried a deliberately junk `ads_context_data.ad_title`, so
+`utm_content` holding the real ad name is the proof tier 2 answered rather than
+tier 3 quietly covering for it.
 
 ## Identity resolution
 
@@ -465,11 +476,20 @@ untagged`. Findings, all verified live:
   up, account webhook still `conversation_created` → the n8n intake path, and all
   7 live channels still carry the referral field — a change to
   subscribe-on-create cannot touch existing subscriptions.
-- **3 Instagram channels are dead**: ENSO Dev Moldova (inbox 6), Avram Iancu (9)
-  and ENSO Dev România (10) IG tokens expired 2026-08-02 (`Session has expired`),
-  so they could not be re-subscribed and are not delivering DMs either. Artima IG
-  expires 2026-09-21, Vânzări 2026-09-24 — **both need re-authorizing before those
-  dates or they go the same way silently.**
+- **3 Instagram channels were dead — reconnected 2026-09-17.** ENSO Dev Moldova
+  (inbox 6), Avram Iancu (9) and ENSO Dev România (10) IG tokens had expired
+  2026-08-02 (`Session has expired`), so they could not be re-subscribed and were
+  delivering nothing. All five IG inboxes have since been reconnected (Artima and
+  Vânzări too, ahead of their 2026-09-21 / 09-24 expiries); tokens now run to
+  2026-11-10…16.
+
+  ⚠️ **A reconnect does NOT re-subscribe — check `subscribed_apps` afterwards.**
+  Artima and Vânzări kept `messaging_referral` through the reconnect, but the three
+  that had been *dead* came back **without** it: they were unreachable when the
+  field was subscribed by hand on 2026-09-08, and `subscribe` only runs
+  `after_create_commit`, so an in-place token update never re-runs it. Subscribed
+  by hand on 2026-09-17; all five now carry it. A fresh token does not imply fresh
+  subscriptions.
 
   Re-auth is a human step in Chatwoot: **Settings → Inboxes → the inbox →
   Reconnect**, which runs the Instagram Business Login OAuth
@@ -495,8 +515,10 @@ untagged`. Findings, all verified live:
   subscription (`after_create_commit :subscribe` does not re-run on an update).
   Only authorizing a *different* account creates a new channel + inbox — and that
   one now subscribes with the referral field too, since
-  corporateready/chatwoot#1 is deployed. Note the reconnect renames the inbox to the
-  Instagram username; harmless, since n8n maps projects by inbox **id**.
+  corporateready/chatwoot#1 is deployed. (`update_channel` also sets the inbox name
+  to the Instagram username, but across all five reconnects the names were left
+  intact — so don't count on either behaviour; n8n maps projects by inbox **id**
+  regardless.)
 
 **Token-expiry monitor (live 2026-09-08).** n8n workflow **`Chatwoot Token Expiry
 Watch`** (`ZPlGI7PHrniWwxas`, daily 08:40, `errorWorkflow` = Intake Error Alerts)
@@ -513,9 +535,18 @@ superuser: `n8n_readonly`, `SELECT` on `channel_instagram`,
 plus deleting that credential. FB page tokens carry no expiry column, so only
 Instagram is watched.
 
-### Granting `ads_read` for attribution tier 2
+### Granting `ads_read` for attribution tier 2 — done, kept as the rotation runbook
 
-The credential the `Read Ad` node reuses belongs to system user
+**Done 2026-09-17**: a second system user was created with `ads_read` on the ad
+accounts, its token stored as n8n credential `Meta Ads Read`, and `Read Ad`
+repointed at it. Re-read this when the token is rotated or a new ad account starts
+running message ads — an ad in an unassigned account silently falls back to tier 3.
+
+⚠️ Meta rejects some system-user names with a bare *"You choose an invalid System
+User name"* and no explanation; the rule is undocumented. A single-token name with
+no spaces worked, matching the existing `ENSOCRMENRICHMENT`.
+
+The older credential, which the `Read Ad` node used until then, belongs to system user
 **`ENSOCRMENRICHMENT`** (`122133623625354657`) on app **ENSO Lead Ads**
 (`877859282026498`), and its granted scopes are exactly `pages_show_list`,
 `pages_read_engagement`, `leads_retrieval`, `public_profile` — no `ads_read`, no
