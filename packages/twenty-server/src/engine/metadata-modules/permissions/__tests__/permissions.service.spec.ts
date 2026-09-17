@@ -46,6 +46,25 @@ describe('PermissionsService', () => {
     service = module.get<PermissionsService>(PermissionsService);
   });
 
+  const baseRole: Partial<RoleEntity> = {
+    id: 'test-role-id',
+    label: 'Test Role',
+    description: 'Test role description',
+    icon: 'IconTest',
+    canReadAllObjectRecords: false,
+    canUpdateAllObjectRecords: false,
+    canSoftDeleteAllObjectRecords: false,
+    canDestroyAllObjectRecords: false,
+    canBeAssignedToUsers: true,
+    canBeAssignedToAgents: true,
+    canBeAssignedToApiKeys: true,
+    rolePermissionFlags: [],
+    workspaceId: 'test-workspace-id',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isEditable: true,
+  };
+
   describe('checkRolePermissions', () => {
     describe('canAccessAllTools for tool permissions', () => {
       it('should grant permission when canAccessAllTools is true for a tool permission', () => {
@@ -87,12 +106,6 @@ describe('PermissionsService', () => {
           service.checkRolePermissions(
             roleWithAllTools as RoleEntity,
             PermissionFlagType.AI,
-          ),
-        ).toBe(true);
-        expect(
-          service.checkRolePermissions(
-            roleWithAllTools as RoleEntity,
-            PermissionFlagType.VIEWS,
           ),
         ).toBe(true);
         expect(
@@ -286,12 +299,65 @@ describe('PermissionsService', () => {
             PermissionFlagType.AI,
           ),
         ).toBe(false);
+      });
+
+      // Managing shared views is workspace structure, not an action. Upstream
+      // has it in TOOL_PERMISSION_FLAGS, which hands it to every role with
+      // canAccessAllTools — i.e. every default Member and every role the Roles
+      // UI creates. These two pin it to the settings side.
+      it('should grant VIEWS from canUpdateAllSettings, not canAccessAllTools', () => {
+        const roleWithAllTools = {
+          ...baseRole,
+          canAccessAllTools: true,
+          canUpdateAllSettings: false,
+        } as RoleEntity;
+
+        const roleWithAllSettings = {
+          ...baseRole,
+          canAccessAllTools: false,
+          canUpdateAllSettings: true,
+        } as RoleEntity;
+
         expect(
           service.checkRolePermissions(
-            roleWithAllSettings as RoleEntity,
+            roleWithAllTools,
             PermissionFlagType.VIEWS,
           ),
         ).toBe(false);
+        expect(
+          service.checkRolePermissions(
+            roleWithAllSettings,
+            PermissionFlagType.VIEWS,
+          ),
+        ).toBe(true);
+      });
+
+      it('should still grant VIEWS to a role holding the flag explicitly', () => {
+        const roleWithViewsFlag = {
+          ...baseRole,
+          canAccessAllTools: false,
+          canUpdateAllSettings: false,
+          rolePermissionFlags: [
+            {
+              id: 'permission-views',
+              permissionFlag: {
+                key: PermissionFlagType.VIEWS,
+                universalIdentifier: SystemPermissionFlag.VIEWS,
+              },
+              roleId: 'test-role-id',
+              workspaceId: 'test-workspace-id',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ] as any,
+        } as RoleEntity;
+
+        expect(
+          service.checkRolePermissions(
+            roleWithViewsFlag,
+            PermissionFlagType.VIEWS,
+          ),
+        ).toBe(true);
       });
     });
 
