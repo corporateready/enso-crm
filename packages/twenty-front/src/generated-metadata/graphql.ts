@@ -1548,6 +1548,24 @@ export type EnsoDefaultViewInput = {
   viewId: Scalars['String'];
 };
 
+export type EnsoLeadLookupDealMatch = {
+  __typename?: 'EnsoLeadLookupDealMatch';
+  dealLabel: Scalars['String'];
+  dealStatus: Scalars['String'];
+  displayName: Scalars['String'];
+  firstContactAt?: Maybe<Scalars['DateTime']>;
+  isMine: Scalars['Boolean'];
+  lastTouchAt?: Maybe<Scalars['DateTime']>;
+  maskedEmail?: Maybe<Scalars['String']>;
+  maskedPhone?: Maybe<Scalars['String']>;
+  opportunityId: Scalars['String'];
+  ownerName?: Maybe<Scalars['String']>;
+  ownerWorkspaceMemberId?: Maybe<Scalars['String']>;
+  personId?: Maybe<Scalars['String']>;
+  projectCode?: Maybe<Scalars['String']>;
+  projectName?: Maybe<Scalars['String']>;
+};
+
 export type EnsoLeadLookupMatch = {
   __typename?: 'EnsoLeadLookupMatch';
   displayName: Scalars['String'];
@@ -1575,10 +1593,54 @@ export type EnsoLeadLookupProject = {
 
 export type EnsoLeadLookupResult = {
   __typename?: 'EnsoLeadLookupResult';
+  dealMatches: Array<EnsoLeadLookupDealMatch>;
   isRateLimited: Scalars['Boolean'];
   isViewerScoped: Scalars['Boolean'];
   matches: Array<EnsoLeadLookupMatch>;
   remainingLookupsToday: Scalars['Float'];
+};
+
+export type EnsoLeadProfile = {
+  __typename?: 'EnsoLeadProfile';
+  activity: EnsoLeadProfileActivity;
+  displayName: Scalars['String'];
+  firstTouchAt?: Maybe<Scalars['DateTime']>;
+  isFound: Scalars['Boolean'];
+  isMine: Scalars['Boolean'];
+  isViewerScoped: Scalars['Boolean'];
+  maskedEmail?: Maybe<Scalars['String']>;
+  maskedPhone?: Maybe<Scalars['String']>;
+  personId?: Maybe<Scalars['String']>;
+  projects: Array<EnsoLeadProfileProject>;
+};
+
+export type EnsoLeadProfileActivity = {
+  __typename?: 'EnsoLeadProfileActivity';
+  inboundCount: Scalars['Float'];
+  lastInboundAt?: Maybe<Scalars['DateTime']>;
+  lastOutboundAt?: Maybe<Scalars['DateTime']>;
+  outboundCount: Scalars['Float'];
+};
+
+export type EnsoLeadProfileProject = {
+  __typename?: 'EnsoLeadProfileProject';
+  dealLabel?: Maybe<Scalars['String']>;
+  dealSource?: Maybe<Scalars['String']>;
+  dealStage?: Maybe<Scalars['String']>;
+  dealStatus: Scalars['String'];
+  firstContactAt?: Maybe<Scalars['DateTime']>;
+  isMine: Scalars['Boolean'];
+  lastTouchAt?: Maybe<Scalars['DateTime']>;
+  ownerEmail?: Maybe<Scalars['String']>;
+  ownerName?: Maybe<Scalars['String']>;
+  ownerWorkspaceMemberId?: Maybe<Scalars['String']>;
+  projectCode?: Maybe<Scalars['String']>;
+  projectId?: Maybe<Scalars['String']>;
+  projectName?: Maybe<Scalars['String']>;
+  reengagementCount: Scalars['Float'];
+  trafficType?: Maybe<Scalars['String']>;
+  utmCampaign?: Maybe<Scalars['String']>;
+  utmSource?: Maybe<Scalars['String']>;
 };
 
 export type EnsoRoutingAvailability = {
@@ -4315,6 +4377,7 @@ export type Query = {
   currentUser: User;
   currentWorkspace: Workspace;
   ensoLeadLookup: EnsoLeadLookupResult;
+  ensoLeadProfile: EnsoLeadProfile;
   ensoViewerScope: EnsoViewerScope;
   enterpriseCheckoutSession?: Maybe<Scalars['String']>;
   enterprisePortalSession?: Maybe<Scalars['String']>;
@@ -4471,6 +4534,12 @@ export type QueryCommandMenuItemArgs = {
 
 export type QueryEnsoLeadLookupArgs = {
   searchTerm: Scalars['String'];
+};
+
+
+export type QueryEnsoLeadProfileArgs = {
+  opportunityId?: InputMaybe<Scalars['String']>;
+  personId?: InputMaybe<Scalars['String']>;
 };
 
 

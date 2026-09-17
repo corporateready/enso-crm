@@ -28,4 +28,8 @@ export enum SidePanelPages {
   CommandMenuEdit = 'command-menu-edit',
   PageLayoutRecordPageWidgetTypeSelect = 'page-layout-record-page-widget-type-select',
   ComposeEmail = 'compose-email',
+  // The read-only profile of a lead worked by somebody else, opened from the
+  // cross-book lookup. Not a record page: a scoped manager cannot open the
+  // record itself, which is the whole point.
+  EnsoLeadProfile = 'enso-lead-profile',
 }

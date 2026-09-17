@@ -2687,11 +2687,69 @@ type EnsoLeadLookupMatch {
   projects: [EnsoLeadLookupProject!]!
 }
 
+type EnsoLeadLookupDealMatch {
+  opportunityId: String!
+  dealLabel: String!
+  personId: String
+  displayName: String!
+  maskedPhone: String
+  maskedEmail: String
+  projectName: String
+  projectCode: String
+  ownerName: String
+  ownerWorkspaceMemberId: String
+  isMine: Boolean!
+  dealStatus: String!
+  firstContactAt: DateTime
+  lastTouchAt: DateTime
+}
+
 type EnsoLeadLookupResult {
   matches: [EnsoLeadLookupMatch!]!
+  dealMatches: [EnsoLeadLookupDealMatch!]!
   isRateLimited: Boolean!
   remainingLookupsToday: Float!
   isViewerScoped: Boolean!
+}
+
+type EnsoLeadProfileProject {
+  projectId: String
+  projectName: String
+  projectCode: String
+  ownerName: String
+  ownerEmail: String
+  ownerWorkspaceMemberId: String
+  isMine: Boolean!
+  firstContactAt: DateTime
+  lastTouchAt: DateTime
+  dealLabel: String
+  dealStage: String
+  dealStatus: String!
+  dealSource: String
+  trafficType: String
+  utmSource: String
+  utmCampaign: String
+  reengagementCount: Float!
+}
+
+type EnsoLeadProfileActivity {
+  inboundCount: Float!
+  outboundCount: Float!
+  lastInboundAt: DateTime
+  lastOutboundAt: DateTime
+}
+
+type EnsoLeadProfile {
+  isFound: Boolean!
+  isViewerScoped: Boolean!
+  personId: String
+  displayName: String!
+  maskedPhone: String
+  maskedEmail: String
+  firstTouchAt: DateTime
+  isMine: Boolean!
+  projects: [EnsoLeadProfileProject!]!
+  activity: EnsoLeadProfileActivity!
 }
 
 type EnsoRoutingAvailability {
@@ -3138,6 +3196,7 @@ type Query {
   barChartData(input: BarChartDataInput!): BarChartData!
   ensoViewerScope: EnsoViewerScope!
   ensoLeadLookup(searchTerm: String!): EnsoLeadLookupResult!
+  ensoLeadProfile(personId: String, opportunityId: String): EnsoLeadProfile!
   taskEmailContext(taskId: String!): TaskEmailContext!
   personEmailContext(opportunityId: String, personId: String): TaskEmailContext!
   googleChatWebhookSettings: GoogleChatWebhookSettings!

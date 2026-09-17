@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
+import { isDefined } from 'twenty-shared/utils';
 
 import { ENSO_LEAD_LOOKUP } from '@/enso/lead-lookup/graphql/queries/ensoLeadLookup';
 import { ENSO_LEAD_LOOKUP_MIN_TERM_LENGTH } from '@/enso/lead-lookup/constants/EnsoLeadLookupMinTermLength';
@@ -28,12 +29,30 @@ export type EnsoLeadLookupMatch = {
   projects: EnsoLeadLookupProject[];
 };
 
+export type EnsoLeadLookupDealMatch = {
+  opportunityId: string;
+  dealLabel: string;
+  personId: string | null;
+  displayName: string;
+  maskedPhone: string | null;
+  maskedEmail: string | null;
+  projectName: string | null;
+  projectCode: string | null;
+  ownerName: string | null;
+  ownerWorkspaceMemberId: string | null;
+  isMine: boolean;
+  dealStatus: string;
+  firstContactAt: string | null;
+  lastTouchAt: string | null;
+};
+
 type EnsoLeadLookupData = {
   ensoLeadLookup: {
     isRateLimited: boolean;
     remainingLookupsToday: number;
     isViewerScoped: boolean;
     matches: EnsoLeadLookupMatch[];
+    dealMatches: EnsoLeadLookupDealMatch[];
   };
 };
 
@@ -56,10 +75,26 @@ export const useEnsoLeadLookup = (searchTerm: string | null) => {
     [data],
   );
 
+  // A deal whose contact already appears above would read as the same lead
+  // twice, so the contact line wins and the deal line only covers deals found
+  // by name that belong to somebody the term did not match.
+  const foreignDealMatches = useMemo(() => {
+    const matchedPersonIds = new Set(
+      (data?.ensoLeadLookup.matches ?? []).map((match) => match.personId),
+    );
+
+    return (data?.ensoLeadLookup.dealMatches ?? []).filter(
+      (match) =>
+        !match.isMine &&
+        (!isDefined(match.personId) || !matchedPersonIds.has(match.personId)),
+    );
+  }, [data]);
+
   const isViewerScoped = data?.ensoLeadLookup.isViewerScoped ?? false;
 
   return {
     foreignMatches: isViewerScoped ? foreignMatches : [],
+    foreignDealMatches: isViewerScoped ? foreignDealMatches : [],
     loading,
     isViewerScoped,
     // Only meaningful for a scoped viewer; an admin is never rate limited
