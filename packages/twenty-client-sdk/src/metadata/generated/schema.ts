@@ -2395,12 +2395,74 @@ export interface EnsoLeadLookupMatch {
     __typename: 'EnsoLeadLookupMatch'
 }
 
+export interface EnsoLeadLookupDealMatch {
+    opportunityId: Scalars['String']
+    dealLabel: Scalars['String']
+    personId?: Scalars['String']
+    displayName: Scalars['String']
+    maskedPhone?: Scalars['String']
+    maskedEmail?: Scalars['String']
+    projectName?: Scalars['String']
+    projectCode?: Scalars['String']
+    ownerName?: Scalars['String']
+    ownerWorkspaceMemberId?: Scalars['String']
+    isMine: Scalars['Boolean']
+    dealStatus: Scalars['String']
+    firstContactAt?: Scalars['DateTime']
+    lastTouchAt?: Scalars['DateTime']
+    __typename: 'EnsoLeadLookupDealMatch'
+}
+
 export interface EnsoLeadLookupResult {
     matches: EnsoLeadLookupMatch[]
+    dealMatches: EnsoLeadLookupDealMatch[]
     isRateLimited: Scalars['Boolean']
     remainingLookupsToday: Scalars['Float']
     isViewerScoped: Scalars['Boolean']
     __typename: 'EnsoLeadLookupResult'
+}
+
+export interface EnsoLeadProfileProject {
+    projectId?: Scalars['String']
+    projectName?: Scalars['String']
+    projectCode?: Scalars['String']
+    ownerName?: Scalars['String']
+    ownerEmail?: Scalars['String']
+    ownerWorkspaceMemberId?: Scalars['String']
+    isMine: Scalars['Boolean']
+    firstContactAt?: Scalars['DateTime']
+    lastTouchAt?: Scalars['DateTime']
+    dealLabel?: Scalars['String']
+    dealStage?: Scalars['String']
+    dealStatus: Scalars['String']
+    dealSource?: Scalars['String']
+    trafficType?: Scalars['String']
+    utmSource?: Scalars['String']
+    utmCampaign?: Scalars['String']
+    reengagementCount: Scalars['Float']
+    __typename: 'EnsoLeadProfileProject'
+}
+
+export interface EnsoLeadProfileActivity {
+    inboundCount: Scalars['Float']
+    outboundCount: Scalars['Float']
+    lastInboundAt?: Scalars['DateTime']
+    lastOutboundAt?: Scalars['DateTime']
+    __typename: 'EnsoLeadProfileActivity'
+}
+
+export interface EnsoLeadProfile {
+    isFound: Scalars['Boolean']
+    isViewerScoped: Scalars['Boolean']
+    personId?: Scalars['String']
+    displayName: Scalars['String']
+    maskedPhone?: Scalars['String']
+    maskedEmail?: Scalars['String']
+    firstTouchAt?: Scalars['DateTime']
+    isMine: Scalars['Boolean']
+    projects: EnsoLeadProfileProject[]
+    activity: EnsoLeadProfileActivity
+    __typename: 'EnsoLeadProfile'
 }
 
 export interface EnsoRoutingAvailability {
@@ -2752,6 +2814,7 @@ export interface Query {
     barChartData: BarChartData
     ensoViewerScope: EnsoViewerScope
     ensoLeadLookup: EnsoLeadLookupResult
+    ensoLeadProfile: EnsoLeadProfile
     taskEmailContext: TaskEmailContext
     personEmailContext: TaskEmailContext
     googleChatWebhookSettings: GoogleChatWebhookSettings
@@ -5572,11 +5635,77 @@ export interface EnsoLeadLookupMatchGenqlSelection{
     __scalar?: boolean | number
 }
 
+export interface EnsoLeadLookupDealMatchGenqlSelection{
+    opportunityId?: boolean | number
+    dealLabel?: boolean | number
+    personId?: boolean | number
+    displayName?: boolean | number
+    maskedPhone?: boolean | number
+    maskedEmail?: boolean | number
+    projectName?: boolean | number
+    projectCode?: boolean | number
+    ownerName?: boolean | number
+    ownerWorkspaceMemberId?: boolean | number
+    isMine?: boolean | number
+    dealStatus?: boolean | number
+    firstContactAt?: boolean | number
+    lastTouchAt?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
 export interface EnsoLeadLookupResultGenqlSelection{
     matches?: EnsoLeadLookupMatchGenqlSelection
+    dealMatches?: EnsoLeadLookupDealMatchGenqlSelection
     isRateLimited?: boolean | number
     remainingLookupsToday?: boolean | number
     isViewerScoped?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadProfileProjectGenqlSelection{
+    projectId?: boolean | number
+    projectName?: boolean | number
+    projectCode?: boolean | number
+    ownerName?: boolean | number
+    ownerEmail?: boolean | number
+    ownerWorkspaceMemberId?: boolean | number
+    isMine?: boolean | number
+    firstContactAt?: boolean | number
+    lastTouchAt?: boolean | number
+    dealLabel?: boolean | number
+    dealStage?: boolean | number
+    dealStatus?: boolean | number
+    dealSource?: boolean | number
+    trafficType?: boolean | number
+    utmSource?: boolean | number
+    utmCampaign?: boolean | number
+    reengagementCount?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadProfileActivityGenqlSelection{
+    inboundCount?: boolean | number
+    outboundCount?: boolean | number
+    lastInboundAt?: boolean | number
+    lastOutboundAt?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoLeadProfileGenqlSelection{
+    isFound?: boolean | number
+    isViewerScoped?: boolean | number
+    personId?: boolean | number
+    displayName?: boolean | number
+    maskedPhone?: boolean | number
+    maskedEmail?: boolean | number
+    firstTouchAt?: boolean | number
+    isMine?: boolean | number
+    projects?: EnsoLeadProfileProjectGenqlSelection
+    activity?: EnsoLeadProfileActivityGenqlSelection
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -5945,6 +6074,7 @@ export interface QueryGenqlSelection{
     barChartData?: (BarChartDataGenqlSelection & { __args: {input: BarChartDataInput} })
     ensoViewerScope?: EnsoViewerScopeGenqlSelection
     ensoLeadLookup?: (EnsoLeadLookupResultGenqlSelection & { __args: {searchTerm: Scalars['String']} })
+    ensoLeadProfile?: (EnsoLeadProfileGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null)} })
     taskEmailContext?: (TaskEmailContextGenqlSelection & { __args: {taskId: Scalars['String']} })
     personEmailContext?: (TaskEmailContextGenqlSelection & { __args?: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null)} })
     googleChatWebhookSettings?: GoogleChatWebhookSettingsGenqlSelection
@@ -8450,10 +8580,42 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     
 
 
+    const EnsoLeadLookupDealMatch_possibleTypes: string[] = ['EnsoLeadLookupDealMatch']
+    export const isEnsoLeadLookupDealMatch = (obj?: { __typename?: any } | null): obj is EnsoLeadLookupDealMatch => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadLookupDealMatch"')
+      return EnsoLeadLookupDealMatch_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
     const EnsoLeadLookupResult_possibleTypes: string[] = ['EnsoLeadLookupResult']
     export const isEnsoLeadLookupResult = (obj?: { __typename?: any } | null): obj is EnsoLeadLookupResult => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadLookupResult"')
       return EnsoLeadLookupResult_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadProfileProject_possibleTypes: string[] = ['EnsoLeadProfileProject']
+    export const isEnsoLeadProfileProject = (obj?: { __typename?: any } | null): obj is EnsoLeadProfileProject => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadProfileProject"')
+      return EnsoLeadProfileProject_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadProfileActivity_possibleTypes: string[] = ['EnsoLeadProfileActivity']
+    export const isEnsoLeadProfileActivity = (obj?: { __typename?: any } | null): obj is EnsoLeadProfileActivity => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadProfileActivity"')
+      return EnsoLeadProfileActivity_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoLeadProfile_possibleTypes: string[] = ['EnsoLeadProfile']
+    export const isEnsoLeadProfile = (obj?: { __typename?: any } | null): obj is EnsoLeadProfile => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadProfile"')
+      return EnsoLeadProfile_possibleTypes.includes(obj.__typename)
     }
     
 
