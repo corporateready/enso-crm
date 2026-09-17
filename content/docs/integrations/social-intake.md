@@ -214,11 +214,14 @@ from the ad** (ENS2301 ARTIMA, ENS2502 ENSO Estate MD, ENS2501 ENSO Living RO,
 ENS2402 Avram Iancu, ENSVI Vânzări) — which matters most on Vânzări, whose inbox
 has no default project, so an unrouted lead stays activity-only per D9.
 
-⚠️ **`Lead Ad Intake → CRM` has the same category error and is untouched**: it sets
+✅ **`Lead Ad Intake → CRM` had the same category error; fixed 2026-09-17.** It set
 `utmCampaign: lead.campaign_name`, so every lead-ad row in the CRM and in BigQuery
-carries a Meta name rather than a slug. It predates this work. The `ref` fix does
-not apply there (lead forms have no `ref`) — it needs either hidden form fields
-carrying the slugs or a campaign→slug map, plus a decision about the history.
+carried a Meta name rather than a slug. The `ref` fix does not apply there (lead forms
+have no `ref`), so the slugs come from **hidden `utm_*` fields on the lead form** —
+which marketing had in fact been filling in correctly all along, while the workflow
+discarded them. History was backfilled from each lead's own `submittedPayload`, so no
+slug had to be invented. See
+[UTMs come from the form, not from Meta](./lead-ad-intake.md#utms-come-from-the-form-not-from-meta).
 
 **Tier 2 went live 2026-09-17**, on its own credential **`Meta Ads Read`**
 (`g5md2cl23iSeIftU`) — a separate system user whose token carries `ads_read` +
