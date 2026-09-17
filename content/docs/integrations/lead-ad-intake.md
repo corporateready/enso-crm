@@ -141,65 +141,47 @@ consent node. (Contrast social DMs, which only open a reply window.)
   ENSO Development Moldova confirmed; the remaining four still to confirm — see
   [Go-live](#go-live-done-with-one-item-left-to-confirm).
 
-## Go-live: done, with one item left to confirm
+## Go-live: complete (verified 2026-09-17)
 
-Publishing the app, `public_profile` advanced access and `leads_retrieval` are all
-**settled** — proven by delivery itself, since Meta sends no production leads to an
-unpublished app. Real leads also supersede the planned Lead Ads Testing Tool pass.
+**All five pages are subscribed to `ENSO Lead Ads` with the `leadgen` field.** Publishing
+the app, `public_profile` advanced access and `leads_retrieval` were already settled —
+delivery itself proves them, since Meta sends no production leads to an unpublished app.
 
-Still open: **page subscriptions**, which cannot currently be read at all.
+| page | page_id | `leadgen` |
+|---|---|---|
+| Artima | `104832627735882` | ✅ |
+| Avram Iancu | `113419554690316` | ✅ |
+| ENSO Development Moldova | `824873130700445` | ✅ |
+| ENSO Development România | `696169680257390` | ✅ |
+| Vânzări Imobiliare | `585329244673786` | ✅ |
 
-`GET /{page-id}/subscribed_apps` needs **`pages_manage_metadata`**, and the
-`Facebook Lead Ads system token` carries only `pages_show_list` /
-`pages_read_engagement` / `leads_retrieval` / `public_profile`. All six visible pages
-return the same `(#200) Requires pages_manage_metadata permission` — including ENSO
-Development Moldova, which this page previously recorded as *confirmed subscribed*. So
-that 403 is a gap in the token, not a verdict on any page. System-user token scopes are
-fixed at generation, so answering this needs a **new** system user + credential (never
-overwrite the lead-ads one — that re-tokens live intake). Same pattern as `Meta Ads Read`.
+### Reading this is about WHICH credential, not which permission
 
-What the data does say (2026-09-17):
+`GET /{page-id}/subscribed_apps` reports only the subscription of the **app that issued
+the access token**. Getting a useful answer is therefore a matter of asking with a token
+from the right app — there is nothing to mint:
 
-| page | lead-gen adsets | active | has ever delivered |
-|---|---|---|---|
-| Vânzări Imobiliare `585329244673786` | 1 | **1** | yes — all 106 leads |
-| Artima `104832627735882` | 29 | 0 (all paused, none planned) | no |
-| Avram Iancu, ENSO Dev Moldova, ENSO Dev România | 0 | 0 | no |
+| credential | result |
+|---|---|
+| **`Facebook Lead Ads account` (`OC0ZM6Uhvma3Zl4o`, user OAuth on the Lead Ads app)** | ✅ **the answer.** Fetch page tokens via `/me/accounts`, then `subscribed_apps` per page. Sees 13 pages. |
+| `Facebook Lead Ads system token` (`bMIbvMPFyVcJEUPV`) | ❌ `(#200) Requires pages_manage_metadata` — system-user scopes are fixed at generation |
+| Chatwoot's page tokens | ⚠️ **succeeds and lies.** Issued by the Chatwoot app, so every page reports only `ENSO Chatwoot` and Lead Ads as absent |
 
-**Exactly one active lead-gen adset exists** — `Newton Buiucani | Leads | Oferta
-speciala 1800 euro | Chisinau`, on Vânzări. The other pages are quiet because nothing
-is running on them, not necessarily because they are unsubscribed. Note this inverts
-the old note: the page actually delivering is Vânzări, one of the "remaining four",
-while the page recorded as confirmed has delivered nothing.
+⚠️ **The Chatwoot route is the trap.** It returns `200` with a clean, plausible table
+saying no page is subscribed. Vânzări is the control that exposes it — it reads "not
+subscribed" while delivering 107 leads through the Lead Ads app's own `leadgen` webhook,
+which cannot happen without a subscription. Acting on that output means "fixing" five
+pages that were never broken.
 
-**Chatwoot's page tokens do not answer this either** — worth knowing before anyone
-tries it. Chatwoot manages page webhooks, so its tokens *do* carry
-`pages_manage_metadata` and the call succeeds. But Graph scopes `subscribed_apps` to the
-**app that issued the token**: asked with a Chatwoot page token, all five pages report
-exactly one app, `ENSO Chatwoot`, and ENSO Lead Ads as absent. That answer is false, and
-Vânzări is the control that proves it — it reads "not subscribed" while delivering 107
-leads through the Lead Ads app's own `leadgen` webhook, which cannot happen without a
-subscription. **Reading a given app's page subscription requires a token issued by that
-app.**
+Only Vânzări currently runs lead ads (`Newton Buiucani | Leads | Oferta speciala 1800
+euro | Chisinau`). Artima's 29 lead adsets — 14 campaigns, RO + RU — are paused with none
+planned, and the other three pages have no lead-gen adsets at all. Their silence is an
+absence of campaigns, not of subscriptions: if any of them starts tomorrow, delivery
+will work.
 
-That leaves two ways to answer it, and the cheaper one is better:
-
-1. **Send a test lead** on an Artima form with Meta's Lead Ads Testing Tool and watch
-   for the n8n execution. This tests the thing we actually care about — delivery —
-   rather than the flag, and needs no new credential.
-2. Mint a new system user on ENSO Lead Ads carrying `pages_manage_metadata` (the
-   `Meta Ads Read` pattern) if the flag itself is wanted in a dashboard.
-
-**Nothing is blocked on this today.** Vânzări is the only page running lead ads, and it
-demonstrably works. Artima's 29 lead adsets (14 campaigns, RO + RU) are all paused and
-**there are no Artima lead ads planned** — so its subscription state costs nothing while
-it stays that way.
-
-Treat the check as a **precondition for starting lead ads on any new page**, not as
-open work. It matters at that moment because an unsubscribed page fails *silently* — no
-error, no leads, just a campaign that appears to underperform. (The social channel
-learned this the hard way: a 0-of-N "no data" reading there turned out to be a
-producer-side bug, not an absence of demand.)
+`GET /{page-id}/leadgen_forms` additionally needs `pages_manage_ads`, which no current
+credential holds — so form IDs are not readable, only campaign and adset names. Nothing
+depends on that.
 
 ## UTMs come from the form, not from Meta
 
