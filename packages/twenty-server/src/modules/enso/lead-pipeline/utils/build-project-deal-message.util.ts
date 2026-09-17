@@ -1,6 +1,8 @@
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
+import { ANSWERED_CALL_STATUSES } from 'src/modules/enso/telephony/telephony.constants';
+
 // The separator the legacy n8n alerts used between the lead block and the UTM
 // block, kept character-for-character so a CRM post is visually
 // indistinguishable from the two years of history already in these rooms.
@@ -27,6 +29,9 @@ export type ProjectDealActivityFacts = {
   platform?: string;
   trafficType?: string;
   callStatus?: string;
+  // Set the moment an individual accepted the call, which is the one proof of a
+  // conversation that does not depend on the PBX's closing push arriving.
+  salesPickup?: boolean;
   durationS?: number;
   calleeDid?: string;
   landingPage?: string;
@@ -109,6 +114,27 @@ const noUtmLine = (activity: ProjectDealActivityFacts): string => {
   return 'no attribution — this lead arrived untagged';
 };
 
+// The word this room reads as "did anyone talk to them".
+//
+// A call that rings a department produces one CANCELLED push per extension that
+// did NOT win the race, and each of those writes ABANDONED to the row. So the
+// raw status can be a losing leg's while a manager is mid-conversation — posted
+// live as "Status: ABANDONED" on a call that ran 98 seconds. `salesPickup` is
+// set the instant an individual accepts and never depends on the closing push,
+// so when it disagrees with the status, it is the one telling the truth.
+const callStatusLabel = (
+  activity: ProjectDealActivityFacts,
+): string | undefined => {
+  if (
+    activity.salesPickup === true &&
+    !ANSWERED_CALL_STATUSES.includes(activity.callStatus ?? '')
+  ) {
+    return 'ANSWERED';
+  }
+
+  return activity.callStatus;
+};
+
 export const formatProjectDealTimestamp = (
   value: Date | string | undefined,
 ): string | undefined => {
@@ -172,7 +198,7 @@ export const buildProjectDealMessage = (
   }
 
   // Call-only rows, in the order the legacy call alerts used them.
-  push('Status', activity.callStatus);
+  push('Status', callStatusLabel(activity));
   push('Company Number', activity.calleeDid);
 
   if (isDefined(activity.durationS)) {

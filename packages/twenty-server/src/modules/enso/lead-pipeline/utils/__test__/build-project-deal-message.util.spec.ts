@@ -92,6 +92,37 @@ describe('buildProjectDealMessage', () => {
     );
   });
 
+  // The live regression: a call rang two extensions, the first one's CANCELLED
+  // wrote ABANDONED, and the post went out while Oleg was 98 seconds into the
+  // conversation. Whatever the column says, an individual accepted the call.
+  it('should not call a call abandoned when an individual picked it up', () => {
+    const message = buildProjectDealMessage({
+      phone: '+37378447626',
+      activity: {
+        kind: 'INCOMING_CALL',
+        callStatus: 'ABANDONED',
+        salesPickup: true,
+        calleeDid: '37376015472',
+      },
+    });
+
+    expect(message).toContain('Status: ANSWERED');
+    expect(message).not.toContain('ABANDONED');
+  });
+
+  it('should leave a genuinely abandoned call alone', () => {
+    const message = buildProjectDealMessage({
+      phone: '+37378447626',
+      activity: {
+        kind: 'INCOMING_CALL',
+        callStatus: 'ABANDONED',
+        salesPickup: false,
+      },
+    });
+
+    expect(message).toContain('Status: ABANDONED');
+  });
+
   it('should say so explicitly when the lead arrived with no attribution', () => {
     const message = buildProjectDealMessage({
       fullName: 'Ion Popescu',

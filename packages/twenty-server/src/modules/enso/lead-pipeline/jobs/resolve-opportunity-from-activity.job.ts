@@ -9,9 +9,11 @@ import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queu
 import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
+  type PostProjectDealJobData,
   type ResolveOpportunityFromActivityJobData,
   type RouteOpportunityJobData,
 } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
+import { PostProjectDealJob } from 'src/modules/enso/lead-pipeline/jobs/post-project-deal.job';
 import { RouteOpportunityJob } from 'src/modules/enso/lead-pipeline/jobs/route-opportunity.job';
 import { OpportunityResolutionService } from 'src/modules/enso/lead-pipeline/services/opportunity-resolution.service';
 import { CallFollowUpService } from 'src/modules/enso/telephony/services/call-follow-up.service';
@@ -64,6 +66,18 @@ export class ResolveOpportunityFromActivityJob {
 
       return;
     }
+
+    // MARKETING lane: post the new deal to its project's shared Google Chat
+    // space. Creation only — a re-engagement is not new demand. Enqueued rather
+    // than posted inline, and deliberately ahead of the routing return below so
+    // an answered call still reaches the room: the post waits for the call's
+    // closing push, which can be minutes away, and none of that may hold up or
+    // fail the deal that triggered it.
+    await this.messageQueueService.add<PostProjectDealJobData>(
+      PostProjectDealJob.name,
+      { workspaceId, opportunityId: result.opportunityId },
+      { id: `enso-project-deal-post:${result.opportunityId}:1` },
+    );
 
     // Routing exists to find someone to make first contact. An answered call
     // already had it, so the deal is CONNECTED and there is nothing to route.

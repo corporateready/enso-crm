@@ -76,3 +76,22 @@ export const coerceTrafficType = (value?: string | null): string | null =>
   value && (OPPORTUNITY_TRAFFIC_TYPES as readonly string[]).includes(value)
     ? value
     : null;
+
+// How long the marketing post waits for a call's real outcome before asking
+// again. A call's deal is opened as soon as an individual accepts — roughly
+// twenty seconds in, with the conversation still running — and the PBX only
+// reports how the call went, and how long it lasted, once it ends. Posting at
+// creation therefore published a mid-call snapshot: on a call a second extension
+// answered, that snapshot is the LOSING leg's CANCELLED, which reached the room
+// as "Status: ABANDONED" on a call a manager was ninety-eight seconds into.
+export const PROJECT_DEAL_POST_POLL_MS = Number(
+  process.env.ENSO_PROJECT_DEAL_POST_POLL_MS ?? 20 * 1000,
+);
+
+// Ceiling on that wait, in polls. Long enough for a long conversation plus the
+// provider's own lag; short enough that a call whose closing push never arrives
+// still reaches the room while the day it belongs to is still going. Reaching it
+// posts what we have rather than staying silent — marketing counts these.
+export const PROJECT_DEAL_POST_MAX_ATTEMPTS = Number(
+  process.env.ENSO_PROJECT_DEAL_POST_MAX_ATTEMPTS ?? 90,
+);
