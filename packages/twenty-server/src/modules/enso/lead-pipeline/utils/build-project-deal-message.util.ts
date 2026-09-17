@@ -1,6 +1,7 @@
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
+import { normalizeReferrer } from 'src/modules/enso/shared/utils/referrer.util';
 import {
   ANSWERED_CALL_STATUS,
   SALES_PICKUP_CALL_STATUS,
@@ -118,23 +119,6 @@ const noUtmLine = (activity: ProjectDealActivityFacts): string => {
   return 'no attribution — this lead arrived untagged';
 };
 
-// PostHog and Roistat both report "no referring site" as the literal string
-// `$direct` rather than as an absent value. These rooms have never shown a
-// `$`-prefixed token, so printed raw it reads as a leaked internal sentinel —
-// said in words instead, because "they came straight to the site" is itself the
-// answer marketing is looking for here.
-const REFERRER_DIRECT_SENTINEL = '$direct';
-
-const referrerLabel = (value: string | undefined): string | undefined => {
-  if (!isNonEmptyString(value)) {
-    return undefined;
-  }
-
-  return value === REFERRER_DIRECT_SENTINEL
-    ? 'direct — no referring site'
-    : value;
-};
-
 // The word this room reads as "did anyone talk to them".
 //
 // A call that rings a department produces one CANCELLED push per extension that
@@ -233,7 +217,7 @@ export const buildProjectDealMessage = (
   // Kept next to Landing Page: the pair is "where they landed" and "what sent
   // them", and a referrer is the only attribution a dynamic call or an untagged
   // form carries when the utm_* block below comes back empty.
-  push('Referrer', referrerLabel(activity.referrer));
+  push('Referrer', normalizeReferrer(activity.referrer));
   push('Timestamp', formatProjectDealTimestamp(activity.occurredAt));
 
   lines.push(BLOCK_SEPARATOR, '');

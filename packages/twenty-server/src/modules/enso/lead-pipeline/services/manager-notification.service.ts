@@ -156,6 +156,9 @@ export class ManagerNotificationService {
       details.source
         ? { icon: 'STAR', label: 'Source', text: details.source }
         : undefined,
+      details.referrer
+        ? { icon: 'BOOKMARK', label: 'Referrer', text: details.referrer }
+        : undefined,
       params.autoClaimed
         ? undefined
         : {
@@ -581,6 +584,7 @@ export class ManagerNotificationService {
     who?: string;
     phone?: string;
     source?: string;
+    referrer?: string;
   }): Array<{ icon: string; label: string; text: string }> {
     return [
       details.dealName
@@ -597,6 +601,9 @@ export class ManagerNotificationService {
         : undefined,
       details.source
         ? { icon: 'STAR', label: 'Source', text: details.source }
+        : undefined,
+      details.referrer
+        ? { icon: 'BOOKMARK', label: 'Referrer', text: details.referrer }
         : undefined,
     ].filter(isDefined);
   }
@@ -820,6 +827,7 @@ export class ManagerNotificationService {
     phone?: string;
     m2?: number;
     source?: string;
+    referrer?: string;
   }> {
     const systemAuthContext = buildSystemAuthContext(workspaceId);
 
@@ -899,6 +907,11 @@ export class ManagerNotificationService {
           phone,
           m2: opportunity?.m2Min ?? undefined,
           source: opportunity?.source ?? undefined,
+          // The deal's frozen first-touch referrer. `source` above says which
+          // CHANNEL the lead came through; this says which SITE sent them, and
+          // on a dynamic call or an untagged form it is the only such answer
+          // the manager gets.
+          referrer: opportunity?.firstReferrer ?? undefined,
         };
       },
       systemAuthContext,

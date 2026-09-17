@@ -22,6 +22,7 @@ import {
   buildEnsoTimelineInserts,
   type EnsoTimelineSegment,
 } from 'src/modules/enso/timeline/enso-timeline.util';
+import { normalizeReferrer } from 'src/modules/enso/shared/utils/referrer.util';
 import { isWorkEmail } from 'src/utils/is-work-email';
 
 // Workspace-specific object metadata ids (single prod workspace) for timeline
@@ -68,6 +69,7 @@ type ActivityRow = {
   utmTerm?: string | null;
   trafficType?: string | null;
   landingPage?: string | null;
+  referrer?: string | null;
   roistatVisitId?: string | null;
 };
 
@@ -325,6 +327,7 @@ export class OpportunityResolutionService {
             utmTerm: activity.utmTerm ?? null,
             firstTrafficType: coerceTrafficType(activity.trafficType),
             firstLandingPage: activity.landingPage ?? null,
+            firstReferrer: normalizeReferrer(activity.referrer) ?? null,
             roistatVisitId: activity.roistatVisitId ?? null,
             ...(isDefined(m2) ? { m2Min: m2, m2Max: m2 } : {}),
             position: (lastPosition ?? 0) + 1,

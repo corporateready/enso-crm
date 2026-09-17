@@ -228,9 +228,10 @@ describe('buildProjectDealMessage', () => {
     );
   });
 
-  // `$direct` is a sentinel, not a site. Leaking it into a room that has never
-  // shown a `$`-prefixed token would read as a broken tag.
-  it('should say a direct visit in words rather than printing $direct', () => {
+  // `direct` is a real answer — they came straight to the site — so it is shown
+  // as a referrer. Only the `$` sentinel marker is dropped: nothing else in
+  // these rooms is `$`-prefixed, and leaking one reads as a broken tag.
+  it('should show a direct visit as the referrer, without the sentinel', () => {
     const message = buildProjectDealMessage({
       activity: {
         kind: 'FORM_SUBMISSION',
@@ -239,7 +240,7 @@ describe('buildProjectDealMessage', () => {
       },
     });
 
-    expect(message).toContain('Referrer: direct — no referring site');
+    expect(message).toContain('Referrer: direct');
     expect(message).not.toContain('$direct');
   });
 
