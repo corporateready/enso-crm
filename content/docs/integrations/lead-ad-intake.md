@@ -5,11 +5,8 @@ description: The Facebook/Instagram Lead Ads inbound channel — a dedicated Met
 
 # Lead Ad intake (Meta → n8n → CRM)
 
-> Status: **Built — pending go-live.** The Meta app, OAuth, n8n workflow, and
-> app-level `leadgen` webhook are all live and the webhook handshake is verified.
-> Real lead delivery is gated on **publishing the app** (App Review for
-> `leads_retrieval`) — Meta delivers no production leads while the app is in
-> Development. Started 2026-06-07.
+> Status: **Live.** The Meta app is published and delivering; the first real lead
+> landed 2026-07-15 and 106 had arrived by 2026-09-17. Started 2026-06-07.
 
 The fifth intake channel, after [form-intake](./form-intake.md),
 [social-intake](./social-intake.md), and the two call sources. Facebook/Instagram
@@ -111,9 +108,9 @@ flattens it and maps:
   the form-intake length rule)
 - any area/surface question (`m²`, `suprafață`, `spațiu`…) → `m2Requested` (NUMBER)
 - `leadgen_id` → `sourceExternalId` (dedup key); `form_id` → `formId`
-- `platform` → `INSTAGRAM`/`FACEBOOK`; `trafficType = PAID`; `utmSource =
-  facebook|instagram`, `utmMedium = paid_social`, `utmCampaign = campaign_name`,
-  `utmContent = ad_name`
+- `platform` → `INSTAGRAM`/`FACEBOOK`; `trafficType = PAID`
+- the hidden `utm_*` form fields → `utmSource`/`utmMedium`/`utmCampaign`/`utmContent`/
+  `utmTerm` — see [UTMs come from the form, not from Meta](#utms-come-from-the-form-not-from-meta)
 - the **entire raw lead** → `submittedPayload` (RAW_JSON safety net)
 - test/no-contact leads flagged `isSynthetic` so downstream can exclude them
 
@@ -141,26 +138,80 @@ consent node. (Contrast social DMs, which only open a reply window.)
 - **Meta Webhooks**: Page object, callback + token saved & verified, **`leadgen`
   field subscribed** (v25.0).
 - **Page subscriptions** (`/{page-id}/subscribed_apps?subscribed_fields=leadgen`):
-  ENSO Development Moldova confirmed; the remaining four to be finished at go-live
-  (inert until the app is published — see below).
+  ENSO Development Moldova confirmed; the remaining four still to confirm — see
+  [Go-live](#go-live-done-with-one-item-left-to-confirm).
 
-## Remaining to go live
+## Go-live: done, with one item left to confirm
 
-Meta delivers **no production leads while the app is unpublished** (only dashboard
-"Test" webhooks). To go live:
+Publishing the app, `public_profile` advanced access and `leads_retrieval` are all
+**settled** — proven by delivery itself, since Meta sends no production leads to an
+unpublished app. Real leads also supersede the planned Lead Ads Testing Tool pass.
 
-1. **Privacy Policy URL** on the app (App settings → Basic) — required to publish.
-2. **`public_profile` advanced access** (Facebook Login for Business requirement).
-3. **`leads_retrieval` access** — own/managed pages may qualify for Standard Access
-   (as the Chatwoot build found); otherwise App Review (the one multi-day external
-   dependency). Verify in practice.
-4. Finish subscribing the remaining four pages, then **toggle the app to Live**.
-5. Verify end-to-end with Meta's **Lead Ads Testing Tool** → lead → Person →
-   `inboundActivity(LEAD_AD)` → Opportunity(`LEAD_AD`) + consent; clean up test records.
+Still worth confirming: **page subscriptions**. Every lead so far has come from a
+single form (`1415948743639059`), so the other pages' `subscribed_apps` entries have
+never been exercised. A page that was never subscribed is silently inert — it produces
+no error, just no leads. Re-check with
+`GET /{page-id}/subscribed_apps?subscribed_fields=leadgen` before assuming a quiet page
+means quiet demand. (The social channel learned this the hard way: a 0-of-N "no data"
+reading there turned out to be a producer-side bug, not an absence of leads.)
+
+## UTMs come from the form, not from Meta
+
+`utm_campaign` is **ENSO's own taxonomy** — hand-authored slugs
+(`newton_buiucani_comercial_new_2025`, `brand_search_ro`, `artima_facebook`) that BI
+groups on, including the daily dlt sync into BigQuery. A Meta **campaign name**
+(`Newton Buiucani | Leads | Oferta speciala 1800 euro | Chisinau`) is a different
+namespace. Writing one into `utm_campaign` splits the taxonomy: the same spend shows
+up under two labels that no `GROUP BY` can reconcile.
+
+Lead ads carry their slugs in **hidden `utm_*` fields on the lead form**, which
+marketing authors alongside the campaign. This is the lead-ad analogue of the `ref`
+query string on click-to-message ads — the `ref` fix itself does **not** transfer,
+because lead ad forms have no `ref`.
+
+| CRM field | source | if the form omits it |
+|---|---|---|
+| `utmSource` | `fd['utm_source']` | derived from the placement (`facebook`/`instagram`) |
+| `utmMedium` | `fd['utm_medium']` | `paid_social` |
+| `utmCampaign` | `fd['utm_campaign']` | **`NULL`** |
+| `utmContent` | `fd['utm_content']` | **`NULL`** |
+| `utmTerm` | `fd['utm_term']` | **`NULL`** |
+
+`utmSource` and `utmMedium` keep a derived fallback because those defaults are valid
+slugs in their own right. The three grouping fields have no safe default: a missing
+hidden field means `NULL`, **never** a Meta name. The hidden field wins even for
+`utmSource` — so an Instagram-placed lead reads `utm_source = facebook` if that is what
+marketing authored. No information is lost: the placement is stored separately on the
+activity's `platform` column.
+
+Meta's `campaign_name` / `ad_name` are still fetched and kept on the n8n item as
+`metaCampaignName` / `metaAdName` for the execution log. They never reach the CRM.
+The same rule governs tier 2 of [social intake](./social-intake.md), where it was
+established first.
+
+### As-built (2026-09-17)
+
+Until this date the `Resolve` node wrote `lead.campaign_name` into `utmCampaign` and
+`lead.ad_name` into `utmContent`, and never set `utmTerm` — while the form had been
+sending all five hidden fields correctly since the channel opened. The slugs were
+arriving and being discarded.
+
+- `Resolve` now reads the hidden fields; `Create inboundActivity` gained `utmTerm`,
+  which the workflow had never persisted.
+- **History backfilled**: 106 activities, 105 opportunities and 104 person first-touch
+  snapshots, recovered per-row from each lead's own `submittedPayload` — so no slug
+  had to be guessed or transformed from a Meta name.
+- Written as **direct SQL** against `workspace_71ociw77rfv6fazubi4nnuo1k`, because
+  `opportunity.updateOne` has a post-hook that pushes assignment into Chatwoot and
+  replaying intake would create duplicate deals and fire marketing-room notifications.
+  SQL runs no hooks. Every `UPDATE` is guarded on the current campaign being absent or
+  containing `|` (the Meta-name signature, which no slug has), so a re-run matches
+  nothing and a hand-authored slug can never be overwritten — verified by running it
+  twice (`UPDATE 106/105/104`, then `0/0/0`).
+- `person.firstUtm*` is easy to miss — the first-touch snapshot is written by
+  `person-first-touch.service.ts` and carried the Meta name on 104 rows.
 
 ## Deliberately out of scope (next)
 
-- Lead-form `ref`/UTM passthrough beyond campaign/ad names (Meta lead forms don't
-  carry web UTMs; we derive what we can from campaign metadata).
 - Instagram lead ads on pages not yet running them — the page→project map already
   covers them when they start.
