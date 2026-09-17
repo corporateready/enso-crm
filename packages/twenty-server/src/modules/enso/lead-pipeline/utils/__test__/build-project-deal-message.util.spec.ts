@@ -110,6 +110,18 @@ describe('buildProjectDealMessage', () => {
     expect(message).not.toContain('ABANDONED');
   });
 
+  // SALES_PICKUP is what the row holds between the pickup and the call ending.
+  // These rooms have only ever spoken the phone system's vocabulary.
+  it('should say ANSWERED rather than the CRM\u2019s own pickup status', () => {
+    const message = buildProjectDealMessage({
+      phone: '+37378447626',
+      activity: { kind: 'INCOMING_CALL', callStatus: 'SALES_PICKUP' },
+    });
+
+    expect(message).toContain('Status: ANSWERED');
+    expect(message).not.toContain('SALES_PICKUP');
+  });
+
   it('should leave a genuinely abandoned call alone', () => {
     const message = buildProjectDealMessage({
       phone: '+37378447626',

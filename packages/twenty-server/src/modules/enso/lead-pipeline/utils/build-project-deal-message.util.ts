@@ -1,7 +1,10 @@
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
-import { ANSWERED_CALL_STATUSES } from 'src/modules/enso/telephony/telephony.constants';
+import {
+  ANSWERED_CALL_STATUS,
+  SALES_PICKUP_CALL_STATUS,
+} from 'src/modules/enso/telephony/telephony.constants';
 
 // The separator the legacy n8n alerts used between the lead block and the UTM
 // block, kept character-for-character so a CRM post is visually
@@ -117,19 +120,22 @@ const noUtmLine = (activity: ProjectDealActivityFacts): string => {
 // The word this room reads as "did anyone talk to them".
 //
 // A call that rings a department produces one CANCELLED push per extension that
-// did NOT win the race, and each of those writes ABANDONED to the row. So the
-// raw status can be a losing leg's while a manager is mid-conversation — posted
-// live as "Status: ABANDONED" on a call that ran 98 seconds. `salesPickup` is
-// set the instant an individual accepts and never depends on the closing push,
+// did NOT win the race, so a status can belong to a leg rather than to the call —
+// posted live as "Status: ABANDONED" on a call that ran 98 seconds. `salesPickup`
+// is set the instant an individual accepts and never depends on the closing push,
 // so when it disagrees with the status, it is the one telling the truth.
+//
+// SALES_PICKUP is a CRM word for the same fact, and these rooms have only ever
+// spoken the phone system's vocabulary, so it is said as ANSWERED here.
 const callStatusLabel = (
   activity: ProjectDealActivityFacts,
 ): string | undefined => {
-  if (
-    activity.salesPickup === true &&
-    !ANSWERED_CALL_STATUSES.includes(activity.callStatus ?? '')
-  ) {
-    return 'ANSWERED';
+  const wasPickedUp =
+    activity.salesPickup === true ||
+    activity.callStatus === SALES_PICKUP_CALL_STATUS;
+
+  if (wasPickedUp && activity.callStatus !== ANSWERED_CALL_STATUS) {
+    return ANSWERED_CALL_STATUS;
   }
 
   return activity.callStatus;

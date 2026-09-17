@@ -11,10 +11,13 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { SYSTEM_ACTOR } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
+  ABANDONED_CALL_STATUS,
   ANSWERED_CALL_STATUSES,
   CROSS_PROVIDER_CORRELATION_WINDOW_MS,
+  SALES_PICKUP_CALL_STATUS,
 } from 'src/modules/enso/telephony/telephony.constants';
 import { type NormalizedCallEvent } from 'src/modules/enso/telephony/types/telephony.types';
+import { hasAuthoritativeCallPush } from 'src/modules/enso/telephony/utils/call-outcome.util';
 import { splitPbxLogin } from 'src/modules/enso/telephony/utils/normalize-call-event.util';
 
 type ActorValue = { source: string; name: string; context?: object };
@@ -465,7 +468,7 @@ export class CallIngestService {
     // — otherwise a late-arriving CANCELLED would downgrade a call that history
     // already reported as Success.
     if (!event.isAuthoritativeOutcome) {
-      if (isDefined(existing.callStatus)) {
+      if (!this.mayRestateProvisionalStatus(existing, outcome.callStatus)) {
         delete outcome.callStatus;
       }
 
@@ -559,6 +562,40 @@ export class CallIngestService {
     );
   }
 
+  // Whether a push that does NOT know how the call ended may still change the
+  // row's status. It may in exactly two cases, and no others:
+  //
+  //   - nothing has been recorded yet, and this push is not a per-leg CANCELLED
+  //     arriving after someone has already picked the call up;
+  //   - an individual accepted a call a LOSING LEG had already written off. That
+  //     is the live case: a call rang ext 708, whose CANCELLED wrote ABANDONED,
+  //     then ext 720, where it was answered and ran for 98 seconds. Without this
+  //     the row claimed ABANDONED for the entire conversation, until `history`
+  //     landed two minutes later and corrected it.
+  //
+  // Once the closing push has spoken, nothing provisional touches the status.
+  private mayRestateProvisionalStatus(
+    existing: InboundActivityRow,
+    next: unknown,
+  ): boolean {
+    if (!isDefined(next)) {
+      return false;
+    }
+
+    if (hasAuthoritativeCallPush(existing.submittedPayload)) {
+      return false;
+    }
+
+    if (!isDefined(existing.callStatus)) {
+      return next === SALES_PICKUP_CALL_STATUS || existing.salesPickup !== true;
+    }
+
+    return (
+      next === SALES_PICKUP_CALL_STATUS &&
+      existing.callStatus === ABANDONED_CALL_STATUS
+    );
+  }
+
   // Whether an individual employee — not a department/IVR — took the call.
   // Verified against live PBX history: a group login, and even a real user
   // login, appears in the answered-by column for calls nobody picked up, so the
@@ -587,6 +624,12 @@ export class CallIngestService {
 
     if (isDefined(event.callStatus)) {
       fields.callStatus = event.callStatus;
+    } else if (this.isIndividualPickup(event)) {
+      // An ACCEPTED push carries no status of its own, but it is the strongest
+      // thing a call can say before it ends: this person has the caller on the
+      // line. Recording it means the row states that, rather than sitting on
+      // whatever a leg that stopped ringing claimed.
+      fields.callStatus = SALES_PICKUP_CALL_STATUS;
     }
 
     if (isDefined(event.durationS)) {

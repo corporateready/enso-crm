@@ -11,12 +11,9 @@ import {
 } from 'src/modules/enso/lead-pipeline/utils/build-project-deal-message.util';
 import { ProjectChatWebhookService } from 'src/modules/enso/notifications/services/project-chat-webhook.service';
 import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.util';
-import { AUTHORITATIVE_CALL_EVENT_KEYS } from 'src/modules/enso/telephony/telephony.constants';
+import { hasAuthoritativeCallPush } from 'src/modules/enso/telephony/utils/call-outcome.util';
 
-// Whether a call's outcome is still provisional. Only the provider's closing
-// push — Moldcell `history`, Roistat's after-call slot — states how the call
-// actually went; every earlier push is per-leg and carries no duration. Each push
-// is kept in submittedPayload under its own key, so their presence is the check.
+// Whether a call's outcome is still provisional — see `hasAuthoritativeCallPush`.
 //
 // Only INCOMING_CALL waits. A form, a DM or a lead ad is complete the instant it
 // arrives, and a CALLBACK_REQUEST is a web form too, not a PBX call.
@@ -27,13 +24,7 @@ const awaitsCallOutcome = (
     return false;
   }
 
-  const payload =
-    typeof activityRow.submittedPayload === 'object' &&
-    activityRow.submittedPayload !== null
-      ? (activityRow.submittedPayload as Record<string, unknown>)
-      : {};
-
-  return !AUTHORITATIVE_CALL_EVENT_KEYS.some((key) => key in payload);
+  return !hasAuthoritativeCallPush(activityRow.submittedPayload);
 };
 
 // 'awaiting-call-outcome' is the only non-terminal answer: the caller is expected
