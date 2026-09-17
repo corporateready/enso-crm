@@ -147,13 +147,36 @@ Publishing the app, `public_profile` advanced access and `leads_retrieval` are a
 **settled** — proven by delivery itself, since Meta sends no production leads to an
 unpublished app. Real leads also supersede the planned Lead Ads Testing Tool pass.
 
-Still worth confirming: **page subscriptions**. Every lead so far has come from a
-single form (`1415948743639059`), so the other pages' `subscribed_apps` entries have
-never been exercised. A page that was never subscribed is silently inert — it produces
-no error, just no leads. Re-check with
-`GET /{page-id}/subscribed_apps?subscribed_fields=leadgen` before assuming a quiet page
-means quiet demand. (The social channel learned this the hard way: a 0-of-N "no data"
-reading there turned out to be a producer-side bug, not an absence of leads.)
+Still open: **page subscriptions**, which cannot currently be read at all.
+
+`GET /{page-id}/subscribed_apps` needs **`pages_manage_metadata`**, and the
+`Facebook Lead Ads system token` carries only `pages_show_list` /
+`pages_read_engagement` / `leads_retrieval` / `public_profile`. All six visible pages
+return the same `(#200) Requires pages_manage_metadata permission` — including ENSO
+Development Moldova, which this page previously recorded as *confirmed subscribed*. So
+that 403 is a gap in the token, not a verdict on any page. System-user token scopes are
+fixed at generation, so answering this needs a **new** system user + credential (never
+overwrite the lead-ads one — that re-tokens live intake). Same pattern as `Meta Ads Read`.
+
+What the data does say (2026-09-17):
+
+| page | lead-gen adsets | active | has ever delivered |
+|---|---|---|---|
+| Vânzări Imobiliare `585329244673786` | 1 | **1** | yes — all 106 leads |
+| Artima `104832627735882` | 20 | 0 (all paused) | no |
+| Avram Iancu, ENSO Dev Moldova, ENSO Dev România | 0 | 0 | no |
+
+**Exactly one active lead-gen adset exists** — `Newton Buiucani | Leads | Oferta
+speciala 1800 euro | Chisinau`, on Vânzări. The other pages are quiet because nothing
+is running on them, not necessarily because they are unsubscribed. Note this inverts
+the old note: the page actually delivering is Vânzări, one of the "remaining four",
+while the page recorded as confirmed has delivered nothing.
+
+**Artima is the one that matters.** It has 20 paused lead adsets, so it is the page
+most likely to start producing — and an unsubscribed page fails *silently*, with no
+error and no leads. Verify Artima's subscription **before** those adsets are resumed,
+not after. (The social channel learned this the hard way: a 0-of-N "no data" reading
+there turned out to be a producer-side bug, not an absence of demand.)
 
 ## UTMs come from the form, not from Meta
 
