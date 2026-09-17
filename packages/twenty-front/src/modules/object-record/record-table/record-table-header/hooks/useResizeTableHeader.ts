@@ -1,3 +1,4 @@
+import { useSetMyColumnWidth } from '@/enso/column-widths/hooks/useSetMyColumnWidth';
 import { useUpdateRecordField } from '@/object-record/record-field/hooks/useUpdateRecordField';
 
 import { RECORD_TABLE_COLUMN_LAST_EMPTY_COLUMN_WIDTH_VARIABLE_NAME } from '@/object-record/record-table/constants/RecordTableColumnLastEmptyColumnWidthVariableName';
@@ -22,12 +23,13 @@ import { useAtomComponentStateCallbackState } from '@/ui/utilities/state/jotai/h
 import { useAtomComponentState } from '@/ui/utilities/state/jotai/hooks/useAtomComponentState';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
 import { useSetAtomComponentState } from '@/ui/utilities/state/jotai/hooks/useSetAtomComponentState';
-import { useSaveRecordFields } from '@/views/hooks/useSaveRecordFields';
+import { contextStoreCurrentViewIdComponentState } from '@/context-store/states/contextStoreCurrentViewIdComponentState';
 import { useStore } from 'jotai';
 import { useCallback, useState } from 'react';
 import {
   findById,
   findByProperty,
+  isDefined,
   throwIfNotDefined,
 } from 'twenty-shared/utils';
 
@@ -57,9 +59,17 @@ export const useResizeTableHeader = () => {
 
   const { resetTableRowSelection } = useResetTableRowSelection();
 
-  const { saveRecordFields } = useSaveRecordFields();
-
   const { updateRecordField } = useUpdateRecordField();
+
+  // A column's width is remembered for the person who dragged it, not written
+  // to the view: a view is shared, so one person's drag used to reshape the
+  // table for everyone — and for a member whose role cannot edit the view, the
+  // save was dropped and the column snapped back on the next load.
+  const { setMyColumnWidth } = useSetMyColumnWidth();
+
+  const currentViewIdCallbackState = useAtomComponentStateCallbackState(
+    contextStoreCurrentViewIdComponentState,
+  );
 
   const recordTableWidth = useAtomComponentStateValue(
     recordTableWidthComponentState,
@@ -179,17 +189,26 @@ export const useResizeTableHeader = () => {
     setInitialPointerPositionX(null);
     setResizedFieldMetadataId(null);
 
+    const currentViewId = store.get(currentViewIdCallbackState);
+
     if (nextWidth !== recordField.size) {
-      const updatedRecordField = updateRecordField(resizedFieldMetadataId, {
+      updateRecordField(resizedFieldMetadataId, {
         size: nextWidth,
       });
 
-      saveRecordFields([updatedRecordField]);
+      if (isDefined(currentViewId)) {
+        setMyColumnWidth({
+          viewId: currentViewId,
+          fieldMetadataId: resizedFieldMetadataId,
+          size: nextWidth,
+        });
+      }
     }
 
     setDragSelectionStartEnabled(true);
   }, [
-    saveRecordFields,
+    currentViewIdCallbackState,
+    setMyColumnWidth,
     resizedFieldMetadataId,
     resizeFieldOffset,
     store,

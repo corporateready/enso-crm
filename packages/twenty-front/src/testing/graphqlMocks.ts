@@ -159,6 +159,7 @@ export const graphqlMocks = {
             defaultViews: [],
             defaultViewsVersion: null,
             personalDefaultViews: [],
+            personalColumnWidths: [],
           },
         },
       });

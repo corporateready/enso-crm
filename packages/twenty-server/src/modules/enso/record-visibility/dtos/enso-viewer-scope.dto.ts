@@ -1,4 +1,4 @@
-import { Field, InputType, ObjectType } from '@nestjs/graphql';
+import { Field, InputType, Int, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('EnsoDefaultView')
 export class EnsoDefaultViewDTO {
@@ -7,6 +7,18 @@ export class EnsoDefaultViewDTO {
 
   @Field(() => String)
   viewId: string;
+}
+
+@ObjectType('EnsoColumnWidth')
+export class EnsoColumnWidthDTO {
+  @Field(() => String)
+  viewId: string;
+
+  @Field(() => String)
+  fieldMetadataId: string;
+
+  @Field(() => Int)
+  size: number;
 }
 
 @ObjectType('EnsoViewerScope')
@@ -36,6 +48,12 @@ export class EnsoViewerScopeDTO {
   // chosen deliberately, so it simply keeps winning until they change it.
   @Field(() => [EnsoDefaultViewDTO])
   personalDefaultViews: EnsoDefaultViewDTO[];
+
+  // Column widths this viewer has dragged for themselves, across every view.
+  // The view's own sizes stay the baseline: an entry here only overrides the
+  // one column it names.
+  @Field(() => [EnsoColumnWidthDTO])
+  personalColumnWidths: EnsoColumnWidthDTO[];
 }
 
 @InputType('EnsoDefaultViewInput')
