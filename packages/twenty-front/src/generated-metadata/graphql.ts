@@ -1530,6 +1530,13 @@ export enum EngineComponentKey {
   VIEW_PREVIOUS_AI_CHATS = 'VIEW_PREVIOUS_AI_CHATS'
 }
 
+export type EnsoColumnWidth = {
+  __typename?: 'EnsoColumnWidth';
+  fieldMetadataId: Scalars['String'];
+  size: Scalars['Int'];
+  viewId: Scalars['String'];
+};
+
 export type EnsoDefaultView = {
   __typename?: 'EnsoDefaultView';
   objectMetadataId: Scalars['String'];
@@ -1585,6 +1592,7 @@ export type EnsoViewerScope = {
   defaultViewsVersion?: Maybe<Scalars['String']>;
   hiddenNavigationObjectNameSingulars: Array<Scalars['String']>;
   isRecordScoped: Scalars['Boolean'];
+  personalColumnWidths: Array<EnsoColumnWidth>;
   personalDefaultViews: Array<EnsoDefaultView>;
 };
 
@@ -2531,6 +2539,7 @@ export type Mutation = {
   editSSOIdentityProvider: EditSso;
   emailPasswordResetLink: EmailPasswordResetLink;
   endSubscriptionTrialPeriod: BillingEndTrialPeriod;
+  ensoSetMyColumnWidth: Array<EnsoColumnWidth>;
   ensoSetMyDefaultView: Array<EnsoDefaultView>;
   ensoSetMyRoutingAvailability: EnsoRoutingAvailability;
   ensoSetRoleDefaultViews: Array<EnsoDefaultView>;
@@ -3134,6 +3143,13 @@ export type MutationEditSsoIdentityProviderArgs = {
 export type MutationEmailPasswordResetLinkArgs = {
   email: Scalars['String'];
   workspaceId?: InputMaybe<Scalars['UUID']>;
+};
+
+
+export type MutationEnsoSetMyColumnWidthArgs = {
+  fieldMetadataId: Scalars['String'];
+  size?: InputMaybe<Scalars['Int']>;
+  viewId: Scalars['String'];
 };
 
 

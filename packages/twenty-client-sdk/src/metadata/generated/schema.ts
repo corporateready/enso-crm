@@ -2353,12 +2353,20 @@ export interface EnsoDefaultView {
     __typename: 'EnsoDefaultView'
 }
 
+export interface EnsoColumnWidth {
+    viewId: Scalars['String']
+    fieldMetadataId: Scalars['String']
+    size: Scalars['Int']
+    __typename: 'EnsoColumnWidth'
+}
+
 export interface EnsoViewerScope {
     isRecordScoped: Scalars['Boolean']
     hiddenNavigationObjectNameSingulars: Scalars['String'][]
     defaultViews: EnsoDefaultView[]
     defaultViewsVersion?: Scalars['String']
     personalDefaultViews: EnsoDefaultView[]
+    personalColumnWidths: EnsoColumnWidth[]
     __typename: 'EnsoViewerScope'
 }
 
@@ -2957,6 +2965,7 @@ export interface Mutation {
     impersonate: Impersonate
     callViaPbx: CallViaPbxResult
     ensoSetMyDefaultView: EnsoDefaultView[]
+    ensoSetMyColumnWidth: EnsoColumnWidth[]
     ensoSetRoleDefaultViews: EnsoDefaultView[]
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
     sendTaskEmail: GoogleChatTestResult
@@ -5517,12 +5526,21 @@ export interface EnsoDefaultViewGenqlSelection{
     __scalar?: boolean | number
 }
 
+export interface EnsoColumnWidthGenqlSelection{
+    viewId?: boolean | number
+    fieldMetadataId?: boolean | number
+    size?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
 export interface EnsoViewerScopeGenqlSelection{
     isRecordScoped?: boolean | number
     hiddenNavigationObjectNameSingulars?: boolean | number
     defaultViews?: EnsoDefaultViewGenqlSelection
     defaultViewsVersion?: boolean | number
     personalDefaultViews?: EnsoDefaultViewGenqlSelection
+    personalColumnWidths?: EnsoColumnWidthGenqlSelection
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -6161,6 +6179,7 @@ export interface MutationGenqlSelection{
     impersonate?: (ImpersonateGenqlSelection & { __args: {userId: Scalars['UUID'], workspaceId: Scalars['UUID']} })
     callViaPbx?: (CallViaPbxResultGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
     ensoSetMyDefaultView?: (EnsoDefaultViewGenqlSelection & { __args: {objectMetadataId: Scalars['String'], viewId?: (Scalars['String'] | null)} })
+    ensoSetMyColumnWidth?: (EnsoColumnWidthGenqlSelection & { __args: {viewId: Scalars['String'], fieldMetadataId: Scalars['String'], size?: (Scalars['Int'] | null)} })
     ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
     sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })
@@ -8395,6 +8414,14 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
       return EnsoDefaultView_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoColumnWidth_possibleTypes: string[] = ['EnsoColumnWidth']
+    export const isEnsoColumnWidth = (obj?: { __typename?: any } | null): obj is EnsoColumnWidth => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoColumnWidth"')
+      return EnsoColumnWidth_possibleTypes.includes(obj.__typename)
     }
     
 

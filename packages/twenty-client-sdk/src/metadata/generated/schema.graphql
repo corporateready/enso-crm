@@ -2649,12 +2649,19 @@ type EnsoDefaultView {
   viewId: String!
 }
 
+type EnsoColumnWidth {
+  viewId: String!
+  fieldMetadataId: String!
+  size: Int!
+}
+
 type EnsoViewerScope {
   isRecordScoped: Boolean!
   hiddenNavigationObjectNameSingulars: [String!]!
   defaultViews: [EnsoDefaultView!]!
   defaultViewsVersion: String
   personalDefaultViews: [EnsoDefaultView!]!
+  personalColumnWidths: [EnsoColumnWidth!]!
 }
 
 type EnsoLeadLookupProject {
@@ -3411,6 +3418,7 @@ type Mutation {
   impersonate(userId: UUID!, workspaceId: UUID!): Impersonate!
   callViaPbx(personId: String, opportunityId: String, taskId: String): CallViaPbxResult!
   ensoSetMyDefaultView(objectMetadataId: String!, viewId: String): [EnsoDefaultView!]!
+  ensoSetMyColumnWidth(viewId: String!, fieldMetadataId: String!, size: Int): [EnsoColumnWidth!]!
   ensoSetRoleDefaultViews(roleId: String!, defaultViews: [EnsoDefaultViewInput!]!): [EnsoDefaultView!]!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
   sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!
