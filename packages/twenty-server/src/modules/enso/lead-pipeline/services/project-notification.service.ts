@@ -250,6 +250,9 @@ export class ProjectNotificationService {
                 activityRow?.landingPage ??
                 opportunity.firstLandingPage ??
                 undefined,
+              // Activity-only: the deal's first-touch snapshot never copied a
+              // referrer, so this is the one place it can be read from.
+              referrer: activityRow?.referrer ?? undefined,
               occurredAt:
                 activityRow?.occurredAt ?? opportunity.createdAt ?? undefined,
               m2Requested: activityRow?.m2Requested ?? undefined,

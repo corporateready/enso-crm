@@ -202,6 +202,55 @@ describe('buildProjectDealMessage', () => {
     expect(message).toContain('no utm tags — traffic type: REFERRAL');
   });
 
+  // A Roistat dynamic-tracking call is the one inbound channel that carries a
+  // real referring URL, and it is what these rooms asked to see.
+  it('should print the referrer under the landing page', () => {
+    const message = buildProjectDealMessage({
+      projectName: 'ARTIMA Business & Lifestyle',
+      activity: {
+        kind: 'INCOMING_CALL',
+        callStatus: 'ANSWERED',
+        calleeDid: '37376040824',
+        durationS: 41,
+        landingPage: 'artima.md',
+        referrer: 'https://www.google.com/',
+        occurredAt: new Date('2026-09-10T08:20:27.000Z'),
+        utmSource: 'website',
+        utmMedium: 'dynamic_call_tracking',
+        utmCampaign: 'artima_website',
+      },
+    });
+
+    expect(message).toContain(
+      ['Landing Page: artima.md', 'Referrer: https://www.google.com/'].join(
+        '\n',
+      ),
+    );
+  });
+
+  // `$direct` is a sentinel, not a site. Leaking it into a room that has never
+  // shown a `$`-prefixed token would read as a broken tag.
+  it('should say a direct visit in words rather than printing $direct', () => {
+    const message = buildProjectDealMessage({
+      activity: {
+        kind: 'FORM_SUBMISSION',
+        landingPage: 'https://artima.md/ru',
+        referrer: '$direct',
+      },
+    });
+
+    expect(message).toContain('Referrer: direct — no referring site');
+    expect(message).not.toContain('$direct');
+  });
+
+  it('should omit the referrer line when the touch carried none', () => {
+    const message = buildProjectDealMessage({
+      activity: { kind: 'SOCIAL_MESSAGE', platform: 'INSTAGRAM' },
+    });
+
+    expect(message).not.toContain('Referrer');
+  });
+
   it('should keep the separator exactly 37 underscores', () => {
     expect(BLOCK_SEPARATOR).toBe('_____________________________________');
     expect(BLOCK_SEPARATOR).toHaveLength(37);
