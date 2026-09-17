@@ -30,6 +30,22 @@ export const ENSO_LEAD_LOOKUP = gql`
           dealStatus
         }
       }
+      dealMatches {
+        opportunityId
+        dealLabel
+        personId
+        displayName
+        maskedPhone
+        maskedEmail
+        projectName
+        projectCode
+        ownerName
+        ownerWorkspaceMemberId
+        isMine
+        dealStatus
+        firstContactAt
+        lastTouchAt
+      }
     }
   }
 `;

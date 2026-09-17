@@ -66,17 +66,34 @@ So `src/modules/enso/record-lookup` reads past record visibility on purpose, and
 |---|---|
 | Contact name | Phone and email in full |
 | Masked phone / email, enough to confirm identity | Notes, recordings, attachments |
-| Owning manager, per project | Deal amount, stage, lost reason |
-| First contact, last touch | Consent detail, attribution |
+| Owning manager, per project | Deal amount and lost reason |
+| First contact, last touch | Consent detail |
 | Deal status as `OPEN` / `WON` / `LOST` / `NONE` | Everything else |
 
-It surfaces in the normal search panel as a **"Worked by someone else"** group under the manager's own results, and is completely inert for anyone who already sees every record — the server reports whether the viewer is scoped and does no work otherwise.
+Contacts are matched by name, email or trailing phone digits; **deals are matched by name too**, because a manager searching a deal they heard about otherwise gets nothing back at all. A matched deal is described by a constructed label — "Call deal" — never by its stored name, which is composite (`Call | 69… | ARTIMA`) and carries the contact's phone number.
+
+Both surface in the normal search panel as an **"Elsewhere in the CRM"** group under the manager's own results, and the whole lane is inert for anyone who already sees every record — the server reports whether the viewer is scoped and does no work otherwise.
+
+### The read-only profile
+
+Clicking a match opens `ensoLeadProfile` in the side panel: the same projection, expanded far enough to decide what to do about the lead, and still not a record.
+
+| On the profile | Still withheld |
+|---|---|
+| Masked identity, as in the lookup line | Real phone and email |
+| Owner per project, **and their work address** so you can go and ask them | Message bodies, call recordings, notes, tasks |
+| Deal label, stage, status | Deal name, amount, lost reason |
+| First contact, last touch, re-engagement count | Consent detail, attachments, related people |
+| Source, traffic type, utm source / campaign | Everything else |
+| Inbound and outbound **counts and dates** | What was actually said |
+
+Nothing on it is editable, because none of it is a record: there is no path from the panel back into somebody else's book. An unowned lead reads as "Nobody is working this lead yet" rather than being attributed to a colleague — taking it still goes through routing.
 
 Guardrails, because a lookup that cannot be audited is just a slower way to browse the whole database:
 
-- **30 lookups per manager per day**, counted in Redis
-- **every call reported** to PostHog as `lead_lookup_performed`, carrying the owners whose book was read — never the search term, which is somebody's phone number
-- **no navigation**: clicking a foreign match explains who holds it, it does not open a record
+- **30 lookups per manager per day**, counted in Redis. Opening a profile spends nothing extra: the ids can only have come from a search that was already counted
+- **every call reported** to PostHog as `lead_lookup_performed` and `lead_profile_opened`, carrying the owners whose book was read — never the search term or the contact's name, which are somebody's personal data
+- **no navigation to the record**: the profile is a projection served by our own resolver, so nothing reaches the scoped ORM
 
 ## Before enabling this
 

@@ -1,14 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { isNonEmptyString } from '@sniptt/guards';
-import { In } from 'typeorm';
-import { isDefined } from 'twenty-shared/utils';
 
 import { InjectCacheStorage } from 'src/engine/core-modules/cache-storage/decorators/cache-storage.decorator';
 import { CacheStorageService } from 'src/engine/core-modules/cache-storage/services/cache-storage.service';
 import { CacheStorageNamespace } from 'src/engine/core-modules/cache-storage/types/cache-storage-namespace.enum';
-import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import {
+  type EnsoLeadLookupDealMatchDTO,
   type EnsoLeadLookupMatchDTO,
   type EnsoLeadLookupProjectDTO,
   type EnsoLeadLookupResultDTO,
@@ -19,53 +17,29 @@ import {
   ENSO_LEAD_LOOKUP_MIN_TERM_LENGTH,
 } from 'src/modules/enso/record-lookup/enso-lead-lookup.constants';
 import {
+  type AssignmentRow,
+  type MatchMode,
+  type OpportunityRow,
+  type PersonRow,
+  type ProjectRow,
+  type WorkspaceMemberRow,
+  EnsoLeadBookReaderService,
+} from 'src/modules/enso/record-lookup/services/enso-lead-book-reader.service';
+import {
+  buildDealLabel,
+  buildDisplayName,
+  buildOwnerName,
+  earliest,
+  latest,
+  resolveDealStatus,
+  resolveMatchMode,
+} from 'src/modules/enso/record-lookup/utils/enso-lead-projection.util';
+import {
   maskEmail,
   maskPhone,
 } from 'src/modules/enso/record-lookup/utils/mask-identity.util';
 import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/services/enso-viewer-scope.service';
 import { EnsoPostHogService } from 'src/modules/enso/routing-availability/services/enso-posthog.service';
-
-type PersonRow = {
-  id: string;
-  name?: { firstName?: string | null; lastName?: string | null } | null;
-  phones?: {
-    primaryPhoneNumber?: string | null;
-    primaryPhoneCallingCode?: string | null;
-  } | null;
-  emails?: { primaryEmail?: string | null } | null;
-  firstTouchAt?: Date | null;
-};
-
-type AssignmentRow = {
-  personId: string;
-  projectId: string | null;
-  managerId: string | null;
-  assignedAt?: Date | null;
-  lastContactAt?: Date | null;
-};
-
-type OpportunityRow = {
-  // Non-null by construction: rows only reach us because this column matched a
-  // set of person ids, so widening it to null would only break the In() filter.
-  pointOfContactId: string;
-  projectId: string | null;
-  ownerId: string | null;
-  stage?: string | null;
-  firstContactAt?: Date | null;
-  lastTouchAt?: Date | null;
-};
-
-type ProjectRow = { id: string; name?: string | null; code?: string | null };
-
-type WorkspaceMemberRow = {
-  id: string;
-  name?: { firstName?: string | null; lastName?: string | null } | null;
-};
-
-type MatchMode = 'PHONE' | 'EMAIL' | 'NAME';
-
-const WON_STAGES = new Set(['CLOSED_WON']);
-const LOST_STAGES = new Set(['CLOSED_LOST']);
 
 // Cross-book contact lookup.
 //
@@ -84,7 +58,7 @@ export class EnsoLeadLookupService {
   private readonly logger = new Logger(EnsoLeadLookupService.name);
 
   constructor(
-    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+    private readonly bookReader: EnsoLeadBookReaderService,
     private readonly ensoPostHogService: EnsoPostHogService,
     private readonly ensoViewerScopeService: EnsoViewerScopeService,
     @InjectCacheStorage(CacheStorageNamespace.ModuleEnsoLookup)
@@ -110,6 +84,7 @@ export class EnsoLeadLookupService {
     if (!isViewerScoped) {
       return {
         matches: [],
+        dealMatches: [],
         isRateLimited: false,
         remainingLookupsToday: 0,
         isViewerScoped: false,
@@ -119,6 +94,7 @@ export class EnsoLeadLookupService {
     if (searchTerm.length < ENSO_LEAD_LOOKUP_MIN_TERM_LENGTH) {
       return {
         matches: [],
+        dealMatches: [],
         isRateLimited: false,
         remainingLookupsToday:
           await this.getRemainingAllowance(workspaceMemberId),
@@ -131,15 +107,16 @@ export class EnsoLeadLookupService {
     if (remainingBefore < 0) {
       return {
         matches: [],
+        dealMatches: [],
         isRateLimited: true,
         remainingLookupsToday: 0,
         isViewerScoped: true,
       };
     }
 
-    const matchMode = this.resolveMatchMode(searchTerm);
+    const matchMode = resolveMatchMode(searchTerm);
 
-    const matches = await this.findMatches({
+    const { matches, dealMatches } = await this.findMatches({
       workspaceId,
       workspaceMemberId,
       searchTerm,
@@ -151,27 +128,16 @@ export class EnsoLeadLookupService {
       workspaceMemberId,
       matchMode,
       matches,
+      dealMatches,
     });
 
     return {
       matches,
+      dealMatches,
       isRateLimited: false,
       remainingLookupsToday: remainingBefore,
       isViewerScoped: true,
     };
-  }
-
-  private resolveMatchMode(searchTerm: string): MatchMode {
-    if (searchTerm.includes('@')) {
-      return 'EMAIL';
-    }
-
-    const digits = searchTerm.replace(/\D/g, '');
-
-    // A term that is mostly digits is a phone number, however it was pasted.
-    return digits.length >= 5 && digits.length >= searchTerm.length - 4
-      ? 'PHONE'
-      : 'NAME';
   }
 
   private async findMatches({
@@ -184,48 +150,78 @@ export class EnsoLeadLookupService {
     workspaceMemberId: string;
     searchTerm: string;
     matchMode: MatchMode;
-  }): Promise<EnsoLeadLookupMatchDTO[]> {
-    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
-      async () => {
-        const people = await this.findPeople({
+  }): Promise<{
+    matches: EnsoLeadLookupMatchDTO[];
+    dealMatches: EnsoLeadLookupDealMatchDTO[];
+  }> {
+    return this.bookReader.runInWorkspaceContext(async () => {
+      const [people, matchedDeals] = await Promise.all([
+        this.bookReader.findPeopleBySearchTerm({
           workspaceId,
           searchTerm,
           matchMode,
-        });
+          limit: ENSO_LEAD_LOOKUP_MAX_MATCHES,
+        }),
+        this.bookReader.findOpportunitiesBySearchTerm({
+          workspaceId,
+          searchTerm,
+          matchMode,
+          limit: ENSO_LEAD_LOOKUP_MAX_MATCHES,
+        }),
+      ]);
 
-        if (people.length === 0) {
-          return [];
-        }
+      // The contacts behind a matched deal are needed for its masked identity,
+      // and they are not necessarily among the people the term matched.
+      const dealContactIds = [
+        ...new Set(
+          matchedDeals
+            .map((deal) => deal.pointOfContactId)
+            .filter(isNonEmptyString),
+        ),
+      ];
 
-        const personIds = people.map((person) => person.id);
+      const dealContacts = await this.bookReader.findPeopleByIds(
+        workspaceId,
+        dealContactIds.filter(
+          (personId) => !people.some((person) => person.id === personId),
+        ),
+      );
 
-        const [assignments, opportunities] = await Promise.all([
-          this.findAssignments(workspaceId, personIds),
-          this.findOpportunities(workspaceId, personIds),
-        ]);
+      const peopleById = new Map(
+        [...people, ...dealContacts].map((person) => [person.id, person]),
+      );
 
-        const projectIds = [
-          ...new Set(
-            [...assignments, ...opportunities]
-              .map((row) => row.projectId)
-              .filter(isNonEmptyString),
-          ),
-        ];
-        const ownerIds = [
-          ...new Set(
-            [
-              ...assignments.map((row) => row.managerId),
-              ...opportunities.map((row) => row.ownerId),
-            ].filter(isNonEmptyString),
-          ),
-        ];
+      const personIds = people.map((person) => person.id);
 
-        const [projectsById, ownersById] = await Promise.all([
-          this.findProjectsById(workspaceId, projectIds),
-          this.findOwnersById(workspaceId, ownerIds),
-        ]);
+      const [assignments, opportunities] = await Promise.all([
+        this.bookReader.findAssignmentsByPersonIds(workspaceId, personIds),
+        this.bookReader.findOpportunitiesByPersonIds(workspaceId, personIds),
+      ]);
 
-        return people.map((person) =>
+      const projectIds = [
+        ...new Set(
+          [...assignments, ...opportunities, ...matchedDeals]
+            .map((row) => row.projectId)
+            .filter(isNonEmptyString),
+        ),
+      ];
+      const ownerIds = [
+        ...new Set(
+          [
+            ...assignments.map((row) => row.managerId),
+            ...opportunities.map((row) => row.ownerId),
+            ...matchedDeals.map((row) => row.ownerId),
+          ].filter(isNonEmptyString),
+        ),
+      ];
+
+      const [projectsById, ownersById] = await Promise.all([
+        this.bookReader.findProjectsByIds(workspaceId, projectIds),
+        this.bookReader.findOwnersByIds(workspaceId, ownerIds),
+      ]);
+
+      return {
+        matches: people.map((person) =>
           this.buildMatch({
             person,
             matchMode,
@@ -239,120 +235,25 @@ export class EnsoLeadLookupService {
             projectsById,
             ownersById,
           }),
-        );
-      },
-    );
-  }
-
-  private async findPeople({
-    workspaceId,
-    searchTerm,
-    matchMode,
-  }: {
-    workspaceId: string;
-    searchTerm: string;
-    matchMode: MatchMode;
-  }): Promise<PersonRow[]> {
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<PersonRow>(
-        workspaceId,
-        'person',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    const queryBuilder = repository
-      .createQueryBuilder('person')
-      .where('"person"."deletedAt" IS NULL');
-
-    if (matchMode === 'EMAIL') {
-      queryBuilder.andWhere('"person"."emailsPrimaryEmail" ILIKE :term', {
-        term: `%${searchTerm}%`,
-      });
-    } else if (matchMode === 'PHONE') {
-      // Match on the trailing digits so a local number finds an E.164 record
-      // and the other way round.
-      queryBuilder.andWhere('"person"."phonesPrimaryPhoneNumber" LIKE :term', {
-        term: `%${searchTerm.replace(/\D/g, '').slice(-7)}`,
-      });
-    } else {
-      // COALESCE, not plain concatenation: half the intake contacts arrive with
-      // only a first name, and `'Ana' || NULL` is NULL, which would silently
-      // make them unfindable.
-      queryBuilder.andWhere(
-        `(COALESCE("person"."nameFirstName", '') || ' ' || COALESCE("person"."nameLastName", '')) ILIKE :term`,
-        { term: `%${searchTerm}%` },
-      );
-    }
-
-    return queryBuilder.take(ENSO_LEAD_LOOKUP_MAX_MATCHES).getMany();
-  }
-
-  private async findAssignments(
-    workspaceId: string,
-    personIds: string[],
-  ): Promise<AssignmentRow[]> {
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<AssignmentRow>(
-        workspaceId,
-        'personProjectAssignment',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    return repository.find({ where: { personId: In(personIds) } });
-  }
-
-  private async findOpportunities(
-    workspaceId: string,
-    personIds: string[],
-  ): Promise<OpportunityRow[]> {
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<OpportunityRow>(
-        workspaceId,
-        'opportunity',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    return repository.find({ where: { pointOfContactId: In(personIds) } });
-  }
-
-  private async findProjectsById(
-    workspaceId: string,
-    projectIds: string[],
-  ): Promise<Map<string, ProjectRow>> {
-    if (projectIds.length === 0) {
-      return new Map();
-    }
-
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<ProjectRow>(
-        workspaceId,
-        'project',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    const projects = await repository.find({ where: { id: In(projectIds) } });
-
-    return new Map(projects.map((project) => [project.id, project]));
-  }
-
-  private async findOwnersById(
-    workspaceId: string,
-    ownerIds: string[],
-  ): Promise<Map<string, WorkspaceMemberRow>> {
-    if (ownerIds.length === 0) {
-      return new Map();
-    }
-
-    const repository =
-      await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberRow>(
-        workspaceId,
-        'workspaceMember',
-        { shouldBypassPermissionChecks: true },
-      );
-
-    const owners = await repository.find({ where: { id: In(ownerIds) } });
-
-    return new Map(owners.map((owner) => [owner.id, owner]));
+        ),
+        dealMatches: matchedDeals.map((deal) =>
+          this.buildDealMatch({
+            deal,
+            workspaceMemberId,
+            person: isNonEmptyString(deal.pointOfContactId)
+              ? (peopleById.get(deal.pointOfContactId) ?? null)
+              : null,
+            assignment: assignments.find(
+              (row) =>
+                row.personId === deal.pointOfContactId &&
+                row.projectId === deal.projectId,
+            ),
+            projectsById,
+            ownersById,
+          }),
+        ),
+      };
+    });
   }
 
   private buildMatch({
@@ -395,10 +296,7 @@ export class EnsoLeadLookupService {
 
     return {
       personId: person.id,
-      displayName:
-        [person.name?.firstName, person.name?.lastName]
-          .filter(isNonEmptyString)
-          .join(' ') || 'Unnamed contact',
+      displayName: buildDisplayName(person),
       matchedOn: matchMode,
       maskedPhone: maskPhone(
         person.phones?.primaryPhoneCallingCode,
@@ -408,6 +306,48 @@ export class EnsoLeadLookupService {
       firstTouchAt: person.firstTouchAt ?? null,
       isMine: projects.some((project) => project.isMine),
       projects,
+    };
+  }
+
+  private buildDealMatch({
+    deal,
+    workspaceMemberId,
+    person,
+    assignment,
+    projectsById,
+    ownersById,
+  }: {
+    deal: OpportunityRow;
+    workspaceMemberId: string;
+    person: PersonRow | null;
+    assignment: AssignmentRow | undefined;
+    projectsById: Map<string, ProjectRow>;
+    ownersById: Map<string, WorkspaceMemberRow>;
+  }): EnsoLeadLookupDealMatchDTO {
+    const project = isNonEmptyString(deal.projectId)
+      ? projectsById.get(deal.projectId)
+      : undefined;
+    const ownerId = deal.ownerId ?? assignment?.managerId ?? null;
+    const owner = isNonEmptyString(ownerId) ? ownersById.get(ownerId) : null;
+
+    return {
+      opportunityId: deal.id,
+      dealLabel: buildDealLabel(deal.source),
+      personId: deal.pointOfContactId ?? null,
+      displayName: buildDisplayName(person),
+      maskedPhone: maskPhone(
+        person?.phones?.primaryPhoneCallingCode,
+        person?.phones?.primaryPhoneNumber,
+      ),
+      maskedEmail: maskEmail(person?.emails?.primaryEmail),
+      projectName: project?.name ?? null,
+      projectCode: project?.code ?? null,
+      ownerName: buildOwnerName(owner),
+      ownerWorkspaceMemberId: ownerId,
+      isMine: ownerId === workspaceMemberId,
+      dealStatus: resolveDealStatus([deal]),
+      firstContactAt: deal.firstContactAt ?? null,
+      lastTouchAt: deal.lastTouchAt ?? null,
     };
   }
 
@@ -440,55 +380,19 @@ export class EnsoLeadLookupService {
       projectId,
       projectName: project?.name ?? null,
       projectCode: project?.code ?? null,
-      ownerName: isDefined(owner)
-        ? [owner.name?.firstName, owner.name?.lastName]
-            .filter(isNonEmptyString)
-            .join(' ') || null
-        : null,
+      ownerName: buildOwnerName(owner),
       ownerWorkspaceMemberId: ownerId,
       isMine: ownerId === workspaceMemberId,
-      firstContactAt: this.earliest([
+      firstContactAt: earliest([
         assignment?.assignedAt ?? null,
         ...projectOpportunities.map((row) => row.firstContactAt ?? null),
       ]),
-      lastTouchAt: this.latest([
+      lastTouchAt: latest([
         assignment?.lastContactAt ?? null,
         ...projectOpportunities.map((row) => row.lastTouchAt ?? null),
       ]),
-      dealStatus: this.resolveDealStatus(projectOpportunities),
+      dealStatus: resolveDealStatus(projectOpportunities),
     };
-  }
-
-  private resolveDealStatus(opportunities: OpportunityRow[]): string {
-    if (opportunities.length === 0) {
-      return 'NONE';
-    }
-
-    const stages = opportunities.map((row) => row.stage ?? '');
-
-    if (
-      stages.some((stage) => !WON_STAGES.has(stage) && !LOST_STAGES.has(stage))
-    ) {
-      return 'OPEN';
-    }
-
-    return stages.some((stage) => WON_STAGES.has(stage)) ? 'WON' : 'LOST';
-  }
-
-  private earliest(dates: (Date | null)[]): Date | null {
-    const defined = dates.filter(isDefined);
-
-    return defined.length === 0
-      ? null
-      : defined.reduce((a, b) => (a < b ? a : b));
-  }
-
-  private latest(dates: (Date | null)[]): Date | null {
-    const defined = dates.filter(isDefined);
-
-    return defined.length === 0
-      ? null
-      : defined.reduce((a, b) => (a > b ? a : b));
   }
 
   private getAllowanceKey(workspaceMemberId: string): string {
@@ -529,19 +433,22 @@ export class EnsoLeadLookupService {
     workspaceMemberId,
     matchMode,
     matches,
+    dealMatches,
   }: {
     workspaceId: string;
     workspaceMemberId: string;
     matchMode: MatchMode;
     matches: EnsoLeadLookupMatchDTO[];
+    dealMatches: EnsoLeadLookupDealMatchDTO[];
   }): void {
     const foreignMatches = matches.filter((match) => !match.isMine);
+    const foreignDealMatches = dealMatches.filter((match) => !match.isMine);
 
     // The search term itself is never recorded: it is somebody's phone number
     // or name, and the audit question is who looked at whose book, not what was
     // typed.
     this.logger.log(
-      `lead lookup by member ${workspaceMemberId}: ${matchMode}, ${matches.length} match(es), ${foreignMatches.length} owned by others`,
+      `lead lookup by member ${workspaceMemberId}: ${matchMode}, ${matches.length} contact(s) and ${dealMatches.length} deal(s), ${foreignMatches.length + foreignDealMatches.length} owned by others`,
     );
 
     this.ensoPostHogService.capture({
@@ -551,14 +458,18 @@ export class EnsoLeadLookupService {
         workspaceId,
         matchMode,
         matchCount: matches.length,
-        foreignMatchCount: foreignMatches.length,
+        dealMatchCount: dealMatches.length,
+        foreignMatchCount: foreignMatches.length + foreignDealMatches.length,
         ownerWorkspaceMemberIds: [
           ...new Set(
-            foreignMatches.flatMap((match) =>
-              match.projects
-                .map((project) => project.ownerWorkspaceMemberId)
-                .filter(isNonEmptyString),
-            ),
+            [
+              ...foreignMatches.flatMap((match) =>
+                match.projects.map((project) => project.ownerWorkspaceMemberId),
+              ),
+              ...foreignDealMatches.map(
+                (match) => match.ownerWorkspaceMemberId,
+              ),
+            ].filter(isNonEmptyString),
           ),
         ],
       },

@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 
 import { EnsoViewerScopeModule } from 'src/modules/enso/record-visibility/enso-viewer-scope.module';
 import { EnsoLeadLookupResolver } from 'src/modules/enso/record-lookup/resolvers/enso-lead-lookup.resolver';
+import { EnsoLeadBookReaderService } from 'src/modules/enso/record-lookup/services/enso-lead-book-reader.service';
 import { EnsoLeadLookupService } from 'src/modules/enso/record-lookup/services/enso-lead-lookup.service';
+import { EnsoLeadProfileService } from 'src/modules/enso/record-lookup/services/enso-lead-profile.service';
 import { EnsoPostHogService } from 'src/modules/enso/routing-availability/services/enso-posthog.service';
 
 // Imported by CoreEngineModule, not ModulesModule: a @MetadataResolver only
@@ -15,7 +17,9 @@ import { EnsoPostHogService } from 'src/modules/enso/routing-availability/servic
   imports: [EnsoViewerScopeModule],
   providers: [
     EnsoLeadLookupResolver,
+    EnsoLeadBookReaderService,
     EnsoLeadLookupService,
+    EnsoLeadProfileService,
     EnsoPostHogService,
   ],
 })

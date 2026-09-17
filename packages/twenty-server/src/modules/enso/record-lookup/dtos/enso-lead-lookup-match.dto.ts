@@ -66,10 +66,63 @@ export class EnsoLeadLookupMatchDTO {
   projects: EnsoLeadLookupProjectDTO[];
 }
 
+// A deal that matched the search term. Searching a deal name is the other half
+// of "has anybody touched this?", and a scoped manager gets nothing at all back
+// from normal search for someone else's deal.
+@ObjectType('EnsoLeadLookupDealMatch')
+export class EnsoLeadLookupDealMatchDTO {
+  @Field(() => String)
+  opportunityId: string;
+
+  // A constructed label ("Call deal"), never the stored deal name: the
+  // composite name carries the contact's phone number.
+  @Field(() => String)
+  dealLabel: string;
+
+  @Field(() => String, { nullable: true })
+  personId: string | null;
+
+  @Field(() => String)
+  displayName: string;
+
+  @Field(() => String, { nullable: true })
+  maskedPhone: string | null;
+
+  @Field(() => String, { nullable: true })
+  maskedEmail: string | null;
+
+  @Field(() => String, { nullable: true })
+  projectName: string | null;
+
+  @Field(() => String, { nullable: true })
+  projectCode: string | null;
+
+  @Field(() => String, { nullable: true })
+  ownerName: string | null;
+
+  @Field(() => String, { nullable: true })
+  ownerWorkspaceMemberId: string | null;
+
+  @Field(() => Boolean)
+  isMine: boolean;
+
+  @Field(() => String)
+  dealStatus: string;
+
+  @Field(() => Date, { nullable: true })
+  firstContactAt: Date | null;
+
+  @Field(() => Date, { nullable: true })
+  lastTouchAt: Date | null;
+}
+
 @ObjectType('EnsoLeadLookupResult')
 export class EnsoLeadLookupResultDTO {
   @Field(() => [EnsoLeadLookupMatchDTO])
   matches: EnsoLeadLookupMatchDTO[];
+
+  @Field(() => [EnsoLeadLookupDealMatchDTO])
+  dealMatches: EnsoLeadLookupDealMatchDTO[];
 
   // Set when the daily allowance is spent, so the UI can explain the empty
   // result instead of implying the contact does not exist.
