@@ -265,4 +265,42 @@ describe('buildProjectDealMessage', () => {
     expect(message).not.toContain('Timestamp');
     expect(message).not.toContain('Invalid');
   });
+
+  it('should print the lead-ad form answers and language the n8n alert used to carry', () => {
+    const message = buildProjectDealMessage({
+      projectName: 'IOANA RADU',
+      fullName: 'Tania Jornea',
+      phone: '+37378083230',
+      formAnswers: [
+        { label: 'Unit Type', value: 'spațiu comercial' },
+        { label: 'Area', value: '98 m²' },
+      ],
+      language: 'RO',
+      activity: {
+        kind: 'LEAD_AD',
+        platform: 'FACEBOOK',
+        occurredAt: new Date('2026-09-28T11:28:55.000Z'),
+        // Parsed from the same answer, so it must not print a second Area line.
+        m2Requested: 98,
+        utmSource: 'facebook',
+      },
+    });
+
+    expect(message).toBe(
+      [
+        'Activity Type: Facebook Lead Ad Form',
+        'Full Name: Tania Jornea',
+        'Client Number: +37378083230',
+        'Email: ',
+        'Project: IOANA RADU',
+        'Unit Type: spațiu comercial',
+        'Area: 98 m²',
+        'Language: RO',
+        'Timestamp: 2026-09-28 14:28:55',
+        BLOCK_SEPARATOR,
+        '',
+        'utm_source: facebook',
+      ].join('\n'),
+    );
+  });
 });

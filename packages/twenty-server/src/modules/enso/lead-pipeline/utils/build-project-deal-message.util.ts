@@ -1,6 +1,7 @@
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
+import { type LeadAdFormAnswer } from 'src/modules/enso/lead-pipeline/utils/extract-lead-ad-form-answers.util';
 import { normalizeReferrer } from 'src/modules/enso/shared/utils/referrer.util';
 import {
   ANSWERED_CALL_STATUS,
@@ -54,6 +55,9 @@ export type ProjectDealFacts = {
   fullName?: string;
   phone?: string;
   email?: string;
+  // The lead-ad form's own questions (Unit Type, Area, ...), in form order.
+  formAnswers?: LeadAdFormAnswer[];
+  language?: string;
   activity?: ProjectDealActivityFacts;
 };
 
@@ -201,7 +205,15 @@ export const buildProjectDealMessage = (
   lines.push(`Email: ${facts.email ?? ''}`);
   push('Project', facts.projectName);
 
-  if (isDefined(activity.m2Requested)) {
+  const formAnswers = facts.formAnswers ?? [];
+
+  formAnswers.forEach((answer) => push(answer.label, answer.value));
+
+  // The form's own area answer is what the lead actually picked ("98 m²", or a
+  // range); m2Requested is our parse of it, so printing both says it twice.
+  const hasAreaAnswer = formAnswers.some((answer) => answer.label === 'Area');
+
+  if (isDefined(activity.m2Requested) && !hasAreaAnswer) {
     lines.push(`Area: ${activity.m2Requested} m²`);
   }
 
@@ -218,6 +230,7 @@ export const buildProjectDealMessage = (
   // them", and a referrer is the only attribution a dynamic call or an untagged
   // form carries when the utm_* block below comes back empty.
   push('Referrer', normalizeReferrer(activity.referrer));
+  push('Language', facts.language);
   push('Timestamp', formatProjectDealTimestamp(activity.occurredAt));
 
   lines.push(BLOCK_SEPARATOR, '');
