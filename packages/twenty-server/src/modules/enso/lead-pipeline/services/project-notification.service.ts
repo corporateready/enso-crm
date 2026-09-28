@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
@@ -9,6 +10,7 @@ import {
   buildProjectDealMessage,
   type ProjectDealFacts,
 } from 'src/modules/enso/lead-pipeline/utils/build-project-deal-message.util';
+import { extractLeadAdFormAnswers } from 'src/modules/enso/lead-pipeline/utils/extract-lead-ad-form-answers.util';
 import { ProjectChatWebhookService } from 'src/modules/enso/notifications/services/project-chat-webhook.service';
 import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.util';
 import { hasAuthoritativeCallPush } from 'src/modules/enso/telephony/utils/call-outcome.util';
@@ -185,6 +187,7 @@ export class ProjectNotificationService {
         let fullName: string | undefined;
         let phone: string | undefined;
         let email: string | undefined;
+        let personLanguages: unknown;
 
         if (isDefined(opportunity.pointOfContactId)) {
           const personRepository =
@@ -204,6 +207,7 @@ export class ProjectNotificationService {
           fullName = composed || undefined;
           phone = readPersonPhoneE164(person);
           email = person?.emails?.primaryEmail ?? undefined;
+          personLanguages = person?.languages;
         }
 
         // The activity carries the per-touch detail the rooms show (status,
@@ -222,6 +226,15 @@ export class ProjectNotificationService {
           order: { occurredAt: 'ASC' },
         });
 
+        // Lead-ad only: until the CRM posted these, the n8n Lead Ad alert
+        // was the one showing the form's answers and the language, so without
+        // them the room would lose information by retiring that alert. Other
+        // channels' rooms never carried these lines.
+        const isLeadAd = activityRow?.kind === 'LEAD_AD';
+        const firstLanguage = Array.isArray(personLanguages)
+          ? personLanguages.find(isNonEmptyString)
+          : undefined;
+
         return {
           projectId: opportunity.projectId ?? undefined,
           isAwaitingCallOutcome: awaitsCallOutcome(activityRow),
@@ -230,6 +243,10 @@ export class ProjectNotificationService {
             fullName,
             phone,
             email,
+            formAnswers: isLeadAd
+              ? extractLeadAdFormAnswers(activityRow?.submittedPayload)
+              : undefined,
+            language: isLeadAd ? firstLanguage : undefined,
             activity: {
               kind: activityRow?.kind ?? undefined,
               source: activityRow?.source ?? undefined,
