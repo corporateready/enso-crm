@@ -498,6 +498,7 @@ export class MarketingSmsService {
   private async resolvePersonSms(
     workspaceId: string,
     personId?: string,
+    opportunityId?: string,
   ): Promise<{
     to?: string;
     aliases: string[];
@@ -538,6 +539,12 @@ export class MarketingSmsService {
           'project',
           { shouldBypassPermissionChecks: true },
         );
+      const opportunityRepository =
+        await this.globalWorkspaceOrmManager.getRepository<any>(
+          workspaceId,
+          'opportunity',
+          { shouldBypassPermissionChecks: true },
+        );
 
       const person = await personRepository.findOne({
         where: { id: personId },
@@ -553,6 +560,55 @@ export class MarketingSmsService {
           canSend: false,
           reason: 'No phone number on file for this contact.',
         };
+
+        return;
+      }
+
+      // A touch belongs to a deal → the deal's project brand IS the sender
+      // (authoritative, not chosen), and consent is the gate for THAT project.
+      // Only when no deal is in context do we fall back to the contact's
+      // consented brands (below).
+      if (isNonEmptyString(opportunityId)) {
+        const opportunity = await opportunityRepository.findOne({
+          where: { id: opportunityId },
+        });
+        const projectId =
+          (opportunity?.projectId as string | undefined) ?? undefined;
+        const dealAlias = isNonEmptyString(projectId)
+          ? (((await projectRepository.findOne({ where: { id: projectId } }))
+              ?.smsAlias as string | undefined) ?? undefined)
+          : undefined;
+
+        if (!isNonEmptyString(dealAlias)) {
+          result = {
+            to,
+            aliases: [],
+            canSend: false,
+            reason: "No SMS sender is configured for this deal's project.",
+          };
+
+          return;
+        }
+
+        const dealConsents = await consentRepository.find({
+          where: { personId },
+        });
+        const dealConsent = dealConsents.find(
+          (row: any) => row.projectId === projectId,
+        );
+
+        if (dealConsent?.smsMarketingConsent !== true) {
+          result = {
+            to,
+            aliases: [],
+            canSend: false,
+            reason: "This contact hasn't granted SMS consent for this brand.",
+          };
+
+          return;
+        }
+
+        result = { to, aliases: [dealAlias], canSend: true };
 
         return;
       }
@@ -609,10 +665,12 @@ export class MarketingSmsService {
   async getPersonSmsContext(params: {
     workspaceId: string;
     personId?: string;
+    opportunityId?: string;
   }): Promise<{ aliases: string[]; canSend: boolean; reason: string | null }> {
     const context = await this.resolvePersonSms(
       params.workspaceId,
       params.personId,
+      params.opportunityId,
     );
 
     return {
@@ -642,7 +700,11 @@ export class MarketingSmsService {
       taskId,
       workspaceMemberId,
     } = params;
-    const context = await this.resolvePersonSms(workspaceId, personId);
+    const context = await this.resolvePersonSms(
+      workspaceId,
+      personId,
+      opportunityId,
+    );
 
     if (!context.canSend || !isNonEmptyString(context.to)) {
       return { success: false, error: context.reason ?? 'Could not send SMS.' };
