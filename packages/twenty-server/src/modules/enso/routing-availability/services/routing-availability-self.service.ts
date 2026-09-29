@@ -5,6 +5,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { RoutingAvailabilityAuditService } from 'src/modules/enso/routing-availability/services/routing-availability-audit.service';
+import { PbxCallReceptionSyncService } from 'src/modules/enso/telephony/services/pbx-call-reception-sync.service';
 import {
   RoutingAvailabilityException,
   RoutingAvailabilityExceptionCode,
@@ -32,6 +33,7 @@ export class RoutingAvailabilitySelfService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly routingAvailabilityAuditService: RoutingAvailabilityAuditService,
+    private readonly pbxCallReceptionSyncService: PbxCallReceptionSyncService,
   ) {}
 
   async setOwnAvailability({
@@ -85,6 +87,15 @@ export class RoutingAvailabilitySelfService {
       isAvailableForRouting,
       previousValue,
     );
+
+    // Only on a real flip: see PbxCallReceptionSyncService for why this must
+    // never become a level sync.
+    if (previousValue !== isAvailableForRouting) {
+      this.pbxCallReceptionSyncService.scheduleSync(
+        workspaceId,
+        workspaceMemberId,
+      );
+    }
 
     this.logger.log(
       `routing availability set to ${isAvailableForRouting} by member ${workspaceMemberId}`,

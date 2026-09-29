@@ -51,9 +51,10 @@ All pushes for one connector arrive at **one URL**, dispatched on `cmd`.
 |---|---|
 | `makeCall` | Click-to-dial — rings the manager, then bridges to the client; returns CallID |
 | `accounts` | PBX users → map to `workspaceMember` (login, `realName`, `ext`, `telnum`) |
-| `groups` | Departments |
+| `groups` | Departments; with `user=` only that user's. There is no "members of a group" query |
 | `history` | CSV pull: `UID,type,client,account,via,start,wait,duration,record` |
-| `subscribeOnCalls`, `set_dnd`, `get_dnd`, `subscriptionStatus` | Per-agent / per-department call reception — the PBX-side counterpart of `isAvailableForRouting` |
+| `subscribeOnCalls`, `subscriptionStatus` | Per-agent, per-department call reception. Driven by the "Accepting leads" toggle — see [Accepting leads → PBX departments](#accepting-leads--pbx-departments). The spec's spelling `subscribtionstatus` is rejected live; send `subscriptionStatus` |
+| `set_dnd`, `get_dnd` | Per-agent do-not-disturb. Deliberately NOT used: it would also block transfers of the manager's own clients |
 
 Multiple **API connectors** can coexist on one tenant, each with its own CRM
 address and token. The CRM gets its own connector; the legacy n8n connector is
@@ -80,6 +81,34 @@ and diverting them to the department throws away the continuity sticky ownership
 exists for. This matches the routing brain, which already holds that "sticky wins
 even if the manager is currently offline — it's their client". Real presence
 belongs to the PBX (DND / «Приём звонков»).
+
+### Accepting leads → PBX departments
+
+Pausing "Accepting leads" also stops that manager receiving their
+**departments'** calls, so a paused manager gets no cold inbound calls. It does
+not stop calls from their own clients, because transfer-to-responsible rings
+the manager directly rather than through a group. `PbxCallReceptionSyncService`
+does this with `subscribeOnCalls`, one department at a time:
+
+- **Never without `group_id`.** Without it the PBX flips the user in every group,
+  including the one-person group behind their personal line.
+- **One-member groups are left alone.** Those are personal lines, such as
+  `Alexandru Morosanu` or `Oleg Luchian`, not departments.
+- **Never the last receiver.** If nobody else in a department is receiving, the
+  manager stays on there and a warning is logged. Otherwise that department's
+  numbers would ring nobody.
+- **Only on a real flip, never as a level sync.** Everyone is paused in the CRM
+  while the parked ROUTING backlog waits, and copying that across would stop
+  every department from ringing anyone.
+- **One way only (CRM → PBX), in the background.** One queue runs the syncs in
+  order, so two managers pausing at once can't both pass the last-receiver
+  check. A PBX failure is logged and never fails the toggle.
+- Only the self-service toggle (`ensoSetMyRoutingAvailability`) triggers it. An
+  admin editing another member's record does not.
+- Gated on `workspaceMember.pbxLogin` and on `ENSO_TELEPHONY_SYNC_CALL_RECEPTION=true`.
+
+PBX baseline on 2026-09-29, before the first sync: every member was `on` in
+every group they belong to.
 
 #### No answer on a transfer
 
@@ -391,6 +420,7 @@ from an analytics-confirmed one.
 | `ROISTAT_API_KEY`, `ROISTAT_PROJECT_ID` | Roistat REST access (project 187275) |
 | `ENSO_TELEPHONY_ARCHIVE_RECORDINGS` | Recording archival. Defaults ON only under `STORAGE_TYPE=s3`; `true` forces it, `false` disables it |
 | `ENSO_TELEPHONY_RECORDING_MAX_BYTES` | Per-recording ceiling (default 20 MB ≈ a two-hour call) |
+| `ENSO_TELEPHONY_SYNC_CALL_RECEPTION` | `true` mirrors the "Accepting leads" toggle into PBX department reception. Default off. Needed on `twenty-server` only |
 
 Set on Railway `twenty-server` (serves the endpoints) and `twenty-worker` (runs
 the PBX lookup jobs).
@@ -431,8 +461,11 @@ the PBX lookup jobs).
 
    Gated on `workspaceMember.pbxLogin`: without it the PBX has no idea whose
    phone to ring, so the button is disabled with that reason shown.
-6. **`set_dnd` / `subscribeOnCalls`** wired to `isAvailableForRouting`, so CRM
-   presence and PBX call reception stop drifting apart.
+6. **`subscribeOnCalls`** wired to `isAvailableForRouting` (departments only,
+   no DND). See [Accepting leads → PBX departments](#accepting-leads--pbx-departments).
+   Built behind `ENSO_TELEPHONY_SYNC_CALL_RECEPTION`. Before enabling it, check
+   with one live call that transfer-to-responsible still rings a manager who is
+   `off` in the number's department.
 
 ## Open questions
 
