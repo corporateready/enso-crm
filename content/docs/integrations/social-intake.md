@@ -905,3 +905,34 @@ simpler, no metadata/migration/pipeline changes.
 attachment thumbnails; a DB-level dedup guard; consent upsert; phone/email dedup
 in stage-1 (WhatsApp); possibly a Chatwoot-fork `allowed_request_origins` tweak if
 the websocket handshake is rejected cross-origin.
+
+## ⚠️ Facebook contacts had no names (2026-09-29)
+
+**Every Facebook DM contact arrived as "John Doe"** — 465 of 466 since go-live,
+flowing into 450 CRM contacts, 397 deal names and 512 activity names. Instagram was
+unaffected (its API returns names without this requirement).
+
+**Cause:** Chatwoot asks Meta for the sender's profile and, on any error, falls back
+to the literal `"John" + "Doe"`. Meta withholds the profile from anyone without a role
+on the app until the app has **Business Asset User Profile Access** at **Advanced
+Access**. Proven with the real page token: an app admin's PSID returns `first_name`,
+every public PSID returns `100/33 — missing permissions`. The app is **ENSO Chatwoot**
+(`1372861104654929`), not the Lead Ads app.
+
+**No identity damage** — people are keyed by PSID, never by name, so no two contacts
+were merged.
+
+**Interim, live:**
+
+- corporateready/chatwoot#3 — new Facebook contacts get `Facebook lead ·<last 6 digits
+  of the PSID>` instead of "John Doe". Six digits because four collide: measured on the
+  real data, 4 digits gave 13 duplicate placeholders, 6 gave none.
+- The existing 465 Chatwoot contacts and the 450 CRM contacts, 397 deals and 512
+  activities were renamed to the same placeholder, by direct SQL so no hook fired.
+  Both systems derive it from the same PSID, so a person reads the same everywhere.
+  Before-state in `scratchpad/john-doe-{chatwoot,crm}-before-2026-09-29.txt`.
+
+**Real fix:** App Review — the ready-to-paste submission is
+[`docs/meta-app-review-profile-access.md`](../../../docs/meta-app-review-profile-access.md).
+After approval, a backfill replaces every `Facebook lead ·` placeholder with the real
+name; the PSIDs persist, so nothing is lost by waiting.
