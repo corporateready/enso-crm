@@ -25,10 +25,29 @@ Instagram API returns names without this feature.
 Meta's own statement of the requirement:
 [Messenger Platform → User Profile API](https://developers.facebook.com/docs/messenger-platform/identity/user-profile).
 
+## Is there a simpler route for an internal app?
+
+**No.** Checked against Meta's own references on 2026-09-29:
+
+- The feature's reference page states it needs **both** App Review **and** Business
+  Verification before the app gets live data.
+- The access-levels page is explicit that Standard Access covers **only people who
+  hold a role on the app**, with no carve-out for an app that only touches its own
+  business's data. That is exactly what we observed: an app admin's name loads, the
+  public's does not.
+
+The one condition worth designing the submission around: the feature is usable **only
+if the app displays at least one user field in its business interface**. Our use —
+the customer's name in the inbox and on the CRM record — is precisely that, and the
+screencast below exists to show it.
+
 ## Before you submit — prerequisites
 
-- [ ] **Business Verification** complete for the business that owns ENSO Chatwoot.
-  Advanced Access requires it. `[FILL: confirm in Business Settings → Security Center]`
+- [x] **Business Verification** — done. Portfolio **ENSO Development Moldova**
+  (`220296539786413`) is **Verified** under *SRL BINA-AGENCY*, originally verified
+  **2024-10-16**, for the use case *"App requires access to permissions on Meta for
+  Developers"*. ENSO Chatwoot is **owned by** that portfolio (Business Settings →
+  Apps), so the verification applies to it. Checked 2026-09-29.
 - [x] App is **Live** — public DMs already reach our webhook, which a
   development-mode app would not receive.
 - [ ] **Privacy Policy URL** set on the app. `[FILL: URL]`
