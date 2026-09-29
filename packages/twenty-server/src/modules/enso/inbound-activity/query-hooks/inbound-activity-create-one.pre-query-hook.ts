@@ -8,6 +8,7 @@ import { type CreateOneResolverArgs } from 'src/engine/api/graphql/workspace-res
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
+import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/canonicalize-utm-medium.util';
 
 @Injectable()
 @WorkspaceQueryHook(`inboundActivity.createOne`)
@@ -25,15 +26,20 @@ export class InboundActivityCreateOnePreQueryHook implements WorkspacePreQueryHo
       return payload;
     }
 
+    // Canonicalise here rather than in each intake workflow: every channel lands
+    // through this hook, so one alias table covers social DMs, lead ads, forms and
+    // calls alike — and n8n stays free to write exactly what the source said.
+    const data = withCanonicalUtmMedium(payload.data);
+
     const name = await this.inboundActivityNameService.computeName(
       authContext,
-      payload.data,
+      data,
     );
 
     if (!isDefined(name)) {
-      return payload;
+      return data === payload.data ? payload : { ...payload, data };
     }
 
-    return { ...payload, data: { ...payload.data, name } };
+    return { ...payload, data: { ...data, name } };
   }
 }
