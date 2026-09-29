@@ -203,9 +203,15 @@ export const SidePanelEnsoLeadProfilePage = () => {
         <ProfileRow label={t`Outbound`} value={outboundLine ?? t`None`} />
       </StyledSection>
 
-      <StyledFootnote>
-        {t`Contact details stay with the owner. If you need this lead, talk to them first.`}
-      </StyledFootnote>
+      {/* The viewer's own lead needs no footnote: the banner already tells them
+          to open it from their own list. */}
+      {!profile.isMine && (
+        <StyledFootnote>
+          {owners.length > 0
+            ? t`Contact details stay with the owner. If you need this lead, talk to them first.`
+            : t`Nobody owns this lead. Contact an administrator if you have questions about it.`}
+        </StyledFootnote>
+      )}
     </StyledContainer>
   );
 };
