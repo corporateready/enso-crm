@@ -142,6 +142,43 @@ export class EnsoInboundRawEventService {
     }
   }
 
+  // Adds context to a row without touching its status. For rows born
+  // NOT_TRACKED, which never get an outcome stamped but whose handling is still
+  // worth reading back — the routing answer given to a contact push.
+  async annotate({
+    workspaceId,
+    id,
+    note,
+  }: {
+    workspaceId: string;
+    id: string | undefined;
+    note: string;
+  }): Promise<void> {
+    if (!isDefined(id)) {
+      return;
+    }
+
+    try {
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const repository =
+            await this.globalWorkspaceOrmManager.getRepository<InboundRawEventRow>(
+              workspaceId,
+              'inboundRawEvent',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          await repository.update(id, { processingNote: note.slice(0, 500) });
+        },
+        buildSystemAuthContext(workspaceId),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not annotate raw event ${id}: ${describeError(error)}`,
+      );
+    }
+  }
+
   async markOutcome({
     workspaceId,
     id,

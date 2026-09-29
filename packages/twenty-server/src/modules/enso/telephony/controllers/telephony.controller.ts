@@ -49,6 +49,40 @@ import {
   normalizeRoistatCall,
 } from 'src/modules/enso/telephony/utils/normalize-call-event.util';
 
+// What the contact push was answered with, and how the lookup ended. Only
+// `answered` means the CRM's decision reached the PBX; every other outcome
+// answers with no `responsible`, so the PBX used its own dial plan.
+type ContactDecision = {
+  response: MoldcellContactResponse;
+  outcome: 'answered' | 'over-budget' | 'failed' | 'unconfigured';
+  elapsedMs: number;
+};
+
+const describeContactDecision = ({
+  response,
+  outcome,
+  elapsedMs,
+}: ContactDecision): string => {
+  if (outcome === 'over-budget') {
+    return `no responsible: lookup over the ${CONTACT_RESPONSE_BUDGET_MS}ms budget`;
+  }
+
+  if (outcome === 'failed') {
+    return `no responsible: lookup failed after ${elapsedMs}ms`;
+  }
+
+  if (outcome === 'unconfigured') {
+    return 'no responsible: telephony workspace not configured';
+  }
+
+  // Answered in time. No `responsible` here means the CRM found nobody to
+  // name — an unknown caller, no owner on the dialled project, or an owner
+  // with no pbxLogin.
+  return isNonEmptyString(response.responsible)
+    ? `responsible=${response.responsible} in ${elapsedMs}ms`
+    : `no responsible in ${elapsedMs}ms`;
+};
+
 // Public (no-JWT) telephony receivers. Same convention as the marketing
 // callback: a root @Controller() with a webhooks/* path, because /rest/* is
 // owned by the authenticated REST catch-all and would reject these regardless of
@@ -147,22 +181,45 @@ export class TelephonyController {
       // no outcome is ever stamped on it, so leaving it at RECEIVED would make
       // "by design" look identical to a handler that died before stamping, on
       // the single highest-volume source in the log.
-      void this.recordRaw('PBX', 'moldcell:contact', body, 'NOT_TRACKED');
+      const rawEventId = this.recordRaw(
+        'PBX',
+        'moldcell:contact',
+        body,
+        'NOT_TRACKED',
+      );
 
-      try {
-        await this.enqueue(
-          normalizeMoldcellContact(body as MoldcellContactPush),
-        );
-      } catch (error) {
+      // Not awaited either. Queuing this push used to sit in front of the
+      // lookup below, adding a Redis round trip to every answer: live answers
+      // took 1.2–1.5 s against a 1.2 s lookup budget. The ringing call should
+      // wait on nothing but the routing decision.
+      void this.enqueue(
+        normalizeMoldcellContact(body as MoldcellContactPush),
+      ).catch((error: unknown) => {
         this.logger.warn(
           `Could not record contact push: ${(error as Error).message}`,
         );
-      }
+      });
 
       // Route-to-owner. Bounded by a hard budget and wrapped: any failure or
       // overrun answers with no `responsible`, which makes the PBX fall back to
       // its own dial plan. A ringing caller must never wait on us.
-      return this.resolveContactWithinBudget(body as MoldcellContactPush);
+      const decision = await this.resolveContactWithinBudget(
+        body as MoldcellContactPush,
+      );
+
+      // Written down after the answer is on its way. Without it, a call that
+      // rang the department instead of its owner cannot be told apart: the CRM
+      // naming nobody (lookup over budget, caller not owned) looks exactly like
+      // the PBX skipping a manager it knows to be offline.
+      void this.noteContactDecision(rawEventId, decision).catch(
+        (error: unknown) => {
+          this.logger.warn(
+            `Could not note contact decision: ${(error as Error).message}`,
+          );
+        },
+      );
+
+      return decision.response;
     }
 
     // `event` and `history` are fire-and-forget acks from the PBX's side —
@@ -242,35 +299,73 @@ export class TelephonyController {
 
   private async resolveContactWithinBudget(
     body: MoldcellContactPush,
-  ): Promise<MoldcellContactResponse> {
+  ): Promise<ContactDecision> {
     if (!isNonEmptyString(TELEPHONY_WORKSPACE_ID)) {
-      return {};
+      return { response: {}, outcome: 'unconfigured', elapsedMs: 0 };
     }
 
     const diversion = (body as { diversion?: unknown }).diversion;
+    const startedAt = Date.now();
+    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Deliberately not Promise.all: the lookup keeps running if it loses the
     // race, but its result is discarded — we simply stop waiting.
-    const timeout = new Promise<MoldcellContactResponse>((resolve) =>
-      setTimeout(() => resolve({}), CONTACT_RESPONSE_BUDGET_MS),
-    );
+    const overBudget = new Promise<'over-budget'>((resolve) => {
+      budgetTimer = setTimeout(
+        () => resolve('over-budget'),
+        CONTACT_RESPONSE_BUDGET_MS,
+      );
+    });
 
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         this.contactService.resolveContact(
           TELEPHONY_WORKSPACE_ID,
           body.phone,
           diversion,
         ),
-        timeout,
+        overBudget,
       ]);
+
+      return result === 'over-budget'
+        ? {
+            response: {},
+            outcome: 'over-budget',
+            elapsedMs: Date.now() - startedAt,
+          }
+        : {
+            response: result,
+            outcome: 'answered',
+            elapsedMs: Date.now() - startedAt,
+          };
     } catch (error) {
       this.logger.warn(
         `contact lookup failed, deferring to the PBX dial plan: ${(error as Error).message}`,
       );
 
-      return {};
+      return {
+        response: {},
+        outcome: 'failed',
+        elapsedMs: Date.now() - startedAt,
+      };
+    } finally {
+      clearTimeout(budgetTimer);
     }
+  }
+
+  private async noteContactDecision(
+    rawEventId: Promise<string | undefined>,
+    decision: ContactDecision,
+  ): Promise<void> {
+    if (!isNonEmptyString(TELEPHONY_WORKSPACE_ID)) {
+      return;
+    }
+
+    await this.rawEventService.annotate({
+      workspaceId: TELEPHONY_WORKSPACE_ID,
+      id: await rawEventId,
+      note: describeContactDecision(decision),
+    });
   }
 
   private async enqueue(event: NormalizedCallEvent | undefined): Promise<void> {

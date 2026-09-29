@@ -2,6 +2,7 @@ import { type MessageQueueService } from 'src/engine/core-modules/message-queue/
 import { type EnsoInboundRawEventService } from 'src/modules/enso/inbound-raw-event/services/enso-inbound-raw-event.service';
 import { TelephonyController } from 'src/modules/enso/telephony/controllers/telephony.controller';
 import { type TelephonyContactService } from 'src/modules/enso/telephony/services/telephony-contact.service';
+import { CONTACT_RESPONSE_BUDGET_MS } from 'src/modules/enso/telephony/telephony.constants';
 
 // The constants read env at module load: an unconfigured shared secret rejects
 // every push, and an unset workspace id skips raw logging altogether.
@@ -18,6 +19,7 @@ describe('TelephonyController raw intake logging', () => {
   let controller: TelephonyController;
   let record: jest.Mock;
   let markOutcome: jest.Mock;
+  let annotate: jest.Mock;
   let add: jest.Mock;
   let resolveContact: jest.Mock;
 
@@ -26,13 +28,18 @@ describe('TelephonyController raw intake logging', () => {
 
     record = jest.fn().mockResolvedValue('raw-event-1');
     markOutcome = jest.fn().mockResolvedValue(undefined);
+    annotate = jest.fn().mockResolvedValue(undefined);
     add = jest.fn().mockResolvedValue(undefined);
     resolveContact = jest.fn().mockResolvedValue({});
 
     controller = new TelephonyController(
       { add } as unknown as MessageQueueService,
       { resolveContact } as unknown as TelephonyContactService,
-      { record, markOutcome } as unknown as EnsoInboundRawEventService,
+      {
+        record,
+        markOutcome,
+        annotate,
+      } as unknown as EnsoInboundRawEventService,
     );
   });
 
@@ -103,6 +110,123 @@ describe('TelephonyController raw intake logging', () => {
       expect.objectContaining({
         status: 'IGNORED',
         note: 'unrecognised cmd "sms"',
+      }),
+    );
+  });
+});
+
+describe('TelephonyController contact answer', () => {
+  let controller: TelephonyController;
+  let annotate: jest.Mock;
+  let add: jest.Mock;
+  let resolveContact: jest.Mock;
+
+  const contactPush = {
+    cmd: 'contact',
+    crm_token: CRM_TOKEN,
+    callid: 'NEP847ASHK000037',
+    phone: '37369453003',
+    diversion: '37376040824',
+  } as never;
+
+  // The note is written off the response path; let it land.
+  const flushBackgroundWork = () =>
+    new Promise((resolve) => setImmediate(resolve));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+
+    annotate = jest.fn().mockResolvedValue(undefined);
+    add = jest.fn().mockResolvedValue(undefined);
+    resolveContact = jest.fn();
+
+    controller = new TelephonyController(
+      { add } as unknown as MessageQueueService,
+      { resolveContact } as unknown as TelephonyContactService,
+      {
+        record: jest.fn().mockResolvedValue('raw-contact-1'),
+        markOutcome: jest.fn(),
+        annotate,
+      } as unknown as EnsoInboundRawEventService,
+    );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('should answer the ringing call without waiting for the push to be queued', async () => {
+    // A queue that never acknowledges must not hold up the routing answer.
+    add.mockReturnValue(new Promise(() => undefined));
+    resolveContact.mockResolvedValue({
+      contact_name: 'Denis Vasiliev',
+      responsible: 'olvanica_alexandru',
+    });
+
+    await expect(controller.moldcell(contactPush)).resolves.toEqual({
+      contact_name: 'Denis Vasiliev',
+      responsible: 'olvanica_alexandru',
+    });
+  });
+
+  it('should note on the contact push which manager the CRM named', async () => {
+    resolveContact.mockResolvedValue({ responsible: 'olvanica_alexandru' });
+
+    await controller.moldcell(contactPush);
+    await flushBackgroundWork();
+
+    expect(annotate).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      id: 'raw-contact-1',
+      note: expect.stringMatching(/^responsible=olvanica_alexandru in \d+ms$/),
+    });
+  });
+
+  it('should note when the CRM found nobody to name', async () => {
+    resolveContact.mockResolvedValue({ contact_name: 'Unknown Caller' });
+
+    await controller.moldcell(contactPush);
+    await flushBackgroundWork();
+
+    expect(annotate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        note: expect.stringMatching(/^no responsible in \d+ms$/),
+      }),
+    );
+  });
+
+  it('should answer with no responsible and say so when the lookup overruns its budget', async () => {
+    jest.useFakeTimers();
+    resolveContact.mockReturnValue(new Promise(() => undefined));
+
+    const answer = controller.moldcell(contactPush);
+
+    await jest.advanceTimersByTimeAsync(CONTACT_RESPONSE_BUDGET_MS);
+
+    await expect(answer).resolves.toEqual({});
+
+    jest.useRealTimers();
+    await flushBackgroundWork();
+
+    expect(annotate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        note: `no responsible: lookup over the ${CONTACT_RESPONSE_BUDGET_MS}ms budget`,
+      }),
+    );
+  });
+
+  it('should answer with no responsible and say so when the lookup throws', async () => {
+    resolveContact.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(controller.moldcell(contactPush)).resolves.toEqual({});
+    await flushBackgroundWork();
+
+    expect(annotate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        note: expect.stringMatching(
+          /^no responsible: lookup failed after \d+ms$/,
+        ),
       }),
     );
   });
