@@ -832,7 +832,12 @@ export const TaskActionsWidget = ({
       if (isTaskMode && isDefined(taskId)) {
         fetchTaskSmsContext({ variables: { taskId } });
       } else {
-        fetchPersonSmsContext({ variables: { personId: personId ?? null } });
+        fetchPersonSmsContext({
+          variables: {
+            personId: personId ?? null,
+            opportunityId: opportunityId ?? null,
+          },
+        });
       }
       openModal(SMS_MODAL_ID);
 
@@ -1433,6 +1438,10 @@ export const TaskActionsWidget = ({
               <StyledModalNote>
                 Sending as {taskSmsContext?.alias}
               </StyledModalNote>
+            ) : personAliases.length === 1 ? (
+              // Deal in context (or a single consented brand) → the sender is
+              // determined, not chosen. Show it read-only.
+              <StyledModalNote>Sending as {personAliases[0]}</StyledModalNote>
             ) : (
               <Select
                 dropdownId="task-sms-alias"
