@@ -134,6 +134,14 @@ Hard requirements: a strict timeout and a **safe fallback** — omitting
 path must not sit behind heavy middleware or a shared job queue. It reads only;
 it never creates a Person, Opportunity, or activity.
 
+The answer is written down afterwards, off the response path, as the
+`processingNote` of that push's `inboundRawEvent` row (`moldcell:contact`):
+`responsible=<login> in <n>ms`, `no responsible in <n>ms` (unknown caller, no
+owner on the dialled project, or an owner without `pbxLogin`), or why no answer
+was given in time (`lookup over the 1200ms budget`, `lookup failed`). That is
+what separates "the CRM named nobody" from "the PBX skipped the manager it was
+given" when a call rings the department instead of its owner.
+
 Sticky ownership therefore becomes real-time: a returning customer's call rings
 the manager who owns them, before anyone touches the CRM.
 
