@@ -7,6 +7,7 @@ import { type CreateManyResolverArgs } from 'src/engine/api/graphql/workspace-re
 
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { CampaignProjectService } from 'src/modules/enso/inbound-activity/services/campaign-project.service';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/canonicalize-utm-medium.util';
 
@@ -15,6 +16,7 @@ import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/
 export class InboundActivityCreateManyPreQueryHook implements WorkspacePreQueryHookInstance {
   constructor(
     private readonly inboundActivityNameService: InboundActivityNameService,
+    private readonly campaignProjectService: CampaignProjectService,
   ) {}
 
   async execute(
@@ -26,16 +28,20 @@ export class InboundActivityCreateManyPreQueryHook implements WorkspacePreQueryH
       return payload;
     }
 
-    const data = await Promise.all(
-      payload.data.map(async (record) => {
-        const canonical = withCanonicalUtmMedium(record);
+    // One project read for the whole batch, then the per-record label.
+    const routed = await this.campaignProjectService.withCampaignProjects(
+      authContext,
+      payload.data.map((record) => withCanonicalUtmMedium(record)),
+    );
 
+    const data = await Promise.all(
+      routed.map(async (record) => {
         const name = await this.inboundActivityNameService.computeName(
           authContext,
-          canonical,
+          record,
         );
 
-        return isDefined(name) ? { ...canonical, name } : canonical;
+        return isDefined(name) ? { ...record, name } : record;
       }),
     );
 

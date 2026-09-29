@@ -228,17 +228,65 @@ marketing set it. The alias is a stopgap — the durable fix is marketing correc
 the url_tags on the newton_buiucani ads, after which the alias becomes dead code
 that costs nothing to leave in place.
 
-**`ref` remains tier 1** and is still worth setting where routing matters. Marketing
-sets it per click-to-message ad, n8n parses it as a URL-encoded query string:
+**`ref` remains tier 1, but the format above this line used to be wrong.** Meta
+allows only letters, digits, `-`, `_` and `=` in `ref`
+([ig.me links doc](https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/ig-me-links)),
+so the `proj=…&utm_source=…` string this page once prescribed — with `&` separators —
+is not a valid ref at all. Since the utm slugs now come from url_tags, a ref only
+ever needs the project, which is a single valid pair:
 
 ```
-proj=ENS2301&utm_source=instagram&utm_medium=paid_social&utm_campaign=<slug>&utm_content=<slug>&utm_term=<slug>
+proj=ENS1901
 ```
 
-`proj` carries its own weight: it **routes the lead to the right project straight
-from the ad** (ENS2301 ARTIMA, ENS2502 ENSO Estate MD, ENS2501 ENSO Living RO,
-ENS2402 Avram Iancu, ENSVI Vânzări) — which matters most on Vânzări, whose inbox
-has no default project, so an unrouted lead stays activity-only per D9.
+n8n parses it into a project override. **In practice campaign routing (below) makes
+it unnecessary**, because marketing's campaign slug already names the project; set
+a ref only for an ad whose campaign is not registered on any project.
+
+### Routing by campaign on multi-project pages (2026-09-29)
+
+**Vânzări Imobiliare, ENSO Development MD and ENSO Development RO all advertise
+several projects at once.** Their inbox (or lead-ad page) can only offer a
+catch-all default, so the campaign is the most specific statement of what a lead
+responded to — and ENSO's campaign slugs name the project, under marketing's brand
+names (`newton_buiucani_comercial_new_2025` **is** Ioana Radu).
+
+Two fields on **Project** carry this, editable in the CRM with no deploy:
+
+| field | meaning |
+|---|---|
+| `utmCampaigns` | the campaign slugs this project owns |
+| `isUmbrella` | the project is a multi-project page's catch-all (ENSO ESTATE, ENSO LIVING, Vânzări Imobiliare, ENSO Development) |
+
+The `inboundActivity` create hooks apply them before the deal gate — attribution
+runs before deal creation, never inside it:
+
+- a registered campaign **narrows an umbrella project**, or fills an empty one;
+- it **never overrides a specific project** — a brand inbox, a mapped lead form
+  (`FORM_TO_PROJECT`) or an ad's `ref` already made an explicit decision;
+- an unregistered campaign, or one claimed by two projects, changes nothing — the
+  second case is a data error, and guessing would route a lead to the wrong manager.
+
+**When marketing launches a campaign on a multi-project page:** open the project it
+promotes and add the slug to *UTM Campaigns*. Until then its leads keep the page's
+catch-all project.
+
+⚠️ **Do not infer the project from other activities with the same campaign.** It was
+proposed and rejected: the 122 Ioana Radu lead-ad deals owe their project to a
+form mapped by hand, not to their campaign, and on a multi-project page borrowing
+someone else's decision is how a lead reaches the wrong manager. The mapping must be
+declared.
+
+**Calls are not routed this way.** The worker inserts them directly (never through
+the GraphQL hooks) and sets their project later from the dialled-number map, which
+is itself an explicit per-number decision. *(The utm_medium canonicalisation added in
+#275 says it covers calls; it does not, for the same reason — harmless, since
+call-tracking mediums need no alias.)*
+
+**History:** the 8 paid `newton_buiucani_comercial_new_2025` DMs that arrived before
+this existed were set to Ioana Radu *without* creating deals — 5 of the 8 had already
+been answered in Chatwoot, so a deal and a manager ping three weeks later would only
+have been noise. Before-state in `scratchpad/ioana-radu-attribution-before-2026-09-29.txt`.
 
 ✅ **`Lead Ad Intake → CRM` had the same category error; fixed 2026-09-17.** It set
 `utmCampaign: lead.campaign_name`, so every lead-ad row in the CRM and in BigQuery
