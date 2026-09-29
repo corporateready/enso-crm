@@ -24,12 +24,12 @@ import { PbxNumberService } from 'src/modules/enso/telephony/services/pbx-number
 import {
   ANSWERED_CALL_STATUSES,
   ARCHIVE_RECORDINGS,
-  CALL_OUTCOME_SETTLE_MS,
   isPbxTransferFallbackGroup,
   RECORDING_INITIAL_DELAY_MS,
 } from 'src/modules/enso/telephony/telephony.constants';
 import { CallIngestService } from 'src/modules/enso/telephony/services/call-ingest.service';
 import { type NormalizedCallEvent } from 'src/modules/enso/telephony/types/telephony.types';
+import { planCallOutcomeDecision } from 'src/modules/enso/telephony/utils/plan-call-outcome-decision.util';
 
 // Telephony intake runs off the queue rather than inline in the controller: the
 // PBX and Roistat both expect a fast ack, and a slow response to the PBX sits in
@@ -192,23 +192,21 @@ export class IngestCallEventJob {
       return;
     }
 
-    // Wait for the call to be over before deciding anything about the deal.
-    if (!event.isTerminal) {
-      return;
-    }
-
     // The stage decision does NOT happen here, and must not: `event CANCELLED`
     // is a per-leg push, so on a call a department answered the terminal pushes
     // disagree with each other and whichever arrived first would decide. That
     // opened an answered group call in ROUTING, unowned. DecideCallOutcomeJob
-    // runs after a short settle delay and reads the activity instead.
+    // reads the activity instead, once the call's closing push has landed.
+    const decision = planCallOutcomeDecision(ingested.activityId, event);
+
+    if (!isDefined(decision)) {
+      return;
+    }
+
     await this.telephonyQueueService.add<DecideCallOutcomeJobData>(
       DecideCallOutcomeJob.name,
       { workspaceId, activityId: ingested.activityId },
-      {
-        id: `enso-telephony-decide:${ingested.activityId}`,
-        delay: CALL_OUTCOME_SETTLE_MS,
-      },
+      { id: decision.jobId, delay: decision.delayMs },
     );
   }
 
