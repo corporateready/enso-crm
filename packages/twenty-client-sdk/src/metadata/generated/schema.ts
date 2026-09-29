@@ -6080,7 +6080,7 @@ export interface QueryGenqlSelection{
     googleChatWebhookSettings?: GoogleChatWebhookSettingsGenqlSelection
     taskSmsContext?: (TaskSmsContextGenqlSelection & { __args: {taskId: Scalars['String']} })
     recordSmsContext?: (TaskSmsContextGenqlSelection & { __args?: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null)} })
-    personSmsContext?: (PersonSmsContextGenqlSelection & { __args?: {personId?: (Scalars['String'] | null)} })
+    personSmsContext?: (PersonSmsContextGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null)} })
     notificationPreferences?: GoogleChatNotificationPreferenceGenqlSelection
     projectChatWebhookSettings?: ProjectChatWebhookSettingsGenqlSelection
     getConnectedImapSmtpCaldavAccount?: (ConnectedImapSmtpCaldavAccountGenqlSelection & { __args: {id: Scalars['UUID']} })
