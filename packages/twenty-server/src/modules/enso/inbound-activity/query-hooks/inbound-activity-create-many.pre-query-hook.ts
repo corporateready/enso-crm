@@ -8,6 +8,7 @@ import { type CreateManyResolverArgs } from 'src/engine/api/graphql/workspace-re
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
+import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/canonicalize-utm-medium.util';
 
 @Injectable()
 @WorkspaceQueryHook(`inboundActivity.createMany`)
@@ -27,12 +28,14 @@ export class InboundActivityCreateManyPreQueryHook implements WorkspacePreQueryH
 
     const data = await Promise.all(
       payload.data.map(async (record) => {
+        const canonical = withCanonicalUtmMedium(record);
+
         const name = await this.inboundActivityNameService.computeName(
           authContext,
-          record,
+          canonical,
         );
 
-        return isDefined(name) ? { ...record, name } : record;
+        return isDefined(name) ? { ...canonical, name } : canonical;
       }),
     );
 
