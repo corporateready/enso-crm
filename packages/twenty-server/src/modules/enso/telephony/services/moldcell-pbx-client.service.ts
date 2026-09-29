@@ -106,9 +106,8 @@ export class MoldcellPbxClientService {
     const data = await this.queryCommand(workspaceId, { cmd: 'accounts' });
 
     return Array.isArray(data)
-      ? data.filter(
-          (account): account is PbxAccount =>
-            isNonEmptyString((account as PbxAccount)?.name),
+      ? data.filter((account): account is PbxAccount =>
+          isNonEmptyString((account as PbxAccount)?.name),
         )
       : [];
   }
