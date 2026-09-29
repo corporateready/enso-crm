@@ -271,6 +271,21 @@ runs before deal creation, never inside it:
 promotes and add the slug to *UTM Campaigns*. Until then its leads keep the page's
 catch-all project.
 
+**Vânzări paid DMs fall back to ENSVI (live 2026-09-29).** The Social Intake `Resolve`
+node sends a **paid** DM on the Vânzări inboxes (4, 5) to the ENSVI catch-all instead of
+`null`, mirroring how Lead Ads treats an unmapped form; an **organic** Vânzări DM still
+stays unrouted (D9). ENSVI is flagged umbrella, so the CRM then narrows a registered
+campaign to its project. Verified in production with three synthetic DMs on inbox 4:
+
+| DM | result |
+|---|---|
+| paid, campaign registered (`newton_buiucani_comercial_new_2025`) | **IOANA RADU** — and the activity name already carried it, proving the narrowing runs before naming |
+| paid, campaign not registered | **ENSVI** |
+| organic | no project |
+
+This lives in n8n workflow config, not the repo. Pre-change backup:
+`scratchpad/social-intake-backup-before-ensvi-2026-09-29.json`.
+
 ⚠️ **Do not infer the project from other activities with the same campaign.** It was
 proposed and rejected: the 122 Ioana Radu lead-ad deals owe their project to a
 form mapped by hand, not to their campaign, and on a multi-project page borrowing
