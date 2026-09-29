@@ -79,8 +79,26 @@ customers to me". An existing client ringing their own manager is not new work,
 and diverting them to the department throws away the continuity sticky ownership
 exists for. This matches the routing brain, which already holds that "sticky wins
 even if the manager is currently offline — it's their client". Real presence
-belongs to the PBX (DND / «Приём звонков»), whose mandatory fallback sends the
-call to the department on no-answer.
+belongs to the PBX (DND / «Приём звонков»).
+
+#### No answer on a transfer
+
+The transfer rules in the TwentyCRM connector have **no department fallback**:
+each scenario's «запасной сотрудник или отдел» is set to «Не переводить
+запасному» (`responsibleNextTarget: "!skip"`). When the responsible manager does
+not pick up, the call ends instead of falling through to the group, and Module B
+turns the miss into a `call.missed.callback` task on that manager. The one
+exception is TRIUMF Support, a support queue, which still falls back to its desk.
+
+Verified live on 2026-09-29 with two calls from an owned contact to an ARTIMA
+number:
+
+- the PBX rang only the owner's extension — no other legs;
+- `responsibleCallTime` (20 s) is not enforced without a fallback: the owner's
+  phone rang for 41 s, until the caller hung up;
+- a caller hanging up on an unanswered transfer is reported as
+  `history.status=missed` → `UNANSWERED`, so the callback task is created.
+  `ABANDONED`, which creates no task, did not occur.
 
 Hard requirements: a strict timeout and a **safe fallback** — omitting
 `responsible` must be the failure mode. A stall here delays a live call, so this

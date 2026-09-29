@@ -356,10 +356,14 @@ export const ANSWERED_OWNER_FALLBACK_EMAIL =
   process.env.ENSO_TELEPHONY_ANSWERED_OWNER_FALLBACK_EMAIL;
 
 // Call statuses that mean the caller reached us and we did not take the call —
-// i.e. a callback is owed. Deliberately excludes ABANDONED: with a 20 s ring on
-// the responsible manager, "caller hung up" is dominated by misdials and
-// two-second wrong numbers, and a task per one of those is noise a manager
-// learns to ignore. Add 'ABANDONED' here if the sales team wants those chased.
+// i.e. a callback is owed. Deliberately excludes ABANDONED: "caller hung up
+// before anyone answered" is dominated by misdials and two-second wrong
+// numbers, and a task per one of those is noise a manager learns to ignore.
+// That costs the transfer case nothing: when a caller gives up on an unanswered
+// transfer to their responsible manager, the PBX reports `missed` (UNANSWERED),
+// not `cancel` — verified live 2026-09-29 on 8 s and 41 s rings — so the owner
+// still gets their callback task. Add 'ABANDONED' here if the sales team wants
+// the rest chased.
 export const CALLBACK_OWED_CALL_STATUSES = ['UNANSWERED', 'BUSY'];
 
 // stepKey on the auto-created callback task. Doubles as the idempotency key:

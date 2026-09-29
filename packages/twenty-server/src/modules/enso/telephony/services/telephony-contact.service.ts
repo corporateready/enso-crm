@@ -162,9 +162,12 @@ export class TelephonyContactService {
         // backwards.
         //
         // Real presence belongs to the PBX, not to this flag: a manager who is
-        // away sets DND / their «Приём звонков» settings, and the PBX's own
-        // mandatory fallback sends the call to the department on no-answer. So
-        // returning an owner who cannot pick up costs nothing.
+        // away sets DND / their «Приём звонков» settings. Returning an owner
+        // who does not pick up is NOT free: the PBX transfer rules have no
+        // department fallback («Не переводить запасному»), so the call ends and
+        // the miss becomes a callback task on that owner instead of reaching
+        // the group. That is deliberate — see "No answer on a transfer" in
+        // content/docs/integrations/telephony.md.
         return manager.pbxLogin;
       },
       buildSystemAuthContext(workspaceId),
