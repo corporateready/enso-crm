@@ -173,14 +173,22 @@ export const RECORDING_FETCH_TIMEOUT_MS = Number(
   process.env.ENSO_TELEPHONY_RECORDING_TIMEOUT_MS ?? 30 * 1000,
 );
 
-// How long to wait after a call looks finished before deciding whether it was
-// answered. `event CANCELLED` is a PER-LEG push — every extension that did not
-// win a department's race gets one — so the terminal pushes race each other and
-// no single one of them knows the call's outcome. Waiting lets them all land, so
-// the decision reads the activity's settled state instead. Observed live: all
-// pushes for one call arrive within the same second, so this is generous.
+// How long to wait after a call's CLOSING push (`history`, or Roistat's
+// after-call webhook) before deciding whether it was answered. Stray per-leg
+// `event` pushes for the same call can still be in flight over HTTP, so the
+// decision waits for them and then reads the activity's settled state.
 export const CALL_OUTCOME_SETTLE_MS = Number(
   process.env.ENSO_TELEPHONY_OUTCOME_SETTLE_MS ?? 20 * 1000,
+);
+
+// How long after a per-leg `event` CANCELLED/COMPLETED to decide anyway, for the
+// rare call whose closing push never arrives. It must outlast any call still
+// ringing: a department that rings its members in turn cancels a leg every few
+// seconds for minutes (136 s observed on 2026-09-29), and deciding from a leg
+// read a provisional ABANDONED. A decision this late for a lost closing push is
+// fine; one made mid-call is wrong.
+export const CALL_OUTCOME_FALLBACK_MS = Number(
+  process.env.ENSO_TELEPHONY_OUTCOME_FALLBACK_MS ?? 10 * 60 * 1000,
 );
 
 // The PBX finishes writing the audio only after the call ends, so fetching the

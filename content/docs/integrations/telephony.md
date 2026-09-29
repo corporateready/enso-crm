@@ -160,9 +160,17 @@ Everything else. Correlates the 3–4 events describing one call into a single
   an answered department call in ROUTING with no owner.
   **The stage is therefore decided from the ACTIVITY, not from a push**, by
   `DecideCallOutcomeJob` a short settle delay (`ENSO_TELEPHONY_OUTCOME_SETTLE_MS`,
-  default 20s) after the call ends: `history` has authority over the status, and
-  `salesPickup` independently proves an individual accepted — which still holds if
-  the `history` push never arrives.
+  default 20s) after the call's **closing push** — `history`, or Roistat's
+  after-call webhook: `history` has authority over the status, and `salesPickup`
+  independently proves an individual accepted.
+  A per-leg `event` CANCELLED/COMPLETED never starts that clock. A department
+  that rings its members **in turn** cancels a leg every few seconds while the
+  call is still ringing — one 2026-09-29 call cancelled nine legs over 136 s —
+  and deciding 20 s after the first of them read a provisional `ABANDONED`: the
+  missed call created no callback task, and a later-leg answer opened its deal
+  unowned in ROUTING (35% of logged calls were decided that early). A leg only
+  arms a late fallback (`ENSO_TELEPHONY_OUTCOME_FALLBACK_MS`, default 10 min) for
+  the call whose closing push never arrives.
 - **Reconciliation sweep** catches calls whose terminal event never arrived
   (observed: 1 in 6 Roistat after-call events went missing).
 
