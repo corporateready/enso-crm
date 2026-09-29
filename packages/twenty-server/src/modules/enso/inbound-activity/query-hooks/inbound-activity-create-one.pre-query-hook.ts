@@ -7,6 +7,7 @@ import { type CreateOneResolverArgs } from 'src/engine/api/graphql/workspace-res
 
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { CampaignProjectService } from 'src/modules/enso/inbound-activity/services/campaign-project.service';
 import { InboundActivityNameService } from 'src/modules/enso/inbound-activity/services/inbound-activity-name.service';
 import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/canonicalize-utm-medium.util';
 
@@ -15,6 +16,7 @@ import { withCanonicalUtmMedium } from 'src/modules/enso/inbound-activity/utils/
 export class InboundActivityCreateOnePreQueryHook implements WorkspacePreQueryHookInstance {
   constructor(
     private readonly inboundActivityNameService: InboundActivityNameService,
+    private readonly campaignProjectService: CampaignProjectService,
   ) {}
 
   async execute(
@@ -26,10 +28,19 @@ export class InboundActivityCreateOnePreQueryHook implements WorkspacePreQueryHo
       return payload;
     }
 
-    // Canonicalise here rather than in each intake workflow: every channel lands
-    // through this hook, so one alias table covers social DMs, lead ads, forms and
-    // calls alike — and n8n stays free to write exactly what the source said.
-    const data = withCanonicalUtmMedium(payload.data);
+    // Canonicalise here rather than in each intake workflow: social DMs, lead ads
+    // and forms all land through this hook, so one alias table covers them and
+    // n8n stays free to write exactly what the source said. Calls do NOT come
+    // through here — the worker inserts them directly — but their call-tracking
+    // mediums need no alias.
+    const canonical = withCanonicalUtmMedium(payload.data);
+
+    // Project before name: the label embeds the project, and a lead from a
+    // multi-project page should be named for the project its campaign promotes.
+    const [data] = await this.campaignProjectService.withCampaignProjects(
+      authContext,
+      [canonical],
+    );
 
     const name = await this.inboundActivityNameService.computeName(
       authContext,
