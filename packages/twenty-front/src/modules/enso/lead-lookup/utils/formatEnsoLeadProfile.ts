@@ -24,14 +24,22 @@ export const formatProjectHeading = (project: EnsoLeadProfileProject) =>
     .filter(isNonEmptyString)
     .join(' · ') || 'Unassigned project';
 
+// A closed deal's stage already says how it ended ("Closed lost"), so repeating
+// the status bucket after it reads as a stutter: "Closed lost · deal lost".
+const CLOSED_STAGES = ['CLOSED_WON', 'CLOSED_LOST'];
+
 export const formatDealLine = (project: EnsoLeadProfileProject) => {
   const stage = humanizeEnumValue(project.dealStage);
+  const isStageClosed =
+    isNonEmptyString(project.dealStage) &&
+    CLOSED_STAGES.includes(project.dealStage);
+
   const status =
     project.dealStatus === 'NONE'
       ? 'no deal'
       : `deal ${project.dealStatus.toLowerCase()}`;
 
-  return [project.dealLabel, stage, status]
+  return [project.dealLabel, stage, isStageClosed ? null : status]
     .filter(isNonEmptyString)
     .join(' · ');
 };
