@@ -10,6 +10,10 @@ import {
   PBX_COMMAND_TIMEOUT_MS,
 } from 'src/modules/enso/telephony/telephony.constants';
 
+export type PbxAccount = { name: string; realName?: string };
+
+export type PbxGroup = { id: string; realName?: string };
+
 export type MakeCallResult =
   | { success: true; callId?: string }
   | { success: false; error: string };
@@ -59,32 +63,15 @@ export class MoldcellPbxClientService {
       };
     }
 
-    const client = this.secureHttpClientService.getHttpClient(
-      {
-        timeout: PBX_COMMAND_TIMEOUT_MS,
-        // The PBX answers 400/401 with a JSON error body; read those instead of
-        // letting axios turn them into an opaque throw.
-        validateStatus: (status) => status < 500,
-      },
-      { workspaceId, source: 'moldcell-pbx' },
-    );
-
-    const body = new URLSearchParams({
+    const body = {
       cmd: 'makeCall',
-      token: String(MOLDCELL_PBX_TOKEN),
       user,
       // Digits only: the PBX rejects a leading '+' on this parameter.
       phone: phone.replace(/\D/g, ''),
-    });
+    };
 
     try {
-      const response = await client.post<unknown>(
-        `${String(MOLDCELL_PBX_BASE_URL).replace(/\/$/, '')}${MOLDCELL_CRM_API_PATH}`,
-        body.toString(),
-        {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        },
-      );
+      const response = await this.postCommand(workspaceId, body);
 
       if (response.status !== 200) {
         const error = this.readError(response.data);
@@ -112,6 +99,123 @@ export class MoldcellPbxClientService {
 
       return { success: false, error: 'Could not reach the phone system.' };
     }
+  }
+
+  // PBX users (`name` is the login that workspaceMember.pbxLogin holds).
+  async listAccounts(workspaceId: string): Promise<PbxAccount[]> {
+    const data = await this.queryCommand(workspaceId, { cmd: 'accounts' });
+
+    return Array.isArray(data)
+      ? data.filter(
+          (account): account is PbxAccount =>
+            isNonEmptyString((account as PbxAccount)?.name),
+        )
+      : [];
+  }
+
+  // The departments `user` belongs to. The PBX has no "members of a group"
+  // query, so membership is only ever read from the user's side.
+  async listGroupsOfUser(
+    workspaceId: string,
+    user: string,
+  ): Promise<PbxGroup[]> {
+    const data = await this.queryCommand(workspaceId, { cmd: 'groups', user });
+
+    return Array.isArray(data)
+      ? data.filter((group): group is PbxGroup =>
+          isNonEmptyString((group as PbxGroup)?.id),
+        )
+      : [];
+  }
+
+  // The spec spells this command `subscribtionstatus`; the live PBX rejects
+  // that with "Invalid parameters: [cmd]" and only answers `subscriptionStatus`.
+  async isReceivingGroupCalls(
+    workspaceId: string,
+    user: string,
+    groupId: string,
+  ): Promise<boolean> {
+    const data = await this.queryCommand(workspaceId, {
+      cmd: 'subscriptionStatus',
+      user,
+      group_id: groupId,
+    });
+
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('status' in data) ||
+      ((data as { status: unknown }).status !== 'on' &&
+        (data as { status: unknown }).status !== 'off')
+    ) {
+      throw new Error(
+        `subscriptionStatus answered an unexpected body: ${JSON.stringify(data).slice(0, 200)}`,
+      );
+    }
+
+    return (data as { status: string }).status === 'on';
+  }
+
+  // Always pass `groupId`: without it the PBX flips the user in EVERY group,
+  // including the one-person group behind their personal line.
+  async setGroupCallReception(
+    workspaceId: string,
+    user: string,
+    groupId: string,
+    isReceiving: boolean,
+  ): Promise<void> {
+    await this.queryCommand(workspaceId, {
+      cmd: 'subscribeOnCalls',
+      user,
+      group_id: groupId,
+      status: isReceiving ? 'on' : 'off',
+    });
+  }
+
+  // For commands whose failure the caller handles itself: throws on anything
+  // but a 200, with the PBX's own error text in the message.
+  private async queryCommand(
+    workspaceId: string,
+    params: Record<string, string>,
+  ): Promise<unknown> {
+    if (!this.isConfigured) {
+      throw new Error('The phone system is not configured.');
+    }
+
+    const response = await this.postCommand(workspaceId, params);
+
+    if (response.status !== 200) {
+      throw new Error(
+        `${params.cmd} rejected with ${response.status}: ${this.readError(response.data)}`,
+      );
+    }
+
+    return response.data;
+  }
+
+  private postCommand(workspaceId: string, params: Record<string, string>) {
+    const client = this.secureHttpClientService.getHttpClient(
+      {
+        timeout: PBX_COMMAND_TIMEOUT_MS,
+        // The PBX answers 400/401 with a JSON error body; read those instead of
+        // letting axios turn them into an opaque throw.
+        validateStatus: (status) => status < 500,
+      },
+      { workspaceId, source: 'moldcell-pbx' },
+    );
+
+    const body = new URLSearchParams({
+      ...params,
+      token: String(MOLDCELL_PBX_TOKEN),
+    });
+
+    return client.post<unknown>(
+      `${String(MOLDCELL_PBX_BASE_URL).replace(/\/$/, '')}${MOLDCELL_CRM_API_PATH}`,
+      body.toString(),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+    );
   }
 
   private readError(data: unknown): string {

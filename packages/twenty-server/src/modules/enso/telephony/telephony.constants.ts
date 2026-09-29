@@ -26,6 +26,13 @@ export const PBX_COMMAND_TIMEOUT_MS = Number(
   process.env.ENSO_TELEPHONY_PBX_COMMAND_TIMEOUT_MS ?? 8 * 1000,
 );
 
+// Mirrors the "Accepting leads" toggle into the PBX: a paused manager stops
+// receiving their departments' calls (see PbxCallReceptionSyncService). Off by
+// default because it writes live PBX state; turn it on once the transfer-to-
+// responsible leg has been proven to still ring an unsubscribed manager.
+export const PBX_CALL_RECEPTION_SYNC_ENABLED =
+  process.env.ENSO_TELEPHONY_SYNC_CALL_RECEPTION === 'true';
+
 // Hard ceiling on the synchronous `contact` answer. The PBX is holding a ringing
 // call while it waits, so exceeding this is worse than not answering at all: we
 // give up and let the dial plan take over rather than delay the caller.
