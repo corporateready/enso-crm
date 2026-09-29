@@ -954,16 +954,12 @@ export const TaskActionsWidget = ({
       enqueueSuccessSnackBar({ message: 'SMS sent' });
       closeModal(SMS_MODAL_ID);
       setSmsMessage('');
-      // A one-way SMS is the manager's action: move the linked task to
-      // "sent · waiting for reply" (IN_PROGRESS). The reply observer / a manual
-      // close advances it from there — we don't mark it DONE on send.
-      if (isDefined(taskId) && task?.status !== 'DONE') {
-        await updateOneRecord({
-          objectNameSingular: 'task',
-          idToUpdate: taskId,
-          updateOneRecordInput: { status: 'IN_PROGRESS' },
-        });
-      }
+      // Corporate SMS is inbound-blind — replies never come back through the
+      // gateway — so we do NOT move the task to "waiting for reply": there is
+      // nothing to observe, and it would strand the task in IN_PROGRESS forever.
+      // The touch is logged; the manager records the outcome (connect happens via
+      // a call-back or another channel). See docs/channel-observability.md.
+      // (Email, by contrast, IS observed, so its send keeps the waiting state.)
     } else {
       enqueueErrorSnackBar({
         message: outcome?.error ?? 'Could not send the SMS',
