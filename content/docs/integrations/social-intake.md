@@ -217,11 +217,16 @@ looked like the missing piece. It is not: `Read Ad` now requests
 ENSO taxonomy without anyone touching the ads**. 38 of 39 historical paid social rows
 were backfilled with the real slugs (the 39th sits on an ad the token cannot read).
 
-⚠️ Marketing's own medium slug is inconsistent — `paid_social_message_ad` (singular)
-on `newton_buiucani_comercial_new_2025` vs `paid_social_messages_ad` (plural) on
-`artima_sale_parking_underground_12pcs`. Written verbatim rather than normalised;
-it will split BI grouping until marketing picks one. Ads with no url_tags fall back
-to `paid_social_messages_ad`.
+**`paid_social_messages_ad` (plural) is the canonical message-ad medium.** The ads
+disagree with each other — `newton_buiucani_comercial_new_2025` still carries
+`paid_social_message_ad` (singular) in its url_tags — so `Ad Attribution` aliases
+that one variant to the canonical form, and the 8 CRM rows holding it were
+normalised on 2026-09-29. Ads with no url_tags fall back to the same value.
+
+This is a **fixed alias, not a slugifier**: every other value is written exactly as
+marketing set it. The alias is a stopgap — the durable fix is marketing correcting
+the url_tags on the newton_buiucani ads, after which the alias becomes dead code
+that costs nothing to leave in place.
 
 **`ref` remains tier 1** and is still worth setting where routing matters. Marketing
 sets it per click-to-message ad, n8n parses it as a URL-encoded query string:
