@@ -272,11 +272,14 @@ export class NotificationSettingsResolver {
   async personSmsContext(
     @Args('personId', { type: () => String, nullable: true })
     personId: string | null,
+    @Args('opportunityId', { type: () => String, nullable: true })
+    opportunityId: string | null,
     @AuthWorkspace() workspace: WorkspaceEntity,
   ): Promise<PersonSmsContext> {
     return this.marketingSmsService.getPersonSmsContext({
       workspaceId: workspace.id,
       ...(isDefined(personId) ? { personId } : {}),
+      ...(isDefined(opportunityId) ? { opportunityId } : {}),
     });
   }
 

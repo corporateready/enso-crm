@@ -3202,7 +3202,7 @@ type Query {
   googleChatWebhookSettings: GoogleChatWebhookSettings!
   taskSmsContext(taskId: String!): TaskSmsContext!
   recordSmsContext(opportunityId: String, personId: String): TaskSmsContext!
-  personSmsContext(personId: String): PersonSmsContext!
+  personSmsContext(personId: String, opportunityId: String): PersonSmsContext!
   notificationPreferences: [GoogleChatNotificationPreference!]!
   projectChatWebhookSettings: [ProjectChatWebhookSettings!]!
   getConnectedImapSmtpCaldavAccount(id: UUID!): ConnectedImapSmtpCaldavAccount!

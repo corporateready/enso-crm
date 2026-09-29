@@ -6903,6 +6903,9 @@ export default {
                 {
                     "personId": [
                         1
+                    ],
+                    "opportunityId": [
+                        1
                     ]
                 }
             ],
