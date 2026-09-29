@@ -11,6 +11,10 @@ n8n-*-intake-backup-*.json
 .claude/
 .cursor/debug-*.log
 **/**/node_modules/
+# A node_modules that is a SYMLINK (borrowed from a sibling worktree) is a *file* to
+# git, so the directory-only pattern above lets it through — #275 committed one
+# pointing at a path that existed on a single Mac. This matches either shape.
+**/node_modules
 .cache
 
 # yarn is the recommended package manager across the project
