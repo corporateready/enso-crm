@@ -174,7 +174,8 @@ and the person lookup):
 | tier | source | fills |
 |---|---|---|
 | 1 | `referral.ref` | everything, exactly as before — always wins |
-| 2 | `GET /{ad_id}?fields=name,adset{name},campaign{name}` | `utm_content` = ad name — **and nothing else**, see below |
+| 2 | `GET /{ad_id}?fields=…,creative{url_tags}` | the ad's own `utm_*` — ENSO's real slugs, all five fields |
+| 2b | the same call's `name` | `utm_content` = ad name, only when the ad has no url_tags |
 | 3 | `referral.ads_context_data.ad_title` | `utm_content` = the ad's headline |
 
 Any tier that fires also sets `utm_source` = `instagram`/`facebook` from the
@@ -201,9 +202,29 @@ So tier 2 fills `utm_content` (the creative) and deliberately leaves
 the CRM. *(Tier 2 briefly did write them on 2026-09-17; corrected the same day, and
 the 23 backfilled rows had those two columns cleared to NULL.)*
 
-**The real slugs come from the ad's `ref`.** Marketing sets it per click-to-message
-ad, n8n parses it as a URL-encoded query string, and tier 1 then writes the exact
-taxonomy:
+**The real slugs come from the ad's `url_tags` (2026-09-29).** Marketing had been
+maintaining them all along, in the creative's **URL parameters** field — readable as
+`creative{url_tags}` on the ad object:
+
+```
+utm_source=instagram&utm_medium=paid_social_messages_ad&utm_campaign=artima_sale_parking_underground_12pcs&utm_content=single_picture_messages_ad_artima_ro&utm_term=1_picture
+```
+
+Meta never forwards url_tags on a message ad — they ride a link click, and a message
+ad has no landing page — which is why the referral carries only `ad_id` and why `ref`
+looked like the missing piece. It is not: `Read Ad` now requests
+`creative{url_tags}` and `Ad Attribution` parses them, so **tier 2 yields the full
+ENSO taxonomy without anyone touching the ads**. 38 of 39 historical paid social rows
+were backfilled with the real slugs (the 39th sits on an ad the token cannot read).
+
+⚠️ Marketing's own medium slug is inconsistent — `paid_social_message_ad` (singular)
+on `newton_buiucani_comercial_new_2025` vs `paid_social_messages_ad` (plural) on
+`artima_sale_parking_underground_12pcs`. Written verbatim rather than normalised;
+it will split BI grouping until marketing picks one. Ads with no url_tags fall back
+to `paid_social_messages_ad`.
+
+**`ref` remains tier 1** and is still worth setting where routing matters. Marketing
+sets it per click-to-message ad, n8n parses it as a URL-encoded query string:
 
 ```
 proj=ENS2301&utm_source=instagram&utm_medium=paid_social&utm_campaign=<slug>&utm_content=<slug>&utm_term=<slug>
