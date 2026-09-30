@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Lays out the prepared opportunity views every manager starts from:
 //
-//   Active Deals List    mine, Active, not closed        (was "My Opportunities")
-//   Active Deals Kanban  mine, Active, not closed, by stage
-//   Stalled Kanban       mine, Stalled, not closed, by stage
-//   Deferred Kanban      mine, Deferred, not closed, by stage
+//   Active Deals List    mine, Active                    (was "My Opportunities")
+//   Active Deals Kanban  mine, Active, by stage
+//   Stalled Kanban       mine, Stalled, by stage
+//   Deferred Kanban      mine, Deferred, by stage
 //   All Deals List       everything the viewer may see   (was "All Opportunities", INDEX)
 //   All Deals Kanban     everything, by stage            (was "By Stage")
 //
@@ -13,10 +13,8 @@
 // OPENS on is a separate setting — run provision-role-default-views.mjs with
 // --map=opportunity=Active\ Deals\ List afterwards.
 //
-// Closing a deal does not touch pipelineState, so hundreds of Closed Lost
-// deals still read ACTIVE. The three state views therefore also exclude the
-// closed stages, or "Active Deals" would be mostly lost ones. The kanbans keep
-// the closed columns as drop targets; a card dropped there leaves the view.
+// Only pipelineState decides which bucket a deal is in. Stage is a separate
+// axis: a closed deal that still reads ACTIVE belongs in the Active views.
 //
 // Idempotent. Views are found by their current OR previous name, renamed and
 // reordered in place (so ids, and anything pointing at them, survive), and
@@ -44,10 +42,7 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const CLOSED_STAGES = ['CLOSED_WON', 'CLOSED_LOST'];
-
 const mine = { field: 'owner', operand: 'IS', value: ['currentWorkspaceMember'] };
-const openStage = { field: 'stage', operand: 'IS_NOT', value: CLOSED_STAGES };
 const inState = (state) => ({
   field: 'pipelineState',
   operand: 'IS',
@@ -60,25 +55,25 @@ const VIEW_SET = [
     previousNames: ['My Opportunities'],
     type: 'TABLE',
     icon: 'IconBriefcase',
-    filters: [mine, inState('ACTIVE'), openStage],
+    filters: [mine, inState('ACTIVE')],
   },
   {
     name: 'Active Deals Kanban',
     type: 'KANBAN',
     icon: 'IconLayoutKanban',
-    filters: [mine, inState('ACTIVE'), openStage],
+    filters: [mine, inState('ACTIVE')],
   },
   {
     name: 'Stalled Kanban',
     type: 'KANBAN',
     icon: 'IconHourglassHigh',
-    filters: [mine, inState('STALLED'), openStage],
+    filters: [mine, inState('STALLED')],
   },
   {
     name: 'Deferred Kanban',
     type: 'KANBAN',
     icon: 'IconCalendarTime',
-    filters: [mine, inState('DEFERRED'), openStage],
+    filters: [mine, inState('DEFERRED')],
   },
   {
     name: 'All Deals List',
