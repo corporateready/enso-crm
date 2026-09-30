@@ -360,6 +360,34 @@ describe('ObjectRecordEventPublisher', () => {
       ).toContain('query-1');
     });
 
+    // A single unreadable or unresolvable relation used to throw here and drop
+    // the event, so open pages never saw the change until a manual refresh.
+    it('should still publish events when nested relation enrichment fails', async () => {
+      (
+        mockProcessNestedRelationsHelper.processNestedRelations as jest.Mock
+      ).mockRejectedValueOnce(
+        new Error('Entity performing the request does not have permission'),
+      );
+
+      const eventBatch: WorkspaceEventBatch<MockObjectRecordEvent> = {
+        name: 'company.updated',
+        workspaceId,
+        objectMetadata: companyObjectMetadata,
+        events: [createMockEvent()],
+      };
+
+      await service.publish(eventBatch as WorkspaceEventBatch<never>);
+
+      expect(mockSubscriptionService.publishToEventStream).toHaveBeenCalled();
+      const publishCall = (
+        mockSubscriptionService.publishToEventStream as jest.Mock
+      ).mock.calls[0][0];
+
+      expect(publishCall.payload.objectRecordEventsWithQueryIds).toHaveLength(
+        1,
+      );
+    });
+
     it('should not publish events when object-level read permission is denied', async () => {
       const permissionsWithoutRead: ObjectsPermissionsByRoleId = {
         [roleId]: {
