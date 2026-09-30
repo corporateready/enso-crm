@@ -10,11 +10,13 @@ type EnsoViewerScopeData = {
     defaultViews: { objectMetadataId: string; viewId: string }[];
     personalDefaultViews: { objectMetadataId: string; viewId: string }[];
     personalColumnWidths: EnsoPersonalColumnWidth[];
+    personalViewObjectMetadataIds: string[];
   };
 };
 
 const EMPTY_HIDDEN_OBJECTS: string[] = [];
 const EMPTY_COLUMN_WIDTHS: EnsoPersonalColumnWidth[] = [];
+const EMPTY_OBJECT_METADATA_IDS: string[] = [];
 const EMPTY_DEFAULT_VIEWS: { objectMetadataId: string; viewId: string }[] = [];
 
 // Cached for the session: a viewer's role does not change under them, and the
@@ -46,6 +48,11 @@ export const useEnsoViewerScope = () => {
     // Indexed per view by useEnsoPersonalColumnWidths.
     personalColumnWidths:
       data?.ensoViewerScope.personalColumnWidths ?? EMPTY_COLUMN_WIDTHS,
+    // Objects where this viewer has their own copies of the role's prepared
+    // views; the view picker hides the shared workspace views of these.
+    personalViewObjectMetadataIds:
+      data?.ensoViewerScope.personalViewObjectMetadataIds ??
+      EMPTY_OBJECT_METADATA_IDS,
     // Whoever decides which view to open MUST wait for this. Answering before
     // it lands means falling through to the INDEX view and, because landing on
     // a view records it as last-visited, pinning that wrong answer for good.

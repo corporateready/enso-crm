@@ -8,10 +8,14 @@
 //   All Deals List       everything the viewer may see   (was "All Opportunities", INDEX)
 //   All Deals Kanban     everything, by stage            (was "By Stage")
 //
-// These are ordinary WORKSPACE views, not a cage: anyone can still create
-// their own views, edit these, and pin a personal default. Which one a role
-// OPENS on is a separate setting — run provision-role-default-views.mjs with
-// --map=opportunity=Active\ Deals\ List afterwards.
+// These WORKSPACE views are the TEMPLATES. With --role, every member of that
+// role gets their own UNLISTED copy of all six (owned by them, so they can
+// change, reorder and delete them without the VIEWS permission and without
+// touching anyone else), and their view picker stops showing the templates.
+// A member who joins the role later gets copies on their first app load.
+// Which view a role OPENS on is a separate setting — run
+// provision-role-default-views.mjs with --map=opportunity=Active\ Deals\ List;
+// it resolves to each member's own copy.
 //
 // Only pipelineState decides which bucket a deal is in. Stage is a separate
 // axis: a closed deal that still reads ACTIVE belongs in the Active views.
@@ -28,6 +32,9 @@
 //
 //   --dry-run  print the plan without writing
 //   --prune    soft-delete any other workspace opportunity list/kanban view
+//   --role="<role label>"  register the six as that role's templates and make
+//              every current member's copies (a copy is made once: re-running
+//              skips members who already have it, even if they deleted it)
 
 const API_URL = (process.env.TWENTY_API_URL ?? 'https://crm.enso.ro').replace(
   /\/$/,
@@ -36,13 +43,20 @@ const API_URL = (process.env.TWENTY_API_URL ?? 'https://crm.enso.ro').replace(
 const API_KEY = process.env.TWENTY_API_KEY;
 const DRY_RUN = process.argv.includes('--dry-run');
 const PRUNE = process.argv.includes('--prune');
+const ROLE_LABEL = process.argv
+  .find((value) => value.startsWith('--role='))
+  ?.slice('--role='.length);
 
 if (!API_KEY) {
   console.error('Missing TWENTY_API_KEY env var (workspace API key).');
   process.exit(1);
 }
 
-const mine = { field: 'owner', operand: 'IS', value: ['currentWorkspaceMember'] };
+const mine = {
+  field: 'owner',
+  operand: 'IS',
+  value: ['currentWorkspaceMember'],
+};
 const inState = (state) => ({
   field: 'pipelineState',
   operand: 'IS',
@@ -284,13 +298,18 @@ const main = async () => {
       await write(
         `rename/reorder "${existing.name}" -> "${spec.name}" at ${position}`,
         `mutation Update($id: String!, $input: UpdateViewInput!) { updateView(id: $id, input: $input) { id } }`,
-        { id: existing.id, input: { name: spec.name, icon: spec.icon, position } },
+        {
+          id: existing.id,
+          input: { name: spec.name, icon: spec.icon, position },
+        },
       );
     }
 
     managedIds.add(viewId);
 
-    const current = existing ? await loadView(existing.id) : { viewFilters: [] };
+    const current = existing
+      ? await loadView(existing.id)
+      : { viewFilters: [] };
     const wanted = spec.filters.map((filter) => {
       const fieldMetadataId = fieldIdByName.get(filter.field);
 
@@ -311,7 +330,11 @@ const main = async () => {
       const value = Array.isArray(viewFilter.value)
         ? viewFilter.value
         : JSON.parse(viewFilter.value);
-      const key = filterKey(viewFilter.fieldMetadataId, viewFilter.operand, value);
+      const key = filterKey(
+        viewFilter.fieldMetadataId,
+        viewFilter.operand,
+        value,
+      );
 
       if (wantedKeys.has(key) && !viewFilter.viewFilterGroupId) {
         currentKeys.add(key);
@@ -326,7 +349,11 @@ const main = async () => {
     }
 
     for (const filter of wanted) {
-      const key = filterKey(filter.fieldMetadataId, filter.operand, filter.value);
+      const key = filterKey(
+        filter.fieldMetadataId,
+        filter.operand,
+        filter.value,
+      );
 
       if (currentKeys.has(key)) continue;
 
@@ -352,7 +379,9 @@ const main = async () => {
 
     for (const view of strays) {
       if (!PRUNE) {
-        console.log(`  keep "${view.name}" (${view.id}) — pass --prune to remove`);
+        console.log(
+          `  keep "${view.name}" (${view.id}) — pass --prune to remove`,
+        );
         continue;
       }
 
@@ -361,6 +390,40 @@ const main = async () => {
         `mutation Delete($id: String!) { deleteView(id: $id) }`,
         { id: view.id },
       );
+    }
+  }
+
+  if (ROLE_LABEL) {
+    const { getRoles } = await request(`query { getRoles { id label } }`);
+    const role = getRoles.find((candidate) => candidate.label === ROLE_LABEL);
+
+    if (!role) {
+      throw new Error(`Role "${ROLE_LABEL}" not found.`);
+    }
+
+    console.log(`\nTemplates for role "${role.label}"`);
+
+    await write(
+      `register ${managedIds.size} template views`,
+      `mutation Templates($roleId: String!, $templates: [EnsoRoleViewTemplateInput!]!) {
+        ensoSetRoleViewTemplates(roleId: $roleId, templates: $templates)
+      }`,
+      {
+        roleId: role.id,
+        templates: [
+          { objectMetadataId: opportunity.id, viewIds: [...managedIds] },
+        ],
+      },
+    );
+
+    const result = await write(
+      'make copies for every current member (slow: several writes per view)',
+      `mutation Copies($roleId: String!) { ensoProvisionRoleViewCopies(roleId: $roleId) }`,
+      { roleId: role.id },
+    );
+
+    if (result) {
+      console.log(`  ${result.ensoProvisionRoleViewCopies} view(s) created`);
     }
   }
 

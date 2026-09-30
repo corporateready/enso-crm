@@ -1,4 +1,4 @@
-import { UseFilters, UseGuards, UsePipes } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards, UsePipes } from '@nestjs/common';
 import { Args, Int, Mutation, Query } from '@nestjs/graphql';
 
 import { MetadataResolver } from 'src/engine/api/graphql/graphql-config/decorators/metadata-resolver.decorator';
@@ -19,11 +19,17 @@ import {
   EnsoColumnWidthDTO,
   EnsoDefaultViewDTO,
   EnsoDefaultViewInput,
+  EnsoRoleViewTemplateInput,
   EnsoViewerScopeDTO,
 } from 'src/modules/enso/record-visibility/dtos/enso-viewer-scope.dto';
 import { EnsoColumnWidthsService } from 'src/modules/enso/column-widths/services/enso-column-widths.service';
 import { type EnsoUserColumnWidths } from 'src/modules/enso/column-widths/utils/enso-column-widths.util';
 import { EnsoDefaultViewsService } from 'src/modules/enso/default-views/services/enso-default-views.service';
+import {
+  EnsoPersonalViewsService,
+  type EnsoRoleViewTemplates,
+  type EnsoViewCopies,
+} from 'src/modules/enso/personal-views/services/enso-personal-views.service';
 import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/services/enso-viewer-scope.service';
 
 // The store nests widths per view; GraphQL gets one flat list, which is what
@@ -50,10 +56,13 @@ const flattenEnsoColumnWidths = (
 @UseFilters(AuthGraphqlApiExceptionFilter)
 @UseGuards(WorkspaceAuthGuard, NoPermissionGuard)
 export class EnsoViewerScopeResolver {
+  private readonly logger = new Logger(EnsoViewerScopeResolver.name);
+
   constructor(
     private readonly ensoViewerScopeService: EnsoViewerScopeService,
     private readonly ensoDefaultViewsService: EnsoDefaultViewsService,
     private readonly ensoColumnWidthsService: EnsoColumnWidthsService,
+    private readonly ensoPersonalViewsService: EnsoPersonalViewsService,
   ) {}
 
   @Query(() => EnsoViewerScopeDTO)
@@ -82,6 +91,31 @@ export class EnsoViewerScopeResolver {
         })
       : { defaultViewIdByObjectMetadataId: {}, version: null };
 
+    const { templates, copies } = await this.getPersonalViews({
+      workspaceId: workspace.id,
+      roleId,
+      userWorkspaceId,
+    });
+
+    // A role default that is one of the role's templates means "your copy of
+    // it", which is the view this member can actually change.
+    const resolvedDefaultViewIdByObjectMetadataId = Object.fromEntries(
+      Object.entries(defaultViewIdByObjectMetadataId).map(
+        ([objectMetadataId, viewId]) => [
+          objectMetadataId,
+          copies[viewId] ?? viewId,
+        ],
+      ),
+    );
+
+    const personalViewObjectMetadataIds = Object.entries(templates)
+      .filter(([, templateViewIds]) =>
+        templateViewIds.some((templateViewId) =>
+          isDefined(copies[templateViewId]),
+        ),
+      )
+      .map(([objectMetadataId]) => objectMetadataId);
+
     // An API key has no person behind it, so it simply has no own defaults.
     const personalDefaultViews = user
       ? await this.ensoDefaultViewsService.getUserDefaultViews({
@@ -102,7 +136,7 @@ export class EnsoViewerScopeResolver {
       hiddenNavigationObjectNameSingulars: isRecordScoped
         ? ENSO_HIDDEN_NAVIGATION_OBJECT_NAME_SINGULARS
         : [],
-      defaultViews: Object.entries(defaultViewIdByObjectMetadataId).map(
+      defaultViews: Object.entries(resolvedDefaultViewIdByObjectMetadataId).map(
         ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
       ),
       defaultViewsVersion: version,
@@ -110,7 +144,52 @@ export class EnsoViewerScopeResolver {
         ([objectMetadataId, viewId]) => ({ objectMetadataId, viewId }),
       ),
       personalColumnWidths: flattenEnsoColumnWidths(personalColumnWidths),
+      personalViewObjectMetadataIds,
     };
+  }
+
+  // A member who joined the role after the templates were set up gets their
+  // copies the first time they open the app. Copying takes a while, so it runs
+  // in the background and they appear on the next load, rather than holding up
+  // the query every page waits on.
+  private async getPersonalViews({
+    workspaceId,
+    roleId,
+    userWorkspaceId,
+  }: {
+    workspaceId: string;
+    roleId: string | undefined;
+    userWorkspaceId: string | undefined;
+  }): Promise<{ templates: EnsoRoleViewTemplates; copies: EnsoViewCopies }> {
+    if (!isDefined(roleId) || !isDefined(userWorkspaceId)) {
+      return { templates: {}, copies: {} };
+    }
+
+    const templates = await this.ensoPersonalViewsService.getRoleViewTemplates({
+      workspaceId,
+      roleId,
+    });
+
+    if (Object.keys(templates).length === 0) {
+      return { templates, copies: {} };
+    }
+
+    const copies = await this.ensoPersonalViewsService.getViewCopies({
+      workspaceId,
+      userWorkspaceId,
+    });
+
+    if (this.ensoPersonalViewsService.hasMissingCopies({ templates, copies })) {
+      void this.ensoPersonalViewsService
+        .ensureViewCopies({ workspaceId, userWorkspaceId, templates })
+        .catch((error: unknown) => {
+          this.logger.error(
+            `copying views for member ${userWorkspaceId} failed: ${String(error)}`,
+          );
+        });
+    }
+
+    return { templates, copies };
   }
 
   // Setting your OWN landing view is not an administrative act, so unlike the
@@ -196,5 +275,46 @@ export class EnsoViewerScopeResolver {
     });
 
     return defaultViews;
+  }
+
+  // Which prepared views a role's members get their own copies of. An
+  // administrative act, like the role default above.
+  @Mutation(() => Int)
+  @UseGuards(SettingsPermissionGuard(PermissionFlagType.ROLES))
+  async ensoSetRoleViewTemplates(
+    @Args('roleId', { type: () => String }) roleId: string,
+    @Args('templates', { type: () => [EnsoRoleViewTemplateInput] })
+    templates: EnsoRoleViewTemplateInput[],
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<number> {
+    await this.ensoPersonalViewsService.setRoleViewTemplates({
+      workspaceId: workspace.id,
+      roleId,
+      templates: Object.fromEntries(
+        templates.map((template) => [
+          template.objectMetadataId,
+          template.viewIds,
+        ]),
+      ),
+    });
+
+    return templates.reduce(
+      (count, template) => count + template.viewIds.length,
+      0,
+    );
+  }
+
+  // Makes the copies for every current member of the role now, instead of
+  // waiting for each to open the app. Returns how many views were created.
+  @Mutation(() => Int)
+  @UseGuards(SettingsPermissionGuard(PermissionFlagType.ROLES))
+  async ensoProvisionRoleViewCopies(
+    @Args('roleId', { type: () => String }) roleId: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<number> {
+    return this.ensoPersonalViewsService.ensureViewCopiesForRole({
+      workspaceId: workspace.id,
+      roleId,
+    });
   }
 }

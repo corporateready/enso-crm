@@ -3,6 +3,7 @@ import { type DropResult } from '@hello-pangea/dnd';
 import { type MouseEvent, useCallback } from 'react';
 
 import { useContextStoreObjectMetadataItemOrThrow } from '@/context-store/hooks/useContextStoreObjectMetadataItemOrThrow';
+import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
 import { DraggableItem } from '@/ui/layout/draggable-list/components/DraggableItem';
 import { DraggableList } from '@/ui/layout/draggable-list/components/DraggableList';
 import { DropdownContent } from '@/ui/layout/dropdown/components/DropdownContent';
@@ -42,15 +43,25 @@ export const ViewPickerListContent = () => {
     { objectMetadataItemId: objectMetadataItem.id },
   );
 
-  const workspaceViews = viewsOnCurrentObject.filter(
-    (view) => view.visibility === ViewVisibility.WORKSPACE,
+  const { personalViewObjectMetadataIds } = useEnsoViewerScope();
+
+  // A member with their own copies of the role's prepared views works only in
+  // those; the shared originals are templates an admin maintains.
+  const hidesWorkspaceViews = personalViewObjectMetadataIds.includes(
+    objectMetadataItem.id,
   );
+
+  const workspaceViews = hidesWorkspaceViews
+    ? []
+    : viewsOnCurrentObject.filter(
+        (view) => view.visibility === ViewVisibility.WORKSPACE,
+      );
 
   const unlistedViews = viewsOnCurrentObject.filter(
     (view) => view.visibility === ViewVisibility.UNLISTED,
   );
 
-  const isLastView = viewsOnCurrentObject.length <= 1;
+  const isLastView = workspaceViews.length + unlistedViews.length <= 1;
 
   const shouldShowSectionLabels =
     workspaceViews.length > 0 && unlistedViews.length > 0;
