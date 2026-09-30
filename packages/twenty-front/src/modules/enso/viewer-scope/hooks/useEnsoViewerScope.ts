@@ -8,7 +8,6 @@ type EnsoViewerScopeData = {
     isRecordScoped: boolean;
     hiddenNavigationObjectNameSingulars: string[];
     defaultViews: { objectMetadataId: string; viewId: string }[];
-    defaultViewsVersion: string | null;
     personalDefaultViews: { objectMetadataId: string; viewId: string }[];
     personalColumnWidths: EnsoPersonalColumnWidth[];
   };
@@ -31,13 +30,12 @@ export const useEnsoViewerScope = () => {
       data?.ensoViewerScope.hiddenNavigationObjectNameSingulars ??
       EMPTY_HIDDEN_OBJECTS,
     // objectMetadataId -> viewId for this viewer's role. Consulted by the view
-    // resolver ahead of the workspace INDEX view.
+    // resolver ahead of last-visited and the workspace INDEX view.
     roleDefaultViewIdByObjectMetadataId: Object.fromEntries(
       (data?.ensoViewerScope.defaultViews ?? EMPTY_DEFAULT_VIEWS).map(
         (defaultView) => [defaultView.objectMetadataId, defaultView.viewId],
       ),
     ),
-    roleDefaultViewsVersion: data?.ensoViewerScope.defaultViewsVersion ?? null,
     // This viewer's own choice, which out-ranks their role's.
     personalDefaultViewIdByObjectMetadataId: Object.fromEntries(
       (data?.ensoViewerScope.personalDefaultViews ?? EMPTY_DEFAULT_VIEWS).map(

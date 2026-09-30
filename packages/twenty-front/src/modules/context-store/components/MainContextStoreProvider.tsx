@@ -1,7 +1,6 @@
 import { MainContextStoreProviderEffect } from '@/context-store/components/MainContextStoreProviderEffect';
 import { getViewId } from '@/context-store/utils/getViewId';
 import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
-import { appliedRoleDefaultViewVersionPerObjectMetadataItemState } from '@/navigation/states/appliedRoleDefaultViewVersionPerObjectMetadataItemState';
 import { metadataStoreState } from '@/metadata-store/states/metadataStoreState';
 import { useIsSettingsPage } from '@/navigation/hooks/useIsSettingsPage';
 import { useLastVisitedView } from '@/navigation/hooks/useLastVisitedView';
@@ -45,13 +44,8 @@ export const MainContextStoreProvider = () => {
   const {
     roleDefaultViewIdByObjectMetadataId,
     personalDefaultViewIdByObjectMetadataId,
-    roleDefaultViewsVersion,
     isEnsoViewerScopeLoading,
   } = useEnsoViewerScope();
-
-  const appliedRoleDefaultViewVersionPerObjectMetadataItem = useAtomStateValue(
-    appliedRoleDefaultViewVersionPerObjectMetadataItemState,
-  );
 
   const viewIdQueryParamView = views.find(
     (view) => view.id === viewIdQueryParamRaw,
@@ -112,15 +106,6 @@ export const MainContextStoreProvider = () => {
       view.type !== ViewType.FIELDS_WIDGET,
   )?.id;
 
-  // Seed once per object per version of the role's configuration.
-  const shouldSeedRoleDefaultView =
-    isDefined(objectMetadataItem) &&
-    isDefined(roleDefaultViewId) &&
-    isDefined(roleDefaultViewsVersion) &&
-    appliedRoleDefaultViewVersionPerObjectMetadataItem?.[
-      objectMetadataItem.id
-    ] !== roleDefaultViewsVersion;
-
   const viewId = getViewId({
     viewIdFromQueryParams: viewIdQueryParam,
     personalDefaultViewId,
@@ -128,15 +113,7 @@ export const MainContextStoreProvider = () => {
     lastVisitedViewId,
     firstAvailableViewId,
     roleDefaultViewId,
-    shouldSeedRoleDefaultView,
   });
-
-  // Only record the seeding once it is what actually happened — an explicit
-  // ?viewId in the URL must not burn this person's one application of it.
-  const roleDefaultViewVersionToMark =
-    shouldSeedRoleDefaultView && viewId === roleDefaultViewId
-      ? roleDefaultViewsVersion
-      : undefined;
 
   // Waiting on the viewer scope is load-bearing, not tidiness: answering while
   // it is still in flight resolves to the INDEX view, and landing on a view
@@ -156,7 +133,6 @@ export const MainContextStoreProvider = () => {
   return (
     <MainContextStoreProviderEffect
       viewId={viewId}
-      roleDefaultViewVersionToMark={roleDefaultViewVersionToMark}
       objectMetadataItem={objectMetadataItem}
       isRecordIndexPage={isRecordIndexPage}
       isRecordShowPage={isRecordShowPage}

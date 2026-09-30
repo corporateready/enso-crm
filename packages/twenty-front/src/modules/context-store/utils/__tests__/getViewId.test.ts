@@ -12,15 +12,15 @@ describe('getViewId', () => {
     expect(
       getViewId({
         viewIdFromQueryParams: URL_VIEW,
+        personalDefaultViewId: PERSONAL_DEFAULT_VIEW,
         indexViewId: INDEX_VIEW,
         lastVisitedViewId: LAST_VISITED_VIEW,
         roleDefaultViewId: ROLE_DEFAULT_VIEW,
-        shouldSeedRoleDefaultView: true,
       }),
     ).toBe(URL_VIEW);
   });
 
-  it('should use the personal default over a role default that has not been seeded yet', () => {
+  it('should use the personal default over the role default', () => {
     expect(
       getViewId({
         viewIdFromQueryParams: null,
@@ -28,7 +28,6 @@ describe('getViewId', () => {
         indexViewId: INDEX_VIEW,
         lastVisitedViewId: LAST_VISITED_VIEW,
         roleDefaultViewId: ROLE_DEFAULT_VIEW,
-        shouldSeedRoleDefaultView: true,
       }),
     ).toBe(PERSONAL_DEFAULT_VIEW);
   });
@@ -44,75 +43,36 @@ describe('getViewId', () => {
     ).toBe(PERSONAL_DEFAULT_VIEW);
   });
 
-  it('should still let an explicit URL viewId beat the personal default', () => {
-    expect(
-      getViewId({
-        viewIdFromQueryParams: URL_VIEW,
-        personalDefaultViewId: PERSONAL_DEFAULT_VIEW,
-        indexViewId: INDEX_VIEW,
-      }),
-    ).toBe(URL_VIEW);
-  });
-
-  it('should use the role default over last-visited when it has not been seeded yet', () => {
+  // Managers land on their role's view every time until they pin their own.
+  it('should use the role default over last-visited when there is no personal default', () => {
     expect(
       getViewId({
         viewIdFromQueryParams: null,
         indexViewId: INDEX_VIEW,
         lastVisitedViewId: LAST_VISITED_VIEW,
         roleDefaultViewId: ROLE_DEFAULT_VIEW,
-        shouldSeedRoleDefaultView: true,
       }),
     ).toBe(ROLE_DEFAULT_VIEW);
   });
 
-  it('should use last-visited over the role default once it has been seeded', () => {
+  it('should use last-visited when the role has no default', () => {
     expect(
       getViewId({
         viewIdFromQueryParams: null,
         indexViewId: INDEX_VIEW,
         lastVisitedViewId: LAST_VISITED_VIEW,
-        roleDefaultViewId: ROLE_DEFAULT_VIEW,
-        shouldSeedRoleDefaultView: false,
+        roleDefaultViewId: undefined,
       }),
     ).toBe(LAST_VISITED_VIEW);
   });
 
-  it('should use the role default over the index view when there is no last-visited', () => {
+  it('should fall back to the index view when there is no default or last-visited', () => {
     expect(
       getViewId({
         viewIdFromQueryParams: null,
         indexViewId: INDEX_VIEW,
-        roleDefaultViewId: ROLE_DEFAULT_VIEW,
-        shouldSeedRoleDefaultView: false,
-      }),
-    ).toBe(ROLE_DEFAULT_VIEW);
-  });
-
-  it('should fall back to the index view when the role has no default', () => {
-    expect(
-      getViewId({
-        viewIdFromQueryParams: null,
-        indexViewId: INDEX_VIEW,
-        lastVisitedViewId: undefined,
-        roleDefaultViewId: undefined,
-        shouldSeedRoleDefaultView: false,
       }),
     ).toBe(INDEX_VIEW);
-  });
-
-  // A role default that has been resolved away (deleted view, or one this
-  // viewer cannot see) must not strand anyone on an undefined view.
-  it('should ignore the seeding flag when the role default resolved to nothing', () => {
-    expect(
-      getViewId({
-        viewIdFromQueryParams: null,
-        indexViewId: INDEX_VIEW,
-        lastVisitedViewId: LAST_VISITED_VIEW,
-        roleDefaultViewId: undefined,
-        shouldSeedRoleDefaultView: true,
-      }),
-    ).toBe(LAST_VISITED_VIEW);
   });
 
   it('should fall back to the first available view when there is no index view', () => {

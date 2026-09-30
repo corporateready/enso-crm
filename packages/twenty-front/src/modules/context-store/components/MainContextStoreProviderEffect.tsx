@@ -5,7 +5,6 @@ import { contextStoreCurrentViewIdComponentState } from '@/context-store/states/
 import { contextStoreCurrentViewTypeComponentState } from '@/context-store/states/contextStoreCurrentViewTypeComponentState';
 import { getPageType } from '@/context-store/utils/getPageType';
 import { getViewType } from '@/context-store/utils/getViewType';
-import { useMarkRoleDefaultViewApplied } from '@/navigation/hooks/useMarkRoleDefaultViewApplied';
 import { useSetLastVisitedObjectMetadataId } from '@/navigation/hooks/useSetLastVisitedObjectMetadataId';
 import { useSetLastVisitedViewForObjectMetadataNamePlural } from '@/navigation/hooks/useSetLastVisitedViewForObjectMetadataNamePlural';
 import { type EnrichedObjectMetadataItem } from '@/object-metadata/types/EnrichedObjectMetadataItem';
@@ -13,13 +12,9 @@ import { useAtomComponentState } from '@/ui/utilities/state/jotai/hooks/useAtomC
 import { useAtomFamilySelectorValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilySelectorValue';
 import { viewFromViewIdFamilySelector } from '@/views/states/selectors/viewFromViewIdFamilySelector';
 import { useEffect } from 'react';
-import { isDefined } from 'twenty-shared/utils';
 
 type MainContextStoreProviderEffectProps = {
   viewId?: string;
-  // Set only when `viewId` above IS this person's role default being applied
-  // for the first time at this version, so it is recorded as spent.
-  roleDefaultViewVersionToMark?: string;
   objectMetadataItem?: EnrichedObjectMetadataItem;
   isRecordIndexPage: boolean;
   isRecordShowPage: boolean;
@@ -29,7 +24,6 @@ type MainContextStoreProviderEffectProps = {
 
 export const MainContextStoreProviderEffect = ({
   viewId,
-  roleDefaultViewVersionToMark,
   objectMetadataItem,
   isRecordIndexPage,
   isRecordShowPage,
@@ -41,8 +35,6 @@ export const MainContextStoreProviderEffect = ({
 
   const { setLastVisitedObjectMetadataId } =
     useSetLastVisitedObjectMetadataId();
-
-  const { markRoleDefaultViewApplied } = useMarkRoleDefaultViewApplied();
 
   const [contextStoreCurrentViewId, setContextStoreCurrentViewId] =
     useAtomComponentState(
@@ -83,21 +75,9 @@ export const MainContextStoreProviderEffect = ({
       return;
     }
 
-    // A role default gets ONE application per version, and recording it is what
-    // makes the landing stick. If the last-visited write declined — it re-reads
-    // the view list, which can lag the render that chose this view — then
-    // spending the seed anyway would strand the person on their old view with
-    // no application left to correct it.
     void setLastVisitedViewForObjectMetadataNamePlural({
       objectNamePlural: objectMetadataItem.namePlural,
       viewId: viewId ?? '',
-    }).then((didRecordLanding) => {
-      if (didRecordLanding && isDefined(roleDefaultViewVersionToMark)) {
-        markRoleDefaultViewApplied({
-          objectMetadataItemId: objectMetadataItem.id,
-          version: roleDefaultViewVersionToMark,
-        });
-      }
     });
 
     setLastVisitedObjectMetadataId({
@@ -105,9 +85,7 @@ export const MainContextStoreProviderEffect = ({
     });
   }, [
     contextStoreCurrentObjectMetadataItemId,
-    markRoleDefaultViewApplied,
     objectMetadataItem,
-    roleDefaultViewVersionToMark,
     setContextStoreCurrentObjectMetadataItemId,
     setLastVisitedObjectMetadataId,
     setLastVisitedViewForObjectMetadataNamePlural,

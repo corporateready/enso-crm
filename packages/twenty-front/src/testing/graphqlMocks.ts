@@ -157,7 +157,6 @@ export const graphqlMocks = {
             isRecordScoped: false,
             hiddenNavigationObjectNameSingulars: [],
             defaultViews: [],
-            defaultViewsVersion: null,
             personalDefaultViews: [],
             personalColumnWidths: [],
           },
