@@ -1,5 +1,6 @@
 import { SKELETON_LOADER_HEIGHT_SIZES } from '@/activities/components/SkeletonLoader';
 import { styled } from '@linaria/react';
+import { isNonEmptyString } from '@sniptt/guards';
 import { Trans } from '@lingui/react/macro';
 import { type ChangeEvent, type ReactNode, useContext, useRef } from 'react';
 import Skeleton, { SkeletonTheme } from 'react-loading-skeleton';
@@ -144,28 +145,33 @@ export const ShowPageSummaryCard = ({
       </StyledShowPageSummaryCard>
     );
 
+  // enso: skip the generated letter placeholder — only show a real image or icon
+  const shouldShowAvatar = isDefined(icon) || isNonEmptyString(logoOrAvatar);
+
   return (
     <StyledShowPageSummaryCard isMobile={isMobile}>
-      <StyledAvatarWrapper
-        isAvatarEditable={isDefined(onUploadPicture)}
-        hasIcon={isDefined(icon)}
-      >
-        <Avatar
-          avatarUrl={logoOrAvatar}
-          onClick={onUploadPicture ? handleAvatarClick : undefined}
-          size="xl"
-          placeholderColorSeed={id}
-          placeholder={avatarPlaceholder}
-          type={icon ? 'icon' : avatarType}
-          Icon={icon}
-          iconColor={iconColor}
-        />
-        <StyledFileInput
-          ref={inputFileRef}
-          onChange={onFileChange}
-          type="file"
-        />
-      </StyledAvatarWrapper>
+      {shouldShowAvatar && (
+        <StyledAvatarWrapper
+          isAvatarEditable={isDefined(onUploadPicture)}
+          hasIcon={isDefined(icon)}
+        >
+          <Avatar
+            avatarUrl={logoOrAvatar}
+            onClick={onUploadPicture ? handleAvatarClick : undefined}
+            size="xl"
+            placeholderColorSeed={id}
+            placeholder={avatarPlaceholder}
+            type={icon ? 'icon' : avatarType}
+            Icon={icon}
+            iconColor={iconColor}
+          />
+          <StyledFileInput
+            ref={inputFileRef}
+            onChange={onFileChange}
+            type="file"
+          />
+        </StyledAvatarWrapper>
+      )}
       <StyledInfoContainer isMobile={isMobile}>
         <StyledTitle isMobile={isMobile}>{title}</StyledTitle>
         {beautifiedCreatedAt && (

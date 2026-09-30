@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { t } from '@lingui/core/macro';
 
 import { type EnrichedObjectMetadataItem } from '@/object-metadata/types/EnrichedObjectMetadataItem';
@@ -82,13 +83,15 @@ export const MultipleRecordPickerMenuItemContent = ({
         isKeySelected={isSelectedItemId}
         selected={isRecordSelectedWithObjectItem}
         avatar={
-          <Avatar
-            avatarUrl={searchRecord.imageUrl}
-            placeholderColorSeed={searchRecord.recordId}
-            placeholder={displayText}
-            size="md"
-            type={getAvatarType(objectMetadataItem.nameSingular) ?? 'rounded'}
-          />
+          isNonEmptyString(searchRecord.imageUrl) ? (
+            <Avatar
+              avatarUrl={searchRecord.imageUrl}
+              placeholderColorSeed={searchRecord.recordId}
+              placeholder={displayText}
+              size="md"
+              type={getAvatarType(objectMetadataItem.nameSingular) ?? 'rounded'}
+            />
+          ) : undefined
         }
         text={displayText}
         contextualText={

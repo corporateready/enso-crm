@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { getAvatarType } from '@/object-metadata/utils/getAvatarType';
 import { searchRecordStoreFamilyState } from '@/object-record/record-picker/multiple-record-picker/states/searchRecordStoreComponentFamilyState';
 import { SingleRecordPickerComponentInstanceContext } from '@/object-record/record-picker/single-record-picker/states/contexts/SingleRecordPickerComponentInstanceContext';
@@ -72,15 +73,17 @@ export const SingleRecordPickerMenuItem = ({
         selected={isRecordSelected}
         focused={isSelectedItemId}
         avatar={
-          <Avatar
-            avatarUrl={searchRecordStore.imageUrl}
-            placeholderColorSeed={morphItem.recordId}
-            placeholder={searchRecordStore.label}
-            size="md"
-            type={
-              getAvatarType(searchRecordStore.objectNameSingular) ?? 'rounded'
-            }
-          />
+          isNonEmptyString(searchRecordStore.imageUrl) ? (
+            <Avatar
+              avatarUrl={searchRecordStore.imageUrl}
+              placeholderColorSeed={morphItem.recordId}
+              placeholder={searchRecordStore.label}
+              size="md"
+              type={
+                getAvatarType(searchRecordStore.objectNameSingular) ?? 'rounded'
+              }
+            />
+          ) : undefined
         }
         contextualText={
           showObjectName
