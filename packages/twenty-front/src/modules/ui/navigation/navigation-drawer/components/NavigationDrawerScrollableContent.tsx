@@ -1,9 +1,20 @@
 import { useIsSettingsDrawer } from '@/navigation/hooks/useIsSettingsDrawer';
+import { useNavigationDrawerExpanded } from '@/navigation/hooks/useNavigationDrawerExpanded';
 import { ScrollWrapper } from '@/ui/utilities/scroll/components/ScrollWrapper';
+import { css } from '@linaria/core';
 import { styled } from '@linaria/react';
 import { type ReactNode } from 'react';
 import { useIsMobile } from 'twenty-ui/utilities';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+
+// Reserves the scrollbar's width whether or not the list overflows, matching
+// NavigationDrawerFixedContent, so rows above and inside the scroll area share
+// a right edge with classic (non-overlay) scrollbars. A class rather than a
+// styled prop: ScrollWrapper doesn't forward the style prop Linaria would use.
+// Not on the collapsed rail, which is too narrow to give the space up.
+const stableScrollbarGutterClassName = css`
+  scrollbar-gutter: stable;
+`;
 
 const StyledItemsContainer = styled.div`
   display: flex;
@@ -25,9 +36,13 @@ export const NavigationDrawerScrollableContent = ({
 }) => {
   const isSettingsDrawer = useIsSettingsDrawer();
   const isMobile = useIsMobile();
+  const isNavigationDrawerExpanded = useNavigationDrawerExpanded();
 
   return (
     <ScrollWrapper
+      className={
+        isNavigationDrawerExpanded ? stableScrollbarGutterClassName : undefined
+      }
       componentInstanceId={`scroll-wrapper-${
         isSettingsDrawer ? 'settings-' : ''
       }navigation-drawer`}
