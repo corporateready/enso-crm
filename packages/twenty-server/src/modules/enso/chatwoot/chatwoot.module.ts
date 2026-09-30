@@ -5,6 +5,7 @@ import { ChatwootAssignmentService } from 'src/modules/enso/chatwoot/services/ch
 import { ChatwootClientService } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
 import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
 import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/chatwoot-messaging.service';
+import { ChatwootReplyLogService } from 'src/modules/enso/chatwoot/services/chatwoot-reply-log.service';
 
 // Phase 5 — the Chatwoot integration, SERVICES ONLY (no controller). Lean on
 // purpose: imported by LeadPipelineModule (the on-claim hook uses
@@ -18,6 +19,7 @@ import { ChatwootMessagingService } from 'src/modules/enso/chatwoot/services/cha
     ChatwootAssignmentService,
     ChatwootAgentProvisioningService,
     ChatwootMessagingService,
+    ChatwootReplyLogService,
   ],
   exports: [
     ChatwootClientService,

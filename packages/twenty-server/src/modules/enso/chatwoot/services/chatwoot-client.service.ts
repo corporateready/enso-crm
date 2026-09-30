@@ -18,6 +18,9 @@ export type ChatwootConversationMeta = {
   assigneeId: number | null;
   createdAt: number | null;
   lastActivityAt: number | null;
+  // Email inboxes only: the thread subject, and the contact's address.
+  mailSubject: string | null;
+  contactEmail: string | null;
 };
 
 export type ChatwootAttachment = {
@@ -225,6 +228,8 @@ export class ChatwootClientService {
       lastActivityAt: isDefined(data?.last_activity_at)
         ? data.last_activity_at * 1000
         : null,
+      mailSubject: data?.additional_attributes?.mail_subject ?? null,
+      contactEmail: data?.meta?.sender?.email ?? null,
     };
   }
 
