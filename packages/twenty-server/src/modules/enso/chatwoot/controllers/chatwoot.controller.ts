@@ -18,6 +18,7 @@ import { RestApiExceptionFilter } from 'src/engine/api/rest/rest-api-exception.f
 import { type UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { type WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { AuthUser } from 'src/engine/decorators/auth/auth-user.decorator';
+import { AuthWorkspaceMemberId } from 'src/engine/decorators/auth/auth-workspace-member-id.decorator';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
 import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
@@ -154,6 +155,7 @@ export class ChatwootController {
     @UploadedFiles() files: UploadedMulterFile[] | undefined,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUser() user: UserEntity,
+    @AuthWorkspaceMemberId() workspaceMemberId: string | undefined,
   ) {
     const attachments = (files ?? []).map((file) => ({
       buffer: file.buffer,
@@ -170,6 +172,7 @@ export class ChatwootController {
       attachments: attachments.length > 0 ? attachments : undefined,
       userEmail: user.email,
       userName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
+      workspaceMemberId,
     });
 
     return { message };

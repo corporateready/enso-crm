@@ -9,7 +9,11 @@ import {
   ChatwootClientService,
 } from 'src/modules/enso/chatwoot/services/chatwoot-client.service';
 import { ChatwootAgentProvisioningService } from 'src/modules/enso/chatwoot/services/chatwoot-agent-provisioning.service';
-import { ChatwootConversationResolverService } from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
+import {
+  type DealConversation,
+  ChatwootConversationResolverService,
+} from 'src/modules/enso/chatwoot/services/chatwoot-conversation-resolver.service';
+import { ChatwootReplyLogService } from 'src/modules/enso/chatwoot/services/chatwoot-reply-log.service';
 
 export type ChatwootRecordType = 'opportunity' | 'person';
 
@@ -62,6 +66,7 @@ export class ChatwootMessagingService {
     private readonly chatwootClient: ChatwootClientService,
     private readonly conversationResolver: ChatwootConversationResolverService,
     private readonly provisioningService: ChatwootAgentProvisioningService,
+    private readonly replyLogService: ChatwootReplyLogService,
   ) {}
 
   // Cheap, DB-only presence check (no Chatwoot round-trips) used to decide
@@ -223,8 +228,9 @@ export class ChatwootMessagingService {
     attachments?: ChatwootUploadFile[];
     userEmail: string;
     userName: string;
+    workspaceMemberId?: string;
   }): Promise<ChatwootMessage> {
-    await this.assertConversationOnRecord(
+    const conversation = await this.assertConversationOnRecord(
       params.workspaceId,
       params.recordType,
       params.recordId,
@@ -236,11 +242,33 @@ export class ChatwootMessagingService {
       params.userName,
     );
 
-    return this.chatwootClient.sendMessage(params.conversationId, {
+    const message = await this.chatwootClient.sendMessage(
+      params.conversationId,
+      {
+        content: params.content,
+        attachments: params.attachments,
+        asToken,
+      },
+    );
+
+    // The reply is already delivered; the meta lookup only feeds the log (channel,
+    // email subject), so a Chatwoot hiccup here degrades the log, not the send.
+    const meta = await this.chatwootClient
+      .getConversationMeta(params.conversationId)
+      .catch(() => null);
+
+    await this.replyLogService.logReply({
+      workspaceId: params.workspaceId,
+      conversation,
+      meta,
+      message,
       content: params.content,
-      attachments: params.attachments,
-      asToken,
+      attachmentCount: params.attachments?.length ?? 0,
+      workspaceMemberId: params.workspaceMemberId,
+      senderName: params.userName || params.userEmail,
     });
+
+    return message;
   }
 
   async listCannedResponses(): Promise<ChatwootCannedResponse[]> {
@@ -295,21 +323,23 @@ export class ChatwootMessagingService {
     recordType: ChatwootRecordType,
     recordId: string,
     conversationId: string,
-  ): Promise<void> {
+  ): Promise<DealConversation> {
     const conversations = await this.conversationResolver.listForRecord(
       workspaceId,
       recordType,
       recordId,
     );
 
-    const belongs = conversations.some(
-      (conversation) => conversation.conversationId === String(conversationId),
+    const conversation = conversations.find(
+      (candidate) => candidate.conversationId === String(conversationId),
     );
 
-    if (!belongs) {
+    if (!isDefined(conversation)) {
       throw new ForbiddenException(
         'Conversation does not belong to this record.',
       );
     }
+
+    return conversation;
   }
 }
