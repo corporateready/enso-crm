@@ -26,6 +26,7 @@ const KIND_LABELS: Record<string, string> = {
   FORM_SUBMISSION: 'Form',
   INCOMING_CALL: 'Call',
   SOCIAL_MESSAGE: 'Social',
+  EMAIL_MESSAGE: 'Email',
   LEAD_AD: 'Lead Ad',
   APPOINTMENT_BOOKED: 'Appointment',
   CALLBACK_REQUEST: 'Callback',

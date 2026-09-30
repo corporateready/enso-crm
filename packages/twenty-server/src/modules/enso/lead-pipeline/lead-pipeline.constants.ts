@@ -38,6 +38,7 @@ export const ACTIVITY_KIND_TO_OPPORTUNITY_SOURCE: Record<string, string> = {
   INCOMING_CALL: 'CALL_INBOUND',
   CALLBACK_REQUEST: 'CALL_INBOUND',
   SOCIAL_MESSAGE: 'SOCIAL_DM',
+  EMAIL_MESSAGE: 'EMAIL',
   LEAD_AD: 'LEAD_AD',
   APPOINTMENT_BOOKED: 'MANUAL',
 };
@@ -48,6 +49,7 @@ export const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   FORM_WEBSITE: 'Form',
   CALL_INBOUND: 'Call',
   SOCIAL_DM: 'Social',
+  EMAIL: 'Email',
   LEAD_AD: 'Lead Ad',
   REFERRAL: 'Referral',
   WALK_IN: 'Walk-in',

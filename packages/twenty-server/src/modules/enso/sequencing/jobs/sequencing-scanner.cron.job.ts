@@ -24,7 +24,6 @@ import {
   FIRST_TOUCH_STEP_KEY,
   FIRST_TOUCH_TITLE_PREFIX,
   INBOUND_KIND_TO_CHANNEL,
-  INBOUND_SOCIAL_MESSAGE_KIND,
   LEAD_CLAIMED_STAGE,
   OUTCOME_TO_LOST_REASON,
   SEQUENCE_PIPELINE_STATE_ACTIVE,
@@ -40,6 +39,7 @@ import {
   TASK_CHANNEL_TO_FIRST_CONTACT,
   UNREACHABLE_LOST_REASON,
 } from 'src/modules/enso/sequencing/sequencing.constants';
+import { findFirstInboundReply } from 'src/modules/enso/sequencing/utils/find-first-inbound-reply.util';
 
 // Runs every minute. For each active workspace, sweeps open sequence runs
 // (endReason IS NULL) and acts on the deal's *current* state: end runs whose deal
@@ -336,33 +336,26 @@ export class SequencingScannerCronJob {
           continue;
         }
 
-        // Reply observer: an inbound social message that landed AFTER enrollment
-        // means the lead answered the manager -> two-way contact established.
-        // (The pre-claim first message predates enrollment, so it can't match.)
-        // Advance Lead Claimed -> Connected; the run ends as advanced.
+        // Reply observer: an inbound social message or email that landed AFTER
+        // enrollment means the lead answered the manager -> two-way contact
+        // established. (The pre-claim first message predates enrollment, so it
+        // can't match.) Advance Lead Claimed -> Connected; the run ends as advanced.
         const inboundActivities = await inboundActivityRepository.find({
           where: { opportunityId: opportunity.id },
         });
-        const hasReplyAfterEnrollment = inboundActivities.some((activity) => {
-          if (activity.kind !== INBOUND_SOCIAL_MESSAGE_KIND) {
-            return false;
-          }
-          const occurredAt = activity.occurredAt ?? activity.createdAt;
+        const replyAfterEnrollment = findFirstInboundReply(
+          inboundActivities,
+          enrolledAtMs,
+        );
 
-          return (
-            isDefined(occurredAt) &&
-            new Date(occurredAt).getTime() > enrolledAtMs
-          );
-        });
-
-        if (hasReplyAfterEnrollment) {
+        if (isDefined(replyAfterEnrollment)) {
           await opportunityRepository.update(opportunity.id, {
             stage: CONNECTED_STAGE,
             ...(isDefined(opportunity.firstContactAt)
               ? {}
               : {
                   firstContactAt: new Date(),
-                  firstContactChannel: SOCIAL_FIRST_CONTACT_CHANNEL,
+                  firstContactChannel: replyAfterEnrollment.channel,
                 }),
           });
           await runRepository.update(run.id, {
