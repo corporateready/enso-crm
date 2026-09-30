@@ -182,7 +182,11 @@ const StyledKeyBoardShortcut = styled.span`
 
   height: ${themeCssVariables.spacing[4]};
   justify-content: center;
-  width: ${themeCssVariables.spacing[4]};
+  // Sized to its keys (⌘K is two glyphs) and revealed by the row's :hover
+  // rule; without the hidden default that rule had nothing to reveal.
+  min-width: ${themeCssVariables.spacing[4]};
+  padding: 0 ${themeCssVariables.spacing[1]};
+  visibility: hidden;
 `;
 
 const StyledNavigationDrawerItemContainer = styled.div`
