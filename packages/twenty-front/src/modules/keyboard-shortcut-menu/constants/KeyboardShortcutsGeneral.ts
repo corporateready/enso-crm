@@ -13,6 +13,13 @@ export const KEYBOARD_SHORTCUTS_GENERAL: Shortcut[] = [
     areSimultaneous: false,
   },
   {
+    label: 'Toggle sidebar',
+    type: ShortcutType.General,
+    firstHotKey: getOsControlSymbol(),
+    secondHotKey: 'B',
+    areSimultaneous: false,
+  },
+  {
     label: 'Mark as favourite',
     type: ShortcutType.General,
     firstHotKey: '⇧',

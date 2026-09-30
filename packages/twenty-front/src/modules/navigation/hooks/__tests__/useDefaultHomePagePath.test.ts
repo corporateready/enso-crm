@@ -125,10 +125,14 @@ describe('useDefaultHomePagePath', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.defaultHomePagePath).toEqual('/objects/companies');
+      expect(result.current.defaultHomePagePath).toEqual(
+        '/objects/opportunities',
+      );
     });
   });
-  it('should return proper path when currentUser is defined and view exists', async () => {
+  // The home path carries no viewId so the record index resolves the view
+  // itself (personal pin, role default, last-visited view).
+  it('should land on opportunities without a viewId when another object has a view', async () => {
     const { result } = renderHooks({
       withCurrentUser: true,
       withExistingView: true,
@@ -136,7 +140,7 @@ describe('useDefaultHomePagePath', () => {
 
     await waitFor(() => {
       expect(result.current.defaultHomePagePath).toEqual(
-        '/objects/companies?viewId=viewId',
+        '/objects/opportunities',
       );
     });
   });

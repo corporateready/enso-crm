@@ -4,7 +4,9 @@ import { IconHelpCircle, IconSettings } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
+import { SIDEBAR_UTILITY_ICON_COLOR } from '@/navigation/constants/SidebarUtilityIconColor';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
 import { NavigationDrawerAnimatedCollapseWrapper } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerAnimatedCollapseWrapper';
@@ -20,6 +22,12 @@ export const NavigationDrawerOtherSection = () => {
   const { t } = useLingui();
   const navigateSettings = useNavigateSettings();
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
+  const { isRecordScoped, isEnsoViewerScopeLoading } = useEnsoViewerScope();
+
+  // The link goes to Twenty's own product docs, which are noise for sales
+  // managers. Held back while the scope loads so it never flashes for them.
+  const isDocumentationLinkVisible =
+    !isRecordScoped && !isEnsoViewerScopeLoading;
 
   const { toggleNavigationSection } = useNavigationSection('Other');
   const isNavigationSectionOpen = useAtomFamilyStateValue(
@@ -50,15 +58,19 @@ export const NavigationDrawerOtherSection = () => {
         <NavigationDrawerItem
           label={t`Settings`}
           Icon={IconSettings}
+          iconColor={SIDEBAR_UTILITY_ICON_COLOR}
           onClick={handleSettingsClick}
         />
-        <NavigationDrawerItem
-          label={t`Documentation`}
-          to={getDocumentationUrl({
-            locale: currentWorkspaceMember?.locale,
-          })}
-          Icon={IconHelpCircle}
-        />
+        {isDocumentationLinkVisible && (
+          <NavigationDrawerItem
+            label={t`Documentation`}
+            to={getDocumentationUrl({
+              locale: currentWorkspaceMember?.locale,
+            })}
+            Icon={IconHelpCircle}
+            iconColor={SIDEBAR_UTILITY_ICON_COLOR}
+          />
+        )}
       </AnimatedExpandableContainer>
     </NavigationDrawerSection>
   );

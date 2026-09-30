@@ -5,6 +5,7 @@ import { currentUserState } from '@/auth/states/currentUserState';
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
 import { billingState } from '@/client-config/states/billingState';
 import { supportChatState } from '@/client-config/states/supportChatState';
+import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
 import { usePermissionFlagMap } from '@/settings/roles/hooks/usePermissionFlagMap';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import {
@@ -74,6 +75,8 @@ const useSettingsNavigationItems = (): SettingsNavigationSection[] => {
     isNonEmptyString(supportChat.supportFrontChatId);
 
   const permissionMap = usePermissionFlagMap();
+  const { isRecordScoped, isEnsoViewerScopeLoading } = useEnsoViewerScope();
+
   return [
     {
       label: t`User`,
@@ -210,6 +213,8 @@ const useSettingsNavigationItems = (): SettingsNavigationSection[] => {
               '_blank',
             ),
           Icon: IconHelpCircle,
+          // Twenty's own product docs are noise for sales managers.
+          isHidden: isRecordScoped || isEnsoViewerScopeLoading,
         },
         {
           label: t`Logout`,

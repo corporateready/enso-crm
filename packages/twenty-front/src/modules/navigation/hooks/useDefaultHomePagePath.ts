@@ -14,6 +14,10 @@ import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getAppPath, getSettingsPath, isDefined } from 'twenty-shared/utils';
 import { useStore } from 'jotai';
 
+// ENSO works deal-first, so entering the CRM always lands on opportunities,
+// ahead of the last-visited object and the alphabetical fallback (company).
+const HOME_OBJECT_NAME_SINGULAR = 'opportunity';
+
 export const useDefaultHomePagePath = () => {
   const store = useStore();
   const currentUser = useAtomStateValue(currentUserState);
@@ -69,7 +73,17 @@ export const useDefaultHomePagePath = () => {
     return { objectMetadataItem: firstObjectMetadataItem, view };
   }, [getFirstView, readableNonSystemObjectMetadataItems]);
 
-  const getDefaultObjectPathInfo = useCallback(() => {
+  const getDefaultObjectPathInfo = useCallback((): ObjectPathInfo | null => {
+    const homeObjectMetadataItem = readableNonSystemObjectMetadataItems.find(
+      (item) => item.nameSingular === HOME_OBJECT_NAME_SINGULAR,
+    );
+
+    // No viewId: getViewId then picks the view (personal pin, role default,
+    // last-visited view), which an explicit viewId in the URL would override.
+    if (isDefined(homeObjectMetadataItem)) {
+      return { objectMetadataItem: homeObjectMetadataItem, view: undefined };
+    }
+
     const lastVisitedObjectMetadataItemId = store.get(
       lastVisitedObjectMetadataItemIdState.atom,
     );
@@ -92,6 +106,7 @@ export const useDefaultHomePagePath = () => {
     firstObjectPathInfo,
     getActiveObjectMetadataItemMatchingId,
     getFirstView,
+    readableNonSystemObjectMetadataItems,
     store,
   ]);
 
