@@ -1,6 +1,7 @@
 import { currentWorkspaceState } from '@/auth/states/currentWorkspaceState';
 import { NavigationDrawerAiChatContent } from '@/ai/components/NavigationDrawerAiChatContent';
 import { MainNavigationDrawerNavigationContent } from '@/navigation/components/MainNavigationDrawerNavigationContent';
+import { MainNavigationDrawerSearchItem } from '@/navigation/components/MainNavigationDrawerSearchItem';
 import { MainNavigationDrawerTabsRow } from '@/navigation/components/MainNavigationDrawerTabsRow';
 import { useHasPermissionFlag } from '@/settings/roles/hooks/useHasPermissionFlag';
 import { NavigationDrawer } from '@/ui/navigation/navigation-drawer/components/NavigationDrawer';
@@ -30,6 +31,7 @@ export const MainNavigationDrawer = ({ className }: { className?: string }) => {
       title={currentWorkspace?.displayName ?? ''}
     >
       <NavigationDrawerFixedContent>
+        <MainNavigationDrawerSearchItem />
         <MainNavigationDrawerTabsRow />
       </NavigationDrawerFixedContent>
 

@@ -16,6 +16,7 @@ import { DropdownMenuItemsContainer } from '@/ui/layout/dropdown/components/Drop
 import { DropdownMenuSeparator } from '@/ui/layout/dropdown/components/DropdownMenuSeparator';
 import { useCloseDropdown } from '@/ui/layout/dropdown/hooks/useCloseDropdown';
 import { useOpenSettingsMenu } from '@/navigation/hooks/useOpenSettings';
+import { usePermissionFlagMap } from '@/settings/roles/hooks/usePermissionFlagMap';
 import { MULTI_WORKSPACE_DROPDOWN_ID } from '@/ui/navigation/navigation-drawer/constants/MultiWorkspaceDropdownId';
 import { multiWorkspaceDropdownState } from '@/ui/navigation/navigation-drawer/states/multiWorkspaceDropdownState';
 import { useColorScheme } from '@/ui/theme/hooks/useColorScheme';
@@ -47,6 +48,7 @@ import {
 import { useMutation } from '@apollo/client/react';
 import {
   type AvailableWorkspace,
+  PermissionFlagType,
   SignUpInNewWorkspaceDocument,
 } from '~/generated-metadata/graphql';
 import { getWorkspaceUrl } from '~/utils/getWorkspaceUrl';
@@ -69,6 +71,7 @@ export const MultiWorkspaceDropdownDefaultComponents = () => {
   const { enqueueErrorSnackBar } = useSnackBar();
   const { colorScheme, colorSchemeList } = useColorScheme();
   const supportChat = useAtomStateValue(supportChatState);
+  const permissionMap = usePermissionFlagMap();
   const isSupportChatConfigured =
     supportChat?.supportDriver === 'FRONT' &&
     isNonEmptyString(supportChat.supportFrontChatId);
@@ -216,14 +219,17 @@ export const MultiWorkspaceDropdownDefaultComponents = () => {
           hasSubMenu={true}
           onClick={() => setMultiWorkspaceDropdown('themes')}
         />
-        <UndecoratedLink
-          to={getSettingsPath(SettingsPath.WorkspaceMembersPage)}
-          onClick={() => {
-            closeDropdown(MULTI_WORKSPACE_DROPDOWN_ID);
-          }}
-        >
-          <MenuItem LeftIcon={IconUserPlus} text={t`Invite user`} />
-        </UndecoratedLink>
+        {/* Same gate as the Members page it opens, so it is never a dead end. */}
+        {permissionMap[PermissionFlagType.WORKSPACE_MEMBERS] && (
+          <UndecoratedLink
+            to={getSettingsPath(SettingsPath.WorkspaceMembersPage)}
+            onClick={() => {
+              closeDropdown(MULTI_WORKSPACE_DROPDOWN_ID);
+            }}
+          >
+            <MenuItem LeftIcon={IconUserPlus} text={t`Invite user`} />
+          </UndecoratedLink>
+        )}
         <UndecoratedLink
           to={getSettingsPath(SettingsPath.ProfilePage)}
           onClick={() => {

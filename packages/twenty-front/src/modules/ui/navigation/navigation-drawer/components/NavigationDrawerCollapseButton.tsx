@@ -1,15 +1,13 @@
-import { isNavigationDrawerExpandedState } from '@/ui/navigation/states/isNavigationDrawerExpanded';
-import { navigationDrawerActiveTabState } from '@/ui/navigation/states/navigationDrawerActiveTabState';
-import { NAVIGATION_DRAWER_TABS } from '@/ui/navigation/states/navigationDrawerTabs';
-import { useAtomState } from '@/ui/utilities/state/jotai/hooks/useAtomState';
-import { useSetAtomState } from '@/ui/utilities/state/jotai/hooks/useSetAtomState';
+import { useToggleNavigationDrawer } from '@/ui/navigation/navigation-drawer/hooks/useToggleNavigationDrawer';
 import { styled } from '@linaria/react';
+import { useLingui } from '@lingui/react/macro';
 import {
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarRightCollapse,
 } from 'twenty-ui/display';
 import { LightIconButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { getOsControlSymbol } from 'twenty-ui/utilities';
 
 const StyledCollapseButton = styled.div`
   align-items: center;
@@ -30,21 +28,15 @@ export const NavigationDrawerCollapseButton = ({
   className,
   direction = 'left',
 }: NavigationDrawerCollapseButtonProps) => {
-  const [isNavigationDrawerExpanded, setIsNavigationDrawerExpanded] =
-    useAtomState(isNavigationDrawerExpandedState);
-  const setNavigationDrawerActiveTab = useSetAtomState(
-    navigationDrawerActiveTabState,
-  );
-
-  const handleClick = () => {
-    if (isNavigationDrawerExpanded) {
-      setNavigationDrawerActiveTab(NAVIGATION_DRAWER_TABS.NAVIGATION_MENU);
-    }
-    setIsNavigationDrawerExpanded((previousIsExpanded) => !previousIsExpanded);
-  };
+  const { t } = useLingui();
+  const { toggleNavigationDrawer } = useToggleNavigationDrawer();
+  const label = direction === 'left' ? t`Collapse sidebar` : t`Expand sidebar`;
 
   return (
-    <StyledCollapseButton className={className} onClick={handleClick}>
+    <StyledCollapseButton
+      className={className}
+      onClick={toggleNavigationDrawer}
+    >
       <LightIconButton
         Icon={
           direction === 'left'
@@ -53,6 +45,8 @@ export const NavigationDrawerCollapseButton = ({
         }
         accent="secondary"
         size="small"
+        title={`${label} (${getOsControlSymbol()}B)`}
+        aria-label={label}
       />
     </StyledCollapseButton>
   );

@@ -1,14 +1,9 @@
 import { styled } from '@linaria/react';
-import { t } from '@lingui/core/macro';
-import { IconSearch } from 'twenty-ui/display';
-import { LightIconButton } from 'twenty-ui/input';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
-import { useOpenRecordsSearchPageInSidePanel } from '@/side-panel/hooks/useOpenRecordsSearchPageInSidePanel';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
 import { MultiWorkspaceDropdownButton } from '@/ui/navigation/navigation-drawer/components/MultiWorkspaceDropdown/MultiWorkspaceDropdownButton';
 import { isNavigationDrawerExpandedState } from '@/ui/navigation/states/isNavigationDrawerExpanded';
-import { useIsMobile } from '@/ui/utilities/responsive/hooks/useIsMobile';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { NavigationDrawerCollapseButton } from './NavigationDrawerCollapseButton';
 
@@ -39,7 +34,19 @@ const StyledRightActions = styled.div<{ isExpanded: boolean }>`
   transition: gap calc(${themeCssVariables.animation.duration.normal} * 1s) ease;
 `;
 
+// Hidden until the header is hovered or focused, so the workspace name gets
+// the full row; Cmd+B toggles the drawer without it. Always shown on mobile,
+// which has no hover.
 const StyledNavigationDrawerCollapseButtonContainer = styled.div`
+  opacity: 0;
+  transition: opacity calc(${themeCssVariables.animation.duration.fast} * 1s)
+    ease;
+
+  [data-navigation-drawer-header]:hover &,
+  [data-navigation-drawer-header]:focus-within & {
+    opacity: 1;
+  }
+
   > * {
     height: ${themeCssVariables.spacing[6]};
     padding-right: ${themeCssVariables.spacing[1]};
@@ -47,6 +54,8 @@ const StyledNavigationDrawerCollapseButtonContainer = styled.div`
   }
 
   @media (max-width: ${MOBILE_VIEWPORT}px) {
+    opacity: 1;
+
     > * {
       height: ${themeCssVariables.spacing[8]};
       padding-right: 0;
@@ -70,27 +79,19 @@ type NavigationDrawerHeaderProps = {
 export const NavigationDrawerHeader = ({
   showCollapseButton,
 }: NavigationDrawerHeaderProps) => {
-  const isMobile = useIsMobile();
-  const { openRecordsSearchPage } = useOpenRecordsSearchPageInSidePanel();
   const isNavigationDrawerExpanded = useAtomStateValue(
     isNavigationDrawerExpandedState,
   );
 
   return (
-    <StyledContainer isExpanded={isNavigationDrawerExpanded}>
+    <StyledContainer
+      isExpanded={isNavigationDrawerExpanded}
+      data-navigation-drawer-header
+    >
       <StyledWorkspaceDropdownContainer>
         <MultiWorkspaceDropdownButton />
       </StyledWorkspaceDropdownContainer>
       <StyledRightActions isExpanded={isNavigationDrawerExpanded}>
-        {!isMobile && (
-          <LightIconButton
-            Icon={IconSearch}
-            accent="secondary"
-            size="small"
-            onClick={openRecordsSearchPage}
-            aria-label={t`Search`}
-          />
-        )}
         {isNavigationDrawerExpanded && showCollapseButton && (
           <StyledNavigationDrawerCollapseButtonContainer>
             <NavigationDrawerCollapseButton direction="left" />

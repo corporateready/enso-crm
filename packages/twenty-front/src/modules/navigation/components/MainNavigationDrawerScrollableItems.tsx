@@ -5,6 +5,7 @@ import { isLayoutCustomizationModeEnabledState } from '@/layout-customization/st
 import { LogActivityLauncher } from '@/navigation/components/LogActivityLauncher';
 import { NavigationDrawerOtherSection } from '@/navigation/components/NavigationDrawerOtherSection';
 import { RoutingPresenceSection } from '@/navigation/components/RoutingPresenceSection';
+import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerSection';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { styled } from '@linaria/react';
 import { lazy, Suspense } from 'react';
@@ -12,19 +13,19 @@ import { lazy, Suspense } from 'react';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 const FavoritesSectionDispatcher = lazy(() =>
-  import('@/navigation-menu-item/display/sections/favorites/components/FavoritesSectionDispatcher').then(
-    (module) => ({
-      default: module.FavoritesSectionDispatcher,
-    }),
-  ),
+  import(
+    '@/navigation-menu-item/display/sections/favorites/components/FavoritesSectionDispatcher'
+  ).then((module) => ({
+    default: module.FavoritesSectionDispatcher,
+  })),
 );
 
 const WorkspaceSectionDispatcher = lazy(() =>
-  import('@/navigation-menu-item/display/sections/workspace/components/WorkspaceSectionDispatcher').then(
-    (module) => ({
-      default: module.WorkspaceSectionDispatcher,
-    }),
-  ),
+  import(
+    '@/navigation-menu-item/display/sections/workspace/components/WorkspaceSectionDispatcher'
+  ).then((module) => ({
+    default: module.WorkspaceSectionDispatcher,
+  })),
 );
 
 const StyledScrollableItemsContainer = styled.div`
@@ -45,9 +46,17 @@ export const MainNavigationDrawerScrollableItems = () => {
         <FavoritesSectionDispatcher />
         <WorkspaceSectionDispatcher />
       </Suspense>
-      {!isLayoutCustomizationModeEnabled && <LogActivityLauncher />}
-      {!isLayoutCustomizationModeEnabled && <RoutingPresenceSection />}
-      {!isLayoutCustomizationModeEnabled && <NavigationDrawerOtherSection />}
+      {!isLayoutCustomizationModeEnabled && (
+        <>
+          {/* One section, so these sit at list spacing rather than floating
+              apart as separate blocks. */}
+          <NavigationDrawerSection>
+            <LogActivityLauncher />
+            <RoutingPresenceSection />
+          </NavigationDrawerSection>
+          <NavigationDrawerOtherSection />
+        </>
+      )}
     </StyledScrollableItemsContainer>
   );
 };

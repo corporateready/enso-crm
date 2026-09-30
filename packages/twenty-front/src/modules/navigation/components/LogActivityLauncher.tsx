@@ -7,6 +7,7 @@ import { Button } from 'twenty-ui/input';
 import { ModalContent, ModalFooter, ModalHeader } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { SIDEBAR_UTILITY_ICON_COLOR } from '@/navigation/constants/SidebarUtilityIconColor';
 import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { TaskActionsWidget } from '@/page-layout/widgets/task-actions/components/TaskActionsWidget';
@@ -14,7 +15,6 @@ import { LayoutRenderingProvider } from '@/ui/layout/contexts/LayoutRenderingCon
 import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
 import { NavigationDrawerItem } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerItem';
-import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerSection';
 import { PageLayoutType } from '~/generated-metadata/graphql';
 
 // Global "Log activity" entry point. A touch always targets a PERSON, so the
@@ -139,10 +139,11 @@ const LogActivityLauncherContent = () => {
   };
 
   return (
-    <NavigationDrawerSection>
+    <>
       <NavigationDrawerItem
         label="Log activity"
         Icon={IconBolt}
+        iconColor={SIDEBAR_UTILITY_ICON_COLOR}
         onClick={handleOpen}
       />
       <ModalStatefulWrapper
@@ -208,6 +209,6 @@ const LogActivityLauncherContent = () => {
           <Button title="Close" variant="secondary" onClick={handleClose} />
         </ModalFooter>
       </ModalStatefulWrapper>
-    </NavigationDrawerSection>
+    </>
   );
 };

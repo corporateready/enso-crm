@@ -5,6 +5,7 @@ import { MinimalMetadataGater } from '@/metadata-store/components/MinimalMetadat
 import { IsMinimalMetadataReadyEffect } from '@/metadata-store/effect-components/IsMinimalMetadataReadyEffect';
 
 import { GotoHotkeysEffectsProvider } from '@/app/effect-components/GotoHotkeysEffectsProvider';
+import { NavigationDrawerHotkeyEffect } from '@/app/effect-components/NavigationDrawerHotkeyEffect';
 import { PageChangeEffect } from '@/app/effect-components/PageChangeEffect';
 import { AuthProvider } from '@/auth/components/AuthProvider';
 import { SignOutOnOtherTabSignOutEffect } from '@/auth/effect-components/SignOutOnOtherTabSignOutEffect';
@@ -67,6 +68,7 @@ export const AppRouterProviders = () => {
                                 <StrictMode>
                                   <PromiseRejectionEffect />
                                   <GotoHotkeysEffectsProvider />
+                                  <NavigationDrawerHotkeyEffect />
                                   <PageTitle title={pageTitle} />
                                   <PageFavicon />
                                   <Outlet />

@@ -9,7 +9,6 @@ import { ENSO_SET_MY_ROUTING_AVAILABILITY } from '@/enso/routing-availability/gr
 import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { NavigationDrawerItem } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerItem';
-import { NavigationDrawerSection } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerSection';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { isDefined } from 'twenty-shared/utils';
 
@@ -88,15 +87,13 @@ const RoutingPresenceSectionContent = () => {
   };
 
   return (
-    <NavigationDrawerSection>
-      <NavigationDrawerItem
-        label={isAvailable ? t`Accepting leads` : t`Not accepting leads`}
-        Icon={IconCircleDot}
-        // Colored status dot: green = accepting, yellow = paused.
-        iconColor={isAvailable ? 'green' : 'yellow'}
-        onClick={handleToggle}
-        active={isAvailable}
-      />
-    </NavigationDrawerSection>
+    <NavigationDrawerItem
+      label={isAvailable ? t`Accepting leads` : t`Not accepting leads`}
+      Icon={IconCircleDot}
+      // Colored status dot: green = accepting, yellow = paused.
+      iconColor={isAvailable ? 'green' : 'yellow'}
+      onClick={handleToggle}
+      active={isAvailable}
+    />
   );
 };
