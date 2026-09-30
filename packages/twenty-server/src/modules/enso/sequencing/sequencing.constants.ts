@@ -11,11 +11,17 @@ export const CLOSED_STAGES: readonly string[] = ['CLOSED_WON', 'CLOSED_LOST'];
 export const STALLED_PIPELINE_STATE = 'STALLED';
 export const UNREACHABLE_LOST_REASON = 'UNREACHABLE';
 
-// Reply observer: an inbound social message after enrollment = two-way human
-// contact, so the deal advances Lead Claimed -> Connected and the run ends.
+// Reply observer: an inbound social message or email after enrollment = two-way
+// human contact, so the deal advances Lead Claimed -> Connected and the run ends.
 // Native message tables are empty on this instance; all inbound lead activity
 // lives in the ENSO `inboundActivity` object, which carries opportunityId.
-export const INBOUND_SOCIAL_MESSAGE_KIND = 'SOCIAL_MESSAGE';
+// Value = the opportunity.firstContactChannel recorded when the reply connects the deal.
+export const INBOUND_REPLY_KIND_TO_FIRST_CONTACT_CHANNEL: Readonly<
+  Record<string, string>
+> = {
+  SOCIAL_MESSAGE: 'SOCIAL',
+  EMAIL_MESSAGE: 'EMAIL',
+};
 export const SOCIAL_FIRST_CONTACT_CHANNEL = 'SOCIAL';
 
 // Origin-channel detection. firstContactChannel is null on deals at claim time

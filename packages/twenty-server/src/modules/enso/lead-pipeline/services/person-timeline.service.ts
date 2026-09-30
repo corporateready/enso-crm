@@ -31,6 +31,7 @@ const INBOUND_CHANNEL_PHRASE: Record<string, string> = {
   FORM_SUBMISSION: 'a website form submission',
   INCOMING_CALL: 'an inbound call',
   SOCIAL_MESSAGE: 'a social message',
+  EMAIL_MESSAGE: 'an email',
   LEAD_AD: 'a lead ad',
   APPOINTMENT_BOOKED: 'a booked appointment',
   CALLBACK_REQUEST: 'a callback request',

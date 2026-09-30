@@ -80,6 +80,7 @@ export const INBOUND_ACTIVITY_EVENT_BY_KIND: Readonly<Record<string, string>> =
     FORM_SUBMISSION: 'form_submitted',
     LEAD_AD: 'form_submitted',
     SOCIAL_MESSAGE: 'inbound_message',
+    EMAIL_MESSAGE: 'inbound_message',
     INCOMING_CALL: 'call_received',
     APPOINTMENT_BOOKED: 'appointment_booked',
   };

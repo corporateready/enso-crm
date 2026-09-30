@@ -22,6 +22,7 @@ const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   INCOMING_CALL: 'Incoming Call',
   CALLBACK_REQUEST: 'Callback Request',
   SOCIAL_MESSAGE: 'Social Message',
+  EMAIL_MESSAGE: 'Email Message',
   LEAD_AD: 'Lead Ad Form',
   APPOINTMENT_BOOKED: 'Booking Submission',
 };
