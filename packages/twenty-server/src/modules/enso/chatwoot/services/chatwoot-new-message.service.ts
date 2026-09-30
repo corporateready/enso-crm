@@ -91,7 +91,7 @@ export class ChatwootNewMessageService {
     });
 
     if (!decision.notify) {
-      this.logger.debug(
+      this.logger.log(
         `new-message notification skipped for message ${messageId}: ${decision.reason}`,
       );
 
@@ -104,6 +104,10 @@ export class ChatwootNewMessageService {
     );
 
     if (!isDefined(deal)) {
+      this.logger.log(
+        `new-message notification skipped for message ${messageId}: no open owned deal for conversation ${conversationId}`,
+      );
+
       return;
     }
 
