@@ -16,6 +16,16 @@ const stableScrollbarGutterClassName = css`
   scrollbar-gutter: stable;
 `;
 
+// The collapsed rail is 40px wide; a classic 15px scrollbar would leave the
+// icons 17px and clip them. Hide it there; wheel and trackpad still scroll.
+const hiddenScrollbarClassName = css`
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
 const StyledItemsContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -41,7 +51,9 @@ export const NavigationDrawerScrollableContent = ({
   return (
     <ScrollWrapper
       className={
-        isNavigationDrawerExpanded ? stableScrollbarGutterClassName : undefined
+        isNavigationDrawerExpanded
+          ? stableScrollbarGutterClassName
+          : hiddenScrollbarClassName
       }
       componentInstanceId={`scroll-wrapper-${
         isSettingsDrawer ? 'settings-' : ''
