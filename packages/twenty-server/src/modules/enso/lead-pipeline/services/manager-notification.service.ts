@@ -262,6 +262,66 @@ export class ManagerNotificationService {
     );
   }
 
+  // Ping the owner when the lead answers mid-conversation (a DM or email reply
+  // after the manager's last message). Distinct from re-engagement, which fires
+  // only when a NEW inbound activity attaches after silence.
+  async notifyNewMessage(params: {
+    workspaceId: string;
+    opportunityId: string;
+    managerId: string;
+    channelLabel: string | null;
+    preview: string;
+  }): Promise<void> {
+    const { workspaceId } = params;
+    const details = await this.loadDealDetails(
+      workspaceId,
+      params.opportunityId,
+      params.managerId,
+    );
+
+    if (
+      await this.isMuted(
+        workspaceId,
+        details.managerUserId,
+        NOTIFICATION_EVENTS.NEW_MESSAGE,
+      )
+    ) {
+      return;
+    }
+
+    const webhookUrl = await this.resolveManagerWebhookUrl(
+      workspaceId,
+      details.managerUserId,
+    );
+
+    if (!isDefined(webhookUrl)) {
+      this.logger.warn('No webhook configured — skipping new-message notice.');
+
+      return;
+    }
+
+    const preview =
+      params.preview.length > 280
+        ? `${params.preview.slice(0, 277)}…`
+        : params.preview;
+
+    await this.googleChatWebhookService.post(
+      webhookUrl,
+      this.buildDealCard({
+        title: `💬 New message${isDefined(params.channelLabel) ? ` · ${params.channelLabel}` : ''}`,
+        subtitle: 'ENSO CRM · Conversation',
+        rows: [
+          ...(preview.length > 0
+            ? [{ icon: 'EMAIL', label: 'Message', text: preview }]
+            : []),
+          ...this.dealRows(details),
+        ],
+        recordUrl: this.recordUrl('opportunity', params.opportunityId),
+        buttonText: 'Open conversation',
+      }),
+    );
+  }
+
   // The deal left this manager (owner changed away) — tell the former owner.
   async notifyLostReassigned(
     authContext: WorkspaceAuthContext,
