@@ -136,10 +136,6 @@ const StyledItem = styled.button<StyledItemProps>`
         : themeCssVariables.font.color.primary};
   }
 
-  &:hover .keyboard-shortcuts {
-    visibility: visible;
-  }
-
   @media (max-width: ${MOBILE_VIEWPORT}px) {
     height: ${themeCssVariables.spacing[8]};
   }
@@ -183,12 +179,10 @@ const StyledKeyBoardShortcut = styled.span`
   height: ${themeCssVariables.spacing[5]};
   justify-content: center;
   margin-right: ${themeCssVariables.spacing[1]};
-  // Sized to its keys, one glyph per key with a little air between them, and
-  // revealed by the row's :hover rule; without the hidden default that rule
-  // had nothing to reveal.
+  // Sized to its keys, one glyph per key with a little air between them.
+  // Always shown: the shortcut is the point of the badge.
   min-width: ${themeCssVariables.spacing[5]};
   padding: 0 ${themeCssVariables.spacing[1.5]};
-  visibility: hidden;
 `;
 
 const StyledNavigationDrawerItemContainer = styled.div`
