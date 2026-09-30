@@ -11,6 +11,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { Like, type QueryRunner, Repository } from 'typeorm';
 import { v4 } from 'uuid';
 
+import { CoreEntityCacheService } from 'src/engine/core-entity-cache/services/core-entity-cache.service';
 import {
   ApplicationException,
   ApplicationExceptionCode,
@@ -38,6 +39,7 @@ export class FileCorePictureService {
     private readonly fileRepository: Repository<FileEntity>,
     private readonly fileUrlService: FileUrlService,
     private readonly secureHttpClientService: SecureHttpClientService,
+    private readonly coreEntityCacheService: CoreEntityCacheService,
   ) {}
 
   private async findCustomApplicationUniversalIdentifier(
@@ -115,13 +117,32 @@ export class FileCorePictureService {
       workspaceId: workspace.id,
     });
 
+    // The workspace handed in comes from the auth context, i.e. the core
+    // entity cache, so its logoFileId can be stale. Read the stored one to
+    // know which file this upload replaces.
+    const storedWorkspace = await this.workspaceRepository.findOne({
+      where: { id: workspace.id },
+      select: ['id', 'logoFileId'],
+    });
+    const previousLogoFileId = isDefined(storedWorkspace)
+      ? storedWorkspace.logoFileId
+      : workspace.logoFileId;
+
     await this.workspaceRepository.update(workspace.id, {
       logoFileId: savedFile.id,
     });
 
-    if (isDefined(workspace.logoFileId)) {
+    // Without this every other session keeps serving the previous
+    // logoFileId from the cache, which the delete below turns into a 500:
+    // the logo shows only for the uploader, from the upload response.
+    await this.coreEntityCacheService.invalidate(
+      'workspaceEntity',
+      workspace.id,
+    );
+
+    if (isDefined(previousLogoFileId)) {
       await this.deleteCorePicture({
-        fileId: workspace.logoFileId,
+        fileId: previousLogoFileId,
         workspaceId: workspace.id,
       });
     }
