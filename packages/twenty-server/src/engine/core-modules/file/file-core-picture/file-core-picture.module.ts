@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { CoreEntityCacheModule } from 'src/engine/core-entity-cache/core-entity-cache.module';
 import { FileStorageModule } from 'src/engine/core-modules/file-storage/file-storage.module';
 import { FileEntity } from 'src/engine/core-modules/file/entities/file.entity';
 import { FileCorePictureResolver } from 'src/engine/core-modules/file/file-core-picture/resolvers/file-core-picture.resolver';
@@ -13,6 +14,7 @@ import { PermissionsModule } from 'src/engine/metadata-modules/permissions/permi
 
 @Module({
   imports: [
+    CoreEntityCacheModule,
     JwtModule,
     TypeOrmModule.forFeature([FileEntity, WorkspaceEntity]),
     PermissionsModule,

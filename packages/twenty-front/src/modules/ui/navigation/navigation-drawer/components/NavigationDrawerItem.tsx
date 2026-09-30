@@ -177,15 +177,17 @@ const StyledKeyBoardShortcut = styled.span`
   border-radius: ${themeCssVariables.border.radius.sm};
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  gap: ${themeCssVariables.spacing[2]};
+  flex-direction: row;
+  gap: ${themeCssVariables.spacing[0.5]};
 
-  height: ${themeCssVariables.spacing[4]};
+  height: ${themeCssVariables.spacing[5]};
   justify-content: center;
-  // Sized to its keys (⌘K is two glyphs) and revealed by the row's :hover
-  // rule; without the hidden default that rule had nothing to reveal.
-  min-width: ${themeCssVariables.spacing[4]};
-  padding: 0 ${themeCssVariables.spacing[1]};
+  margin-right: ${themeCssVariables.spacing[1]};
+  // Sized to its keys, one glyph per key with a little air between them, and
+  // revealed by the row's :hover rule; without the hidden default that rule
+  // had nothing to reveal.
+  min-width: ${themeCssVariables.spacing[5]};
+  padding: 0 ${themeCssVariables.spacing[1.5]};
   visibility: hidden;
 `;
 
@@ -406,7 +408,9 @@ export const NavigationDrawerItem = ({
           {isDefined(keyboardKeys) && (
             <NavigationDrawerAnimatedCollapseWrapper>
               <StyledKeyBoardShortcut className="keyboard-shortcuts">
-                <Label>{keyboardKeys}</Label>
+                {keyboardKeys.map((keyboardKey) => (
+                  <Label key={keyboardKey}>{keyboardKey}</Label>
+                ))}
               </StyledKeyBoardShortcut>
             </NavigationDrawerAnimatedCollapseWrapper>
           )}
