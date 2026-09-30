@@ -20,6 +20,7 @@ const NOTIFICATION_EVENT_LABELS: { event: string; label: string }[] = [
   { event: 'leadLost', label: 'Deal reassigned away from me' },
   { event: 'dealStateChanged', label: 'Deal stage or state changed' },
   { event: 'inboundReengaged', label: 'Reply on my open deal' },
+  { event: 'newMessage', label: 'New message in my conversation' },
   { event: 'taskAssigned', label: 'Task assigned to me' },
   { event: 'taskDue', label: 'Task due' },
   { event: 'consentChanged', label: 'Consent changed for my contact' },

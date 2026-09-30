@@ -23,6 +23,7 @@ export const NOTIFICATION_EVENTS = {
   LEAD_LOST: 'leadLost',
   DEAL_STATE_CHANGED: 'dealStateChanged',
   INBOUND_REENGAGED: 'inboundReengaged',
+  NEW_MESSAGE: 'newMessage',
   TASK_ASSIGNED: 'taskAssigned',
   TASK_DUE: 'taskDue',
   CONSENT_CHANGED: 'consentChanged',
