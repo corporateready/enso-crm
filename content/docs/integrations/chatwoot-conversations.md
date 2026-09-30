@@ -7,7 +7,7 @@ description: How Chatwoot's omnichannel inbox is wired into the CRM — agent pr
 
 **Status: Shipped.** Backend in `modules/enso/chatwoot`; UI surfaced on records.
 
-Chatwoot is the omnichannel inbox (Instagram, Facebook, WhatsApp, …). The CRM does not replace it — it **drives** it: assignment and ownership flow CRM → Chatwoot, and conversations surface back inside the CRM. See [messaging](./messaging) for the channel/intake side and [social-intake](./social-intake) for DM capture.
+Chatwoot is the omnichannel inbox (Instagram, Facebook, WhatsApp, …). The CRM does not replace it — it **drives** it: assignment and ownership flow CRM → Chatwoot, and conversations surface back inside the CRM. See [messaging](./messaging) for the channel/intake side and [social-intake](./social-intake) for DM capture, and [email-intake](./email-intake) for the brand email inboxes (marketing replies).
 
 ## Agent provisioning (by email)
 
@@ -24,6 +24,10 @@ Meta enforces a messaging window (FB/IG 24h, extended to 7d when human-agent mod
 ## Conversations surface
 
 `chatwoot-conversation-resolver` resolves a conversation together with the CRM context needed for a list row — the linked **person / opportunity / project** and created date — so inbound chats are browsable inside the CRM (the Conversations view) and embedded on the record, not only in the Chatwoot dashboard. Channel labels (e.g. "Instagram") come from `chatwoot-messaging`.
+
+## Replies are logged
+
+A reply sent from the in-CRM panel is logged like any manager touch: one `outboundActivity` (channel from the inbox — EMAIL / SOCIAL / WHATSAPP / SMS, `performedBy` the manager) plus a timeline sentence on the person and the deal ("Replied by email · Re: …", "Replied on Instagram"). Logging runs after Chatwoot delivered the message and never fails the send. Replies typed in Chatwoot's own UI are not logged.
 
 ## Lifecycle
 
