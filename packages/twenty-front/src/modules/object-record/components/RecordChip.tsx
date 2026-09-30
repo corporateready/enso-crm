@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { getLinkToShowPage } from '@/object-metadata/utils/getLinkToShowPage';
@@ -62,6 +63,11 @@ export const RecordChip = ({
   );
   const canOpenInSidePanel = canOpenObjectInSidePanel(objectNameSingular);
 
+  // enso: almost no record carries a real photo/logo, so the generated
+  // letter placeholder is just noise — only show the avatar when there is an image
+  const shouldHideAvatar =
+    isIconHidden || !isNonEmptyString(recordChipData.avatarUrl);
+
   const isSidePanelViewOpenRecordIn =
     recordIndexOpenRecordIn === ViewOpenRecordIn.SIDE_PANEL &&
     canOpenInSidePanel;
@@ -93,7 +99,7 @@ export const RecordChip = ({
         className={className}
         variant={ChipVariant.Transparent}
         leftComponent={
-          isIconHidden ? null : (
+          shouldHideAvatar ? null : (
             <AvatarOrIcon
               placeholder={recordChipData.name}
               placeholderColorSeed={record.id}
@@ -115,7 +121,7 @@ export const RecordChip = ({
       isBold={isBold}
       isLabelHidden={isLabelHidden}
       leftComponent={
-        isIconHidden ? null : (
+        shouldHideAvatar ? null : (
           <AvatarOrIcon
             placeholder={recordChipData.name}
             placeholderColorSeed={record.id}

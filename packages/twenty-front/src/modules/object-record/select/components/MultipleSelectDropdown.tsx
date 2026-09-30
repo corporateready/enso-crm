@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { Key } from 'ts-key-enum';
 
 import { type SelectableItem } from '@/object-record/select/types/SelectableItem';
@@ -106,13 +107,15 @@ export const MultipleSelectDropdown = ({
                 }}
                 text={item.name}
                 avatar={
-                  <Avatar
-                    avatarUrl={item.avatarUrl}
-                    placeholderColorSeed={item.id}
-                    placeholder={item.name}
-                    size="md"
-                    type={item.avatarType}
-                  />
+                  isNonEmptyString(item.avatarUrl) ? (
+                    <Avatar
+                      avatarUrl={item.avatarUrl}
+                      placeholderColorSeed={item.id}
+                      placeholder={item.name}
+                      size="md"
+                      type={item.avatarType}
+                    />
+                  ) : undefined
                 }
               />
             </SelectableListItem>
