@@ -5,6 +5,7 @@
     "telephony",
     "messaging",
     "chatwoot-conversations",
+    "email-intake",
     "external-notifications",
     "internal-notifications",
     "glue",
