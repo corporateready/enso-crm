@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 
 // One family link as stored: `relationType` is what the related person is to
@@ -15,7 +16,10 @@ export type FamilyLink = {
   } | null;
 };
 
-export type FamilyMember = { id: string; displayName: string };
+// `via` names the relative a member is reached through, when the generation
+// alone doesn't say it: whose parent a grandparent is, or the one parent a
+// half-sibling shares with the person.
+export type FamilyMember = { id: string; displayName: string; via?: string[] };
 
 export type FamilyTree = {
   grandparents: FamilyMember[];
@@ -50,7 +54,7 @@ const relatedOf = (
   links: FamilyLink[],
   personIds: Set<string>,
   relationTypes: string[],
-): FamilyMember[] =>
+): (FamilyMember & { throughId: string })[] =>
   links
     .filter(
       (link) =>
@@ -63,7 +67,27 @@ const relatedOf = (
     .map((link) => ({
       id: link.relatedPersonId as string,
       displayName: getDisplayName(link),
+      throughId: link.personId as string,
     }));
+
+// One entry per relative, remembering every person they were reached through.
+const groupByRelative = (
+  members: (FamilyMember & { throughId: string })[],
+): (FamilyMember & { throughIds: string[] })[] => {
+  const byId = new Map<string, FamilyMember & { throughIds: string[] }>();
+
+  for (const { throughId, ...member } of members) {
+    const existing = byId.get(member.id);
+
+    if (isDefined(existing)) {
+      existing.throughIds.push(throughId);
+    } else {
+      byId.set(member.id, { ...member, throughIds: [throughId] });
+    }
+  }
+
+  return [...byId.values()];
+};
 
 export const getFirstGenerationIds = (
   personId: string,
@@ -89,15 +113,21 @@ export const buildFamilyTree = (
   // A person reachable two ways (a sibling through a parent and through a
   // direct SIBLING link) is shown once, in the first generation reached.
   const place = (members: FamilyMember[]): FamilyMember[] =>
-    members.filter((member) => {
-      if (placed.has(member.id)) {
-        return false;
-      }
+    members
+      .filter((member) => {
+        if (placed.has(member.id)) {
+          return false;
+        }
 
-      placed.add(member.id);
+        placed.add(member.id);
 
-      return true;
-    });
+        return true;
+      })
+      .map(({ id, displayName, via }) => ({
+        id,
+        displayName,
+        ...(isDefined(via) && via.length > 0 ? { via } : {}),
+      }));
 
   const self = new Set([personId]);
 
@@ -108,11 +138,37 @@ export const buildFamilyTree = (
   const parentIds = new Set(parents.map((member) => member.id));
   const childIds = new Set(children.map((member) => member.id));
 
+  const parentNames = new Map(
+    parents.map((parent) => [parent.id, parent.displayName]),
+  );
+  const namesOf = (ids: string[]) =>
+    ids.map((id) => parentNames.get(id)).filter(isNonEmptyString);
+
+  // Siblings reached through only some of the person's parents are half
+  // siblings; name the parent they share. With one known parent there is no
+  // way to tell, so nothing is shown.
+  const siblingsThroughParents = groupByRelative(
+    relatedOf(links, parentIds, ['CHILD']),
+  ).map(({ throughIds, ...sibling }) => ({
+    ...sibling,
+    ...(parents.length > 1 && throughIds.length < parents.length
+      ? { via: namesOf(throughIds) }
+      : {}),
+  }));
+
   const siblings = place([
+    ...siblingsThroughParents,
     ...relatedOf(links, self, ['SIBLING']),
-    ...relatedOf(links, parentIds, ['CHILD']),
   ]);
-  const grandparents = place(relatedOf(links, parentIds, ['PARENT']));
+
+  const grandparents = place(
+    groupByRelative(relatedOf(links, parentIds, ['PARENT'])).map(
+      ({ throughIds, ...grandparent }) => ({
+        ...grandparent,
+        via: namesOf(throughIds),
+      }),
+    ),
+  );
   const grandchildren = place(relatedOf(links, childIds, ['CHILD']));
   const others = place(relatedOf(links, self, ['OTHER']));
 
