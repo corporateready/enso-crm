@@ -2297,6 +2297,37 @@ export interface SendEmailOutput {
     __typename: 'SendEmailOutput'
 }
 
+export interface DealCommentResult {
+    success: Scalars['Boolean']
+    error?: Scalars['String']
+    commentId?: Scalars['String']
+    __typename: 'DealCommentResult'
+}
+
+export interface EnsoDefaultView {
+    objectMetadataId: Scalars['String']
+    viewId: Scalars['String']
+    __typename: 'EnsoDefaultView'
+}
+
+export interface EnsoColumnWidth {
+    viewId: Scalars['String']
+    fieldMetadataId: Scalars['String']
+    size: Scalars['Int']
+    __typename: 'EnsoColumnWidth'
+}
+
+export interface EnsoViewerScope {
+    isRecordScoped: Scalars['Boolean']
+    hiddenNavigationObjectNameSingulars: Scalars['String'][]
+    defaultViews: EnsoDefaultView[]
+    defaultViewsVersion?: Scalars['String']
+    personalDefaultViews: EnsoDefaultView[]
+    personalColumnWidths: EnsoColumnWidth[]
+    personalViewObjectMetadataIds: Scalars['String'][]
+    __typename: 'EnsoViewerScope'
+}
+
 export interface GoogleChatNotificationPreference {
     event: Scalars['String']
     enabled: Scalars['Boolean']
@@ -2345,30 +2376,6 @@ export interface TaskEmailContext {
     hasEmailConsent: Scalars['Boolean']
     consentNote?: Scalars['String']
     __typename: 'TaskEmailContext'
-}
-
-export interface EnsoDefaultView {
-    objectMetadataId: Scalars['String']
-    viewId: Scalars['String']
-    __typename: 'EnsoDefaultView'
-}
-
-export interface EnsoColumnWidth {
-    viewId: Scalars['String']
-    fieldMetadataId: Scalars['String']
-    size: Scalars['Int']
-    __typename: 'EnsoColumnWidth'
-}
-
-export interface EnsoViewerScope {
-    isRecordScoped: Scalars['Boolean']
-    hiddenNavigationObjectNameSingulars: Scalars['String'][]
-    defaultViews: EnsoDefaultView[]
-    defaultViewsVersion?: Scalars['String']
-    personalDefaultViews: EnsoDefaultView[]
-    personalColumnWidths: EnsoColumnWidth[]
-    personalViewObjectMetadataIds: Scalars['String'][]
-    __typename: 'EnsoViewerScope'
 }
 
 export interface EnsoLeadLookupProject {
@@ -3034,6 +3041,8 @@ export interface Mutation {
     ensoSetRoleViewTemplates: Scalars['Int']
     ensoProvisionRoleViewCopies: Scalars['Int']
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
+    createDealComment: DealCommentResult
+    deleteDealComment: DealCommentResult
     sendTaskEmail: GoogleChatTestResult
     sendRecordEmail: GoogleChatTestResult
     setGoogleChatWebhookUrl: GoogleChatWebhookSettings
@@ -5528,6 +5537,41 @@ export interface SendEmailOutputGenqlSelection{
     __scalar?: boolean | number
 }
 
+export interface DealCommentResultGenqlSelection{
+    success?: boolean | number
+    error?: boolean | number
+    commentId?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoDefaultViewGenqlSelection{
+    objectMetadataId?: boolean | number
+    viewId?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoColumnWidthGenqlSelection{
+    viewId?: boolean | number
+    fieldMetadataId?: boolean | number
+    size?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoViewerScopeGenqlSelection{
+    isRecordScoped?: boolean | number
+    hiddenNavigationObjectNameSingulars?: boolean | number
+    defaultViews?: EnsoDefaultViewGenqlSelection
+    defaultViewsVersion?: boolean | number
+    personalDefaultViews?: EnsoDefaultViewGenqlSelection
+    personalColumnWidths?: EnsoColumnWidthGenqlSelection
+    personalViewObjectMetadataIds?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
 export interface GoogleChatNotificationPreferenceGenqlSelection{
     event?: boolean | number
     enabled?: boolean | number
@@ -5581,33 +5625,6 @@ export interface TaskEmailContextGenqlSelection{
     reason?: boolean | number
     hasEmailConsent?: boolean | number
     consentNote?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
-export interface EnsoDefaultViewGenqlSelection{
-    objectMetadataId?: boolean | number
-    viewId?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
-export interface EnsoColumnWidthGenqlSelection{
-    viewId?: boolean | number
-    fieldMetadataId?: boolean | number
-    size?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
-export interface EnsoViewerScopeGenqlSelection{
-    isRecordScoped?: boolean | number
-    hiddenNavigationObjectNameSingulars?: boolean | number
-    defaultViews?: EnsoDefaultViewGenqlSelection
-    defaultViewsVersion?: boolean | number
-    personalDefaultViews?: EnsoDefaultViewGenqlSelection
-    personalColumnWidths?: EnsoColumnWidthGenqlSelection
-    personalViewObjectMetadataIds?: boolean | number
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -6318,6 +6335,8 @@ export interface MutationGenqlSelection{
     ensoSetRoleViewTemplates?: { __args: {roleId: Scalars['String'], templates: EnsoRoleViewTemplateInput[]} }
     ensoProvisionRoleViewCopies?: { __args: {roleId: Scalars['String']} }
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
+    createDealComment?: (DealCommentResultGenqlSelection & { __args: {opportunityId: Scalars['String'], body: Scalars['String'], mentionedWorkspaceMemberIds: Scalars['String'][]} })
+    deleteDealComment?: (DealCommentResultGenqlSelection & { __args: {commentId: Scalars['String']} })
     sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })
     sendRecordEmail?: (GoogleChatTestResultGenqlSelection & { __args: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null), subject: Scalars['String'], body: Scalars['String']} })
     setGoogleChatWebhookUrl?: (GoogleChatWebhookSettingsGenqlSelection & { __args: {input: SetGoogleChatWebhookUrlInput} })
@@ -8492,6 +8511,38 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     
 
 
+    const DealCommentResult_possibleTypes: string[] = ['DealCommentResult']
+    export const isDealCommentResult = (obj?: { __typename?: any } | null): obj is DealCommentResult => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isDealCommentResult"')
+      return DealCommentResult_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoDefaultView_possibleTypes: string[] = ['EnsoDefaultView']
+    export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
+      return EnsoDefaultView_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoColumnWidth_possibleTypes: string[] = ['EnsoColumnWidth']
+    export const isEnsoColumnWidth = (obj?: { __typename?: any } | null): obj is EnsoColumnWidth => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoColumnWidth"')
+      return EnsoColumnWidth_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoViewerScope_possibleTypes: string[] = ['EnsoViewerScope']
+    export const isEnsoViewerScope = (obj?: { __typename?: any } | null): obj is EnsoViewerScope => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoViewerScope"')
+      return EnsoViewerScope_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
     const GoogleChatNotificationPreference_possibleTypes: string[] = ['GoogleChatNotificationPreference']
     export const isGoogleChatNotificationPreference = (obj?: { __typename?: any } | null): obj is GoogleChatNotificationPreference => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isGoogleChatNotificationPreference"')
@@ -8544,30 +8595,6 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     export const isTaskEmailContext = (obj?: { __typename?: any } | null): obj is TaskEmailContext => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isTaskEmailContext"')
       return TaskEmailContext_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoDefaultView_possibleTypes: string[] = ['EnsoDefaultView']
-    export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
-      return EnsoDefaultView_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoColumnWidth_possibleTypes: string[] = ['EnsoColumnWidth']
-    export const isEnsoColumnWidth = (obj?: { __typename?: any } | null): obj is EnsoColumnWidth => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoColumnWidth"')
-      return EnsoColumnWidth_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoViewerScope_possibleTypes: string[] = ['EnsoViewerScope']
-    export const isEnsoViewerScope = (obj?: { __typename?: any } | null): obj is EnsoViewerScope => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoViewerScope"')
-      return EnsoViewerScope_possibleTypes.includes(obj.__typename)
     }
     
 
