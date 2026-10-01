@@ -22,6 +22,7 @@ export const ENSO_VIEWER_SCOPE = gql`
         fieldMetadataId
         size
       }
+      personalViewObjectMetadataIds
     }
   }
 `;

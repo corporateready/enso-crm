@@ -3,6 +3,7 @@ import { type DropResult } from '@hello-pangea/dnd';
 import { type MouseEvent, useCallback } from 'react';
 
 import { useContextStoreObjectMetadataItemOrThrow } from '@/context-store/hooks/useContextStoreObjectMetadataItemOrThrow';
+import { useEnsoViewerScope } from '@/enso/viewer-scope/hooks/useEnsoViewerScope';
 import { DraggableItem } from '@/ui/layout/draggable-list/components/DraggableItem';
 import { DraggableList } from '@/ui/layout/draggable-list/components/DraggableList';
 import { DropdownContent } from '@/ui/layout/dropdown/components/DropdownContent';
@@ -19,6 +20,7 @@ import { useOpenCreateViewDropdown } from '@/views/hooks/useOpenCreateViewDropow
 import { viewsFromObjectMetadataItemFamilySelector } from '@/views/states/selectors/viewsFromObjectMetadataItemFamilySelector';
 import { ViewPickerOptionDropdown } from '@/views/view-picker/components/ViewPickerOptionDropdown';
 import { VIEW_PICKER_DROPDOWN_ID } from '@/views/view-picker/constants/ViewPickerDropdownId';
+import { VIEW_PICKER_LIST_MAX_HEIGHT } from '@/views/view-picker/constants/ViewPickerListMaxHeight';
 import { useViewPickerMode } from '@/views/view-picker/hooks/useViewPickerMode';
 import { viewPickerReferenceViewIdComponentState } from '@/views/view-picker/states/viewPickerReferenceViewIdComponentState';
 import { useLingui } from '@lingui/react/macro';
@@ -42,15 +44,25 @@ export const ViewPickerListContent = () => {
     { objectMetadataItemId: objectMetadataItem.id },
   );
 
-  const workspaceViews = viewsOnCurrentObject.filter(
-    (view) => view.visibility === ViewVisibility.WORKSPACE,
+  const { personalViewObjectMetadataIds } = useEnsoViewerScope();
+
+  // A member with their own copies of the role's prepared views works only in
+  // those; the shared originals are templates an admin maintains.
+  const hidesWorkspaceViews = personalViewObjectMetadataIds.includes(
+    objectMetadataItem.id,
   );
+
+  const workspaceViews = hidesWorkspaceViews
+    ? []
+    : viewsOnCurrentObject.filter(
+        (view) => view.visibility === ViewVisibility.WORKSPACE,
+      );
 
   const unlistedViews = viewsOnCurrentObject.filter(
     (view) => view.visibility === ViewVisibility.UNLISTED,
   );
 
-  const isLastView = viewsOnCurrentObject.length <= 1;
+  const isLastView = workspaceViews.length + unlistedViews.length <= 1;
 
   const shouldShowSectionLabels =
     workspaceViews.length > 0 && unlistedViews.length > 0;
@@ -141,7 +153,7 @@ export const ViewPickerListContent = () => {
           {shouldShowSectionLabels && (
             <DropdownMenuSectionLabel label={t`Workspace`} />
           )}
-          <DropdownMenuItemsContainer hasMaxHeight>
+          <DropdownMenuItemsContainer maxHeight={VIEW_PICKER_LIST_MAX_HEIGHT}>
             <DraggableList
               onDragEnd={handleWorkspaceDragEnd}
               draggableItems={workspaceViews.map((view, index) => {
@@ -174,7 +186,7 @@ export const ViewPickerListContent = () => {
           {shouldShowSectionLabels && (
             <DropdownMenuSectionLabel label={t`My unlisted views`} />
           )}
-          <DropdownMenuItemsContainer hasMaxHeight>
+          <DropdownMenuItemsContainer maxHeight={VIEW_PICKER_LIST_MAX_HEIGHT}>
             <DraggableList
               onDragEnd={handleUnlistedDragEnd}
               draggableItems={unlistedViews.map((view, index) => {

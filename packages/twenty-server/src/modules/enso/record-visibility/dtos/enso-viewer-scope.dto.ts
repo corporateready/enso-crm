@@ -54,6 +54,12 @@ export class EnsoViewerScopeDTO {
   // one column it names.
   @Field(() => [EnsoColumnWidthDTO])
   personalColumnWidths: EnsoColumnWidthDTO[];
+
+  // Objects for which this viewer has their own copies of the role's prepared
+  // views. The view picker leaves the shared workspace views of these objects
+  // out, so the member sees only views they can change.
+  @Field(() => [String])
+  personalViewObjectMetadataIds: string[];
 }
 
 @InputType('EnsoDefaultViewInput')
@@ -63,4 +69,14 @@ export class EnsoDefaultViewInput {
 
   @Field(() => String)
   viewId: string;
+}
+
+@InputType('EnsoRoleViewTemplateInput')
+export class EnsoRoleViewTemplateInput {
+  @Field(() => String)
+  objectMetadataId: string;
+
+  // In the order the copies should appear in the view picker.
+  @Field(() => [String])
+  viewIds: string[];
 }

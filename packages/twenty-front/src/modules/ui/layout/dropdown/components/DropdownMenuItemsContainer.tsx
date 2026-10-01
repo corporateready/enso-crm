@@ -50,11 +50,14 @@ const StyledInternalContainer = styled.div`
 export const DropdownMenuItemsContainer = ({
   children,
   hasMaxHeight,
+  maxHeight,
   scrollable = true,
   className,
 }: {
   children: React.ReactNode;
   hasMaxHeight?: boolean;
+  // Overrides the default cap set by hasMaxHeight.
+  maxHeight?: number;
   scrollable?: boolean;
   className?: string;
 }) => {
@@ -62,7 +65,8 @@ export const DropdownMenuItemsContainer = ({
     <StyledScrollableContainer
       className={className}
       maxHeight={
-        hasMaxHeight ? DROPDOWN_MENU_ITEMS_CONTAINER_MAX_HEIGHT : undefined
+        maxHeight ??
+        (hasMaxHeight ? DROPDOWN_MENU_ITEMS_CONTAINER_MAX_HEIGHT : undefined)
       }
     >
       <StyledExternalContainer role="listbox">

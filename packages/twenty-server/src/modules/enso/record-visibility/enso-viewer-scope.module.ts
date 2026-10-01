@@ -3,8 +3,13 @@ import { Module } from '@nestjs/common';
 import { KeyValuePairModule } from 'src/engine/core-modules/key-value-pair/key-value-pair.module';
 import { PermissionsModule } from 'src/engine/metadata-modules/permissions/permissions.module';
 import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
+import { ViewFieldModule } from 'src/engine/metadata-modules/view-field/view-field.module';
+import { ViewFilterModule } from 'src/engine/metadata-modules/view-filter/view-filter.module';
+import { ViewSortModule } from 'src/engine/metadata-modules/view-sort/view-sort.module';
+import { ViewModule } from 'src/engine/metadata-modules/view/view.module';
 import { EnsoColumnWidthsService } from 'src/modules/enso/column-widths/services/enso-column-widths.service';
 import { EnsoDefaultViewsService } from 'src/modules/enso/default-views/services/enso-default-views.service';
+import { EnsoPersonalViewsService } from 'src/modules/enso/personal-views/services/enso-personal-views.service';
 import { EnsoViewerScopeResolver } from 'src/modules/enso/record-visibility/resolvers/enso-viewer-scope.resolver';
 import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/services/enso-viewer-scope.service';
 
@@ -17,12 +22,21 @@ import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/servi
   // PermissionsService, and a mixin guard's dependencies must resolve from the
   // module that declares the resolver — Nest cannot reach them otherwise, and
   // the failure is a boot crash, not a runtime error.
-  imports: [UserRoleModule, KeyValuePairModule, PermissionsModule],
+  imports: [
+    UserRoleModule,
+    KeyValuePairModule,
+    PermissionsModule,
+    ViewModule,
+    ViewFieldModule,
+    ViewFilterModule,
+    ViewSortModule,
+  ],
   providers: [
     EnsoViewerScopeResolver,
     EnsoViewerScopeService,
     EnsoDefaultViewsService,
     EnsoColumnWidthsService,
+    EnsoPersonalViewsService,
   ],
   exports: [EnsoViewerScopeService],
 })
