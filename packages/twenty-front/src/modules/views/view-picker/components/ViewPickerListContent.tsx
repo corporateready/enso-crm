@@ -20,6 +20,7 @@ import { useOpenCreateViewDropdown } from '@/views/hooks/useOpenCreateViewDropow
 import { viewsFromObjectMetadataItemFamilySelector } from '@/views/states/selectors/viewsFromObjectMetadataItemFamilySelector';
 import { ViewPickerOptionDropdown } from '@/views/view-picker/components/ViewPickerOptionDropdown';
 import { VIEW_PICKER_DROPDOWN_ID } from '@/views/view-picker/constants/ViewPickerDropdownId';
+import { VIEW_PICKER_LIST_MAX_HEIGHT } from '@/views/view-picker/constants/ViewPickerListMaxHeight';
 import { useViewPickerMode } from '@/views/view-picker/hooks/useViewPickerMode';
 import { viewPickerReferenceViewIdComponentState } from '@/views/view-picker/states/viewPickerReferenceViewIdComponentState';
 import { useLingui } from '@lingui/react/macro';
@@ -152,7 +153,7 @@ export const ViewPickerListContent = () => {
           {shouldShowSectionLabels && (
             <DropdownMenuSectionLabel label={t`Workspace`} />
           )}
-          <DropdownMenuItemsContainer hasMaxHeight>
+          <DropdownMenuItemsContainer maxHeight={VIEW_PICKER_LIST_MAX_HEIGHT}>
             <DraggableList
               onDragEnd={handleWorkspaceDragEnd}
               draggableItems={workspaceViews.map((view, index) => {
@@ -185,7 +186,7 @@ export const ViewPickerListContent = () => {
           {shouldShowSectionLabels && (
             <DropdownMenuSectionLabel label={t`My unlisted views`} />
           )}
-          <DropdownMenuItemsContainer hasMaxHeight>
+          <DropdownMenuItemsContainer maxHeight={VIEW_PICKER_LIST_MAX_HEIGHT}>
             <DraggableList
               onDragEnd={handleUnlistedDragEnd}
               draggableItems={unlistedViews.map((view, index) => {

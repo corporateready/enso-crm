@@ -52,10 +52,16 @@ if (!API_KEY) {
   process.exit(1);
 }
 
+// Twenty's own encoding of "Owner is Me" — what the filter UI writes. A bare
+// ['currentWorkspaceMember'] is NOT understood: it reaches the API as a
+// literal id and the whole query fails with an invalid-UUID error.
 const mine = {
   field: 'owner',
   operand: 'IS',
-  value: ['currentWorkspaceMember'],
+  value: JSON.stringify({
+    isCurrentWorkspaceMemberSelected: true,
+    selectedRecordIds: [],
+  }),
 };
 const inState = (state) => ({
   field: 'pipelineState',
@@ -68,7 +74,7 @@ const VIEW_SET = [
     name: 'Active Deals List',
     previousNames: ['My Opportunities'],
     type: 'TABLE',
-    icon: 'IconBriefcase',
+    icon: 'IconList',
     filters: [mine, inState('ACTIVE')],
   },
   {
@@ -80,13 +86,13 @@ const VIEW_SET = [
   {
     name: 'Stalled Kanban',
     type: 'KANBAN',
-    icon: 'IconHourglassHigh',
+    icon: 'IconLayoutKanban',
     filters: [mine, inState('STALLED')],
   },
   {
     name: 'Deferred Kanban',
     type: 'KANBAN',
-    icon: 'IconCalendarTime',
+    icon: 'IconLayoutKanban',
     filters: [mine, inState('DEFERRED')],
   },
   {
@@ -154,8 +160,24 @@ const loadView = async (id) => {
   return { ...data.getView, viewFields: data.getViewFields };
 };
 
+// Filter values come back either as stored strings or already parsed, so
+// compare a canonical form.
+const canonicalFilterValue = (value) => {
+  let parsed = value;
+
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = value;
+    }
+  }
+
+  return JSON.stringify(Array.isArray(parsed) ? [...parsed].sort() : parsed);
+};
+
 const filterKey = (fieldMetadataId, operand, value) =>
-  `${fieldMetadataId}|${operand}|${JSON.stringify([...value].sort())}`;
+  `${fieldMetadataId}|${operand}|${canonicalFilterValue(value)}`;
 
 const main = async () => {
   const { objects } = await request(
@@ -293,10 +315,11 @@ const main = async () => {
       }
     } else if (
       existing.name !== spec.name ||
-      (await loadView(existing.id)).position !== position
+      (await loadView(existing.id)).position !== position ||
+      (await loadView(existing.id)).icon !== spec.icon
     ) {
       await write(
-        `rename/reorder "${existing.name}" -> "${spec.name}" at ${position}`,
+        `rename/reorder/re-icon "${existing.name}" -> "${spec.name}" at ${position} (${spec.icon})`,
         `mutation Update($id: String!, $input: UpdateViewInput!) { updateView(id: $id, input: $input) { id } }`,
         {
           id: existing.id,
@@ -327,9 +350,7 @@ const main = async () => {
     const currentKeys = new Set();
 
     for (const viewFilter of current.viewFilters) {
-      const value = Array.isArray(viewFilter.value)
-        ? viewFilter.value
-        : JSON.parse(viewFilter.value);
+      const value = viewFilter.value;
       const key = filterKey(
         viewFilter.fieldMetadataId,
         viewFilter.operand,
