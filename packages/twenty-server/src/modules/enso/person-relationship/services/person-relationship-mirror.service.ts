@@ -7,6 +7,7 @@ import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspac
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { PersonRelationshipNameService } from 'src/modules/enso/person-relationship/services/person-relationship-name.service';
 import {
+  isCompleteLink,
   type PartnerFields,
   partnerNeedsUpdate,
   planPartnerSync,
@@ -214,7 +215,9 @@ export class PersonRelationshipMirrorService {
   }
 
   // After either half is restored from trash: restore the other half too, so
-  // the link reappears on both people at once.
+  // the link reappears on both people at once. A half may have gone to trash
+  // already broken (Detach clears its person first), so the pair is then
+  // rebuilt from whichever half is still a complete link.
   async restorePartnerOf(
     authContext: WorkspaceAuthContext,
     ref: RowRef,
@@ -223,33 +226,56 @@ export class PersonRelationshipMirrorService {
 
     if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
 
-    await this.withRepository(workspaceId, async (repository) => {
-      const row: StoredRelationshipRow | null = await repository.findOne({
-        where: { id: ref.id },
-      });
+    const restored = await this.withRepository(
+      workspaceId,
+      async (repository) => {
+        const row: StoredRelationshipRow | null = await repository.findOne({
+          where: { id: ref.id },
+        });
 
-      if (!isDefined(row)) return;
+        if (!isDefined(row)) return null;
 
-      const candidates: StoredRelationshipRow[] = await repository.find({
-        where: isDefined(row.mirrorOfId)
-          ? { id: row.mirrorOfId }
-          : { mirrorOfId: row.id },
-        withDeleted: true,
-      });
+        const candidates: StoredRelationshipRow[] = await repository.find({
+          where: isDefined(row.mirrorOfId)
+            ? { id: row.mirrorOfId }
+            : { mirrorOfId: row.id },
+          withDeleted: true,
+        });
 
-      if (candidates.some((candidate) => !isDefined(candidate.deletedAt))) {
-        return;
-      }
+        const livePartner = candidates.find(
+          (candidate) => !isDefined(candidate.deletedAt),
+        );
 
-      const latestDeleted = candidates.sort(
-        (left, right) =>
-          new Date(right.deletedAt ?? 0).getTime() -
-          new Date(left.deletedAt ?? 0).getTime(),
-      )[0];
+        if (isDefined(livePartner)) {
+          return { row, partner: livePartner };
+        }
 
-      if (isDefined(latestDeleted)) {
+        const latestDeleted = candidates.sort(
+          (left, right) =>
+            new Date(right.deletedAt ?? 0).getTime() -
+            new Date(left.deletedAt ?? 0).getTime(),
+        )[0];
+
+        if (!isDefined(latestDeleted)) {
+          return { row, partner: null };
+        }
+
         await repository.restore({ id: latestDeleted.id });
-      }
-    });
+
+        return { row, partner: latestDeleted };
+      },
+    );
+
+    if (!isDefined(restored)) return;
+
+    const source = isCompleteLink(restored.row)
+      ? restored.row
+      : isDefined(restored.partner) && isCompleteLink(restored.partner)
+        ? restored.partner
+        : null;
+
+    if (isDefined(source)) {
+      await this.syncPairFor(authContext, { id: source.id });
+    }
   }
 }
