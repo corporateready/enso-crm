@@ -58,6 +58,15 @@ export class ManagerNotifyJob {
           managerId: data.managerId,
         });
         break;
+      case 'comment_mention':
+        await this.managerNotificationService.notifyCommentMention(
+          authContext,
+          {
+            commentId: data.commentId,
+            managerId: data.managerId,
+          },
+        );
+        break;
     }
   }
 }

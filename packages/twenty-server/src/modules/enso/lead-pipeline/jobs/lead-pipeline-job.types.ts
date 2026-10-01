@@ -85,6 +85,12 @@ export type ManagerNotifyJobData =
       personId: string;
       projectId: string;
       managerId: string;
+    }
+  | {
+      workspaceId: string;
+      kind: 'comment_mention';
+      commentId: string;
+      managerId: string;
     };
 
 export type ClaimCheckJobData = {

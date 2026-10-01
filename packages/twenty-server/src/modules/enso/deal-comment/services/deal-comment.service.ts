@@ -5,6 +5,9 @@ import { isDefined } from 'twenty-shared/utils';
 import { In } from 'typeorm';
 
 import { buildCreatedByFromFullNameMetadata } from 'src/engine/core-modules/actor/utils/build-created-by-from-full-name-metadata.util';
+import { InjectMessageQueue } from 'src/engine/core-modules/message-queue/decorators/message-queue.decorator';
+import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queue.constants';
+import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
@@ -13,8 +16,12 @@ import {
   DEAL_COMMENT_OBJECT,
 } from 'src/modules/enso/deal-comment/deal-comment.constants';
 import { type DealCommentResult } from 'src/modules/enso/deal-comment/dtos/deal-comment-result.dto';
+import { buildDealCommentTimelineSegments } from 'src/modules/enso/deal-comment/utils/build-deal-comment-timeline-segments.util';
 import { validateDealCommentInput } from 'src/modules/enso/deal-comment/utils/validate-deal-comment-input.util';
+import { type ManagerNotifyJobData } from 'src/modules/enso/lead-pipeline/jobs/lead-pipeline-job.types';
+import { ManagerNotifyJob } from 'src/modules/enso/lead-pipeline/jobs/manager-notify.job';
 import { EnsoViewerScopeService } from 'src/modules/enso/record-visibility/services/enso-viewer-scope.service';
+import { buildEnsoTimelineInserts } from 'src/modules/enso/timeline/enso-timeline.util';
 
 type WorkspaceMemberRow = {
   id: string;
@@ -64,6 +71,8 @@ export class DealCommentService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly ensoViewerScopeService: EnsoViewerScopeService,
+    @InjectMessageQueue(MessageQueue.ensoLeadPipelineQueue)
+    private readonly messageQueueService: MessageQueueService,
   ) {}
 
   async createComment({
@@ -218,10 +227,96 @@ export class DealCommentService {
           return { success: false, error: 'Could not post the comment.' };
         }
 
+        await this.writeTimelineEntry({
+          workspaceId,
+          opportunityId,
+          authorWorkspaceMemberId: author.id,
+          body: validated.body,
+          mentionedMemberNames: mentionedMembers.map(formatMemberName),
+        });
+
+        await this.notifyMentionedMembers({
+          workspaceId,
+          commentId: comment.id,
+          mentionedWorkspaceMemberIds: mentionedMembers.map(
+            (member) => member.id,
+          ),
+        });
+
         return { success: true, commentId: comment.id };
       },
       buildSystemAuthContext(workspaceId),
     );
+  }
+
+  // Best-effort: the comment is already saved, and a missing timeline line is
+  // not a reason to tell the author it failed.
+  private async writeTimelineEntry({
+    workspaceId,
+    opportunityId,
+    authorWorkspaceMemberId,
+    body,
+    mentionedMemberNames,
+  }: {
+    workspaceId: string;
+    opportunityId: string;
+    authorWorkspaceMemberId: string;
+    body: string;
+    mentionedMemberNames: string[];
+  }): Promise<void> {
+    try {
+      const timelineRepository =
+        await this.globalWorkspaceOrmManager.getRepository<
+          Record<string, unknown>
+        >(workspaceId, 'timelineActivity', {
+          shouldBypassPermissionChecks: true,
+        });
+
+      await timelineRepository.insert(
+        buildEnsoTimelineInserts({
+          action: 'comment-posted',
+          target: { opportunityId },
+          segments: buildDealCommentTimelineSegments({
+            body,
+            mentionedMemberNames,
+          }),
+          workspaceMemberId: authorWorkspaceMemberId,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not write the timeline entry for a comment on ${opportunityId}: ${
+          (error as Error)?.message
+        }`,
+      );
+    }
+  }
+
+  // Queued so a slow Google Chat post never holds up posting the comment. The
+  // worker re-reads the comment, so one deleted in the meantime notifies no one.
+  private async notifyMentionedMembers({
+    workspaceId,
+    commentId,
+    mentionedWorkspaceMemberIds,
+  }: {
+    workspaceId: string;
+    commentId: string;
+    mentionedWorkspaceMemberIds: string[];
+  }): Promise<void> {
+    for (const managerId of mentionedWorkspaceMemberIds) {
+      try {
+        await this.messageQueueService.add<ManagerNotifyJobData>(
+          ManagerNotifyJob.name,
+          { workspaceId, kind: 'comment_mention', commentId, managerId },
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Could not queue the mention notification for comment ${commentId}: ${
+            (error as Error)?.message
+          }`,
+        );
+      }
+    }
   }
 
   // Only the author can take a comment back. Its mentions go with it, so a
