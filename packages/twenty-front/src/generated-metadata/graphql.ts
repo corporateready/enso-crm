@@ -1282,6 +1282,13 @@ export enum DatabaseEventAction {
   UPSERTED = 'UPSERTED'
 }
 
+export type DealCommentResult = {
+  __typename?: 'DealCommentResult';
+  commentId?: Maybe<Scalars['String']>;
+  error?: Maybe<Scalars['String']>;
+  success: Scalars['Boolean'];
+};
+
 export type DeleteApprovedAccessDomainInput = {
   id: Scalars['UUID'];
 };
@@ -2526,6 +2533,7 @@ export type Mutation = {
   createApprovedAccessDomain: ApprovedAccessDomain;
   createChatThread: AgentChatThread;
   createCommandMenuItem: CommandMenuItem;
+  createDealComment: DealCommentResult;
   createDevelopmentApplication: DevelopmentApplication;
   createEmailGroupChannel: CreateEmailGroupChannelOutput;
   createEmailingDomain: EmailingDomain;
@@ -2565,6 +2573,7 @@ export type Mutation = {
   deleteCommandMenuItem: CommandMenuItem;
   deleteConnectedAccount: ConnectedAccountPublicDto;
   deleteCurrentWorkspace: Workspace;
+  deleteDealComment: DealCommentResult;
   deleteEmailGroupChannel: MessageChannel;
   deleteEmailingDomain: Scalars['Boolean'];
   deleteFrontComponent: FrontComponent;
@@ -2824,6 +2833,13 @@ export type MutationCreateCommandMenuItemArgs = {
 };
 
 
+export type MutationCreateDealCommentArgs = {
+  body: Scalars['String'];
+  mentionedWorkspaceMemberIds: Array<Scalars['String']>;
+  opportunityId: Scalars['String'];
+};
+
+
 export type MutationCreateDevelopmentApplicationArgs = {
   name: Scalars['String'];
   universalIdentifier: Scalars['String'];
@@ -3017,6 +3033,11 @@ export type MutationDeleteCommandMenuItemArgs = {
 
 export type MutationDeleteConnectedAccountArgs = {
   id: Scalars['UUID'];
+};
+
+
+export type MutationDeleteDealCommentArgs = {
+  commentId: Scalars['String'];
 };
 
 
