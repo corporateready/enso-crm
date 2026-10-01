@@ -53,6 +53,8 @@ describe('ENSO_RECORD_VISIBILITY_RULES', () => {
         'personProjectConsentEvent',
         'note',
         'attachment',
+        'dealComment',
+        'dealCommentMention',
       ]),
     );
   });
