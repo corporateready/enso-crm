@@ -170,14 +170,28 @@ export const PersonFamilyTree = () => {
 
   const tree = buildFamilyTree(personId, [...ownLinks, ...nextLinks]);
 
-  const tag = (members: FamilyMember[], relation: string) =>
-    members.map((member) => ({ ...member, relation }));
+  const tag = (
+    members: FamilyMember[],
+    relation: string,
+    describeVia?: (names: string) => string,
+  ) =>
+    members.map((member) => ({
+      ...member,
+      relation:
+        isDefined(describeVia) && isDefined(member.via)
+          ? describeVia(member.via.join(' & '))
+          : relation,
+    }));
 
   const generations: Generation[] = [
     {
       key: 'grandparents',
       label: t`Grandparents`,
-      members: tag(tree.grandparents, t`Grandparent`),
+      members: tag(
+        tree.grandparents,
+        t`Grandparent`,
+        (names) => t`${names}'s parent`,
+      ),
     },
     {
       key: 'parents',
@@ -186,9 +200,13 @@ export const PersonFamilyTree = () => {
     },
     {
       key: 'self',
-      label: t`Generation`,
+      label: fullName,
       members: [
-        ...tag(tree.siblings, t`Sibling`),
+        ...tag(
+          tree.siblings,
+          t`Sibling`,
+          (names) => t`Half-sibling · via ${names}`,
+        ),
         { id: personId, displayName: fullName, relation: '', isSelf: true },
         ...tag(tree.partners, t`Spouse / partner`),
       ],

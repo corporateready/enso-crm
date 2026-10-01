@@ -74,6 +74,43 @@ describe('buildFamilyTree', () => {
   });
 });
 
+describe('buildFamilyTree connections', () => {
+  const twoParents: FamilyLink[] = [
+    link('ivan', 'petru', 'PARENT'),
+    link('ivan', 'elena', 'PARENT'),
+    link('petru', 'vasile', 'PARENT'),
+    link('elena', 'nina', 'PARENT'),
+    link('petru', 'olga', 'CHILD'),
+    link('elena', 'olga', 'CHILD'),
+    link('petru', 'dan', 'CHILD'),
+  ];
+
+  it('should say whose parent each grandparent is', () => {
+    const tree = buildFamilyTree('ivan', twoParents);
+
+    expect(tree.grandparents).toEqual([
+      expect.objectContaining({
+        displayName: 'vasile Vasiliev',
+        via: ['petru Vasiliev'],
+      }),
+      expect.objectContaining({
+        displayName: 'nina Vasiliev',
+        via: ['elena Vasiliev'],
+      }),
+    ]);
+  });
+
+  it('should name the shared parent only for a half-sibling', () => {
+    const tree = buildFamilyTree('ivan', twoParents);
+    const viaByName = Object.fromEntries(
+      tree.siblings.map((sibling) => [sibling.displayName, sibling.via]),
+    );
+
+    expect(viaByName['olga Vasiliev']).toBeUndefined();
+    expect(viaByName['dan Vasiliev']).toEqual(['petru Vasiliev']);
+  });
+});
+
 describe('getFirstGenerationIds', () => {
   it('should return parents and children only', () => {
     expect(
