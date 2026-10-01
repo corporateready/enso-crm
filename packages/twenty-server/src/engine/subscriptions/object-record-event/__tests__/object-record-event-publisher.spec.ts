@@ -7,6 +7,8 @@ import {
 
 import { ProcessNestedRelationsHelper } from 'src/engine/api/common/common-nested-relations-processor/process-nested-relations.helper';
 import { CommonSelectFieldsHelper } from 'src/engine/api/common/common-select-fields/common-select-fields-helper';
+import { CoreEntityCacheService } from 'src/engine/core-entity-cache/services/core-entity-cache.service';
+import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { createEmptyFlatEntityMaps } from 'src/engine/metadata-modules/flat-entity/constant/create-empty-flat-entity-maps.constant';
 import { WorkspaceManyOrAllFlatEntityMapsCacheService } from 'src/engine/metadata-modules/flat-entity/services/workspace-many-or-all-flat-entity-maps-cache.service';
 import { type FlatEntityMaps } from 'src/engine/metadata-modules/flat-entity/types/flat-entity-maps.type';
@@ -21,6 +23,11 @@ import { SubscriptionService } from 'src/engine/subscriptions/subscription.servi
 import { type EventStreamData } from 'src/engine/subscriptions/types/event-stream-data.type';
 import { type EventStreamPayload } from 'src/engine/subscriptions/types/event-stream-payload.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import {
+  getWorkspaceContext,
+  type ORMWorkspaceContext,
+  withWorkspaceContext,
+} from 'src/engine/twenty-orm/storage/orm-workspace-context.storage';
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 import { type WorkspaceEventBatch } from 'src/engine/workspace-event-emitter/types/workspace-event-batch.type';
 import { ObjectRecordEventPublisher } from 'src/engine/subscriptions/object-record-event/object-record-event-publisher';
@@ -98,10 +105,13 @@ describe('ObjectRecordEventPublisher', () => {
   let mockGlobalWorkspaceOrmManager: jest.Mocked<
     Pick<
       GlobalWorkspaceOrmManager,
-      'getGlobalWorkspaceDataSourceReplica' | 'getGlobalWorkspaceDataSource'
+      | 'getGlobalWorkspaceDataSourceReplica'
+      | 'getGlobalWorkspaceDataSource'
+      | 'executeInWorkspaceContext'
     >
   >;
   let mockCoreDataSourceQuery: jest.Mock;
+  let mockCoreEntityCacheService: { get: jest.Mock };
 
   const workspaceId = COMPANY_FLAT_OBJECT_MOCK.workspaceId;
   const streamChannelId = 'test-stream-channel-id';
@@ -274,7 +284,27 @@ describe('ObjectRecordEventPublisher', () => {
       getGlobalWorkspaceDataSource: jest.fn().mockResolvedValue({
         coreDataSource: { query: mockCoreDataSourceQuery },
       }),
+      // Mirrors the real manager: run fn with the given auth context as the
+      // ambient one, which is what the repository reads.
+      executeInWorkspaceContext: jest.fn(
+        async (fn: () => unknown, authContext?: WorkspaceAuthContext) =>
+          withWorkspaceContext({ authContext } as ORMWorkspaceContext, fn),
+      ),
     } as never;
+
+    mockCoreEntityCacheService = {
+      get: jest.fn(async (keyName: string, id: string) => {
+        if (keyName === 'workspaceEntity' && id === workspaceId) {
+          return { id: workspaceId };
+        }
+
+        if (keyName === 'user' && id === 'test-user-id') {
+          return { id: 'test-user-id' };
+        }
+
+        return null;
+      }),
+    };
 
     (buildRowLevelPermissionRecordFilter as jest.Mock).mockReturnValue({});
     (
@@ -311,6 +341,10 @@ describe('ObjectRecordEventPublisher', () => {
         {
           provide: CommonSelectFieldsHelper,
           useValue: new CommonSelectFieldsHelper(),
+        },
+        {
+          provide: CoreEntityCacheService,
+          useValue: mockCoreEntityCacheService,
         },
       ],
     }).compile();
@@ -1291,8 +1325,9 @@ describe('ObjectRecordEventPublisher', () => {
             parentObjectMetadataItem: companyObjectMetadata,
             parentObjectRecords: expect.arrayContaining([recordAfter]),
             authContext: expect.objectContaining({
+              type: 'user',
               userWorkspaceId,
-              userId: 'test-user-id',
+              workspaceMemberId: 'test-workspace-member-id',
             }),
             workspaceDataSource: expect.objectContaining({
               getRepository: expect.any(Function),
@@ -1668,6 +1703,129 @@ describe('ObjectRecordEventPublisher', () => {
           .calls[0][0].payload as EventStreamPayload;
 
         expect(payload.objectRecordEventsWithQueryIds).toHaveLength(2);
+      });
+
+      describe('nested relation lookup', () => {
+        // The shape the stream resolver actually persists: no member id.
+        const { workspaceMemberId: _omitted, ...storedSubscriberAuthContext } =
+          opportunityQueryStreamData.authContext;
+
+        const writerAuthContexts: [string, WorkspaceAuthContext][] = [
+          [
+            'a system or n8n write',
+            { type: 'system', workspace: { id: workspaceId } },
+          ],
+          [
+            'an API-key write',
+            {
+              type: 'apiKey',
+              workspace: { id: workspaceId },
+              apiKey: { id: 'api-key-id' },
+            },
+          ],
+          [
+            'an admin write',
+            {
+              type: 'user',
+              workspace: { id: workspaceId },
+              userWorkspaceId: 'admin-user-workspace-id',
+              user: { id: 'admin-user-id' },
+              workspaceMemberId: 'admin-member-id',
+              workspaceMember: { id: 'admin-member-id' },
+            },
+          ],
+          [
+            "another scoped manager's write",
+            {
+              type: 'user',
+              workspace: { id: workspaceId },
+              userWorkspaceId: 'other-manager-user-workspace-id',
+              user: { id: 'other-manager-user-id' },
+              workspaceMemberId: 'other-manager-member-id',
+              workspaceMember: { id: 'other-manager-member-id' },
+            },
+          ],
+        ] as never;
+
+        beforeEach(() => {
+          useRole(scopedRoleId);
+          mockCoreDataSourceQuery.mockResolvedValue([{ id: 'owned-opp' }]);
+
+          mockEventStreamService.getStreamsData.mockResolvedValue(
+            new Map([
+              [
+                streamChannelId,
+                {
+                  ...opportunityQueryStreamData,
+                  authContext: storedSubscriberAuthContext,
+                },
+              ],
+            ]) as Map<string, EventStreamData | undefined>,
+          );
+        });
+
+        it.each(writerAuthContexts)(
+          'should look up related records as the subscriber after %s',
+          async (_writer, writerAuthContext) => {
+            let lookupAuthContext: WorkspaceAuthContext | undefined;
+
+            mockProcessNestedRelationsHelper.processNestedRelations.mockImplementation(
+              async () => {
+                // What the repository will scope the related rows by.
+                lookupAuthContext = getWorkspaceContext().authContext;
+              },
+            );
+
+            await withWorkspaceContext(
+              { authContext: writerAuthContext } as ORMWorkspaceContext,
+              () =>
+                service.publish(opportunityBatch as WorkspaceEventBatch<never>),
+            );
+
+            expect(lookupAuthContext).toEqual(
+              expect.objectContaining({
+                type: 'user',
+                workspace: { id: workspaceId },
+                userWorkspaceId,
+                user: { id: 'test-user-id' },
+                workspaceMemberId: 'test-workspace-member-id',
+                workspaceMember: expect.objectContaining({
+                  id: 'test-workspace-member-id',
+                }),
+              }),
+            );
+            expect(
+              mockProcessNestedRelationsHelper.processNestedRelations,
+            ).toHaveBeenCalledWith(
+              expect.objectContaining({ authContext: lookupAuthContext }),
+            );
+          },
+        );
+
+        it('should deliver without relations, not as the writer, when the subscriber cannot be resolved', async () => {
+          mockCoreEntityCacheService.get.mockResolvedValue(null);
+
+          await withWorkspaceContext(
+            {
+              authContext: { type: 'system', workspace: { id: workspaceId } },
+            } as ORMWorkspaceContext,
+            () =>
+              service.publish(opportunityBatch as WorkspaceEventBatch<never>),
+          );
+
+          expect(
+            mockProcessNestedRelationsHelper.processNestedRelations,
+          ).not.toHaveBeenCalled();
+
+          const payload = mockSubscriptionService.publishToEventStream.mock
+            .calls[0][0].payload as EventStreamPayload;
+
+          expect(
+            payload.objectRecordEventsWithQueryIds.map(
+              (event) => event.objectRecordEvent.recordId,
+            ),
+          ).toEqual(['owned-opp']);
+        });
       });
     });
   });
