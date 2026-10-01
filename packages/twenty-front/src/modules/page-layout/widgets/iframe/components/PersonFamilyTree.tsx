@@ -195,8 +195,11 @@ export const PersonFamilyTree = () => {
     },
     {
       key: 'parents',
-      label: t`Parents`,
-      members: tag(tree.parents, t`Parent`),
+      label: tree.inLaws.length > 0 ? t`Parents & in-laws` : t`Parents`,
+      members: [
+        ...tag(tree.parents, t`Parent`),
+        ...tag(tree.inLaws, t`Parent-in-law`, (names) => t`${names}'s parent`),
+      ],
     },
     {
       key: 'self',
