@@ -2601,6 +2601,33 @@ type SendEmailOutput {
   error: String
 }
 
+type DealCommentResult {
+  success: Boolean!
+  error: String
+  commentId: String
+}
+
+type EnsoDefaultView {
+  objectMetadataId: String!
+  viewId: String!
+}
+
+type EnsoColumnWidth {
+  viewId: String!
+  fieldMetadataId: String!
+  size: Int!
+}
+
+type EnsoViewerScope {
+  isRecordScoped: Boolean!
+  hiddenNavigationObjectNameSingulars: [String!]!
+  defaultViews: [EnsoDefaultView!]!
+  defaultViewsVersion: String
+  personalDefaultViews: [EnsoDefaultView!]!
+  personalColumnWidths: [EnsoColumnWidth!]!
+  personalViewObjectMetadataIds: [String!]!
+}
+
 type GoogleChatNotificationPreference {
   event: String!
   enabled: Boolean!
@@ -2642,27 +2669,6 @@ type TaskEmailContext {
   reason: String
   hasEmailConsent: Boolean!
   consentNote: String
-}
-
-type EnsoDefaultView {
-  objectMetadataId: String!
-  viewId: String!
-}
-
-type EnsoColumnWidth {
-  viewId: String!
-  fieldMetadataId: String!
-  size: Int!
-}
-
-type EnsoViewerScope {
-  isRecordScoped: Boolean!
-  hiddenNavigationObjectNameSingulars: [String!]!
-  defaultViews: [EnsoDefaultView!]!
-  defaultViewsVersion: String
-  personalDefaultViews: [EnsoDefaultView!]!
-  personalColumnWidths: [EnsoColumnWidth!]!
-  personalViewObjectMetadataIds: [String!]!
 }
 
 type EnsoLeadLookupProject {
@@ -3483,6 +3489,8 @@ type Mutation {
   ensoSetRoleViewTemplates(roleId: String!, templates: [EnsoRoleViewTemplateInput!]!): Int!
   ensoProvisionRoleViewCopies(roleId: String!): Int!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
+  createDealComment(opportunityId: String!, body: String!, mentionedWorkspaceMemberIds: [String!]!): DealCommentResult!
+  deleteDealComment(commentId: String!): DealCommentResult!
   sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!
   sendRecordEmail(opportunityId: String, personId: String, subject: String!, body: String!): GoogleChatTestResult!
   setGoogleChatWebhookUrl(input: SetGoogleChatWebhookUrlInput!): GoogleChatWebhookSettings!

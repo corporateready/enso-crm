@@ -75,6 +75,7 @@ import { WorkspaceEventEmitterModule } from 'src/engine/workspace-event-emitter/
 import { ChannelSyncModule } from 'src/modules/connected-account/channel-sync/channel-sync.module';
 import { DashboardModule } from 'src/modules/dashboard/dashboard.module';
 import { SendEmailModule } from 'src/modules/messaging/message-outbound-manager/send-email.module';
+import { DealCommentModule } from 'src/modules/enso/deal-comment/deal-comment.module';
 import { NotificationSettingsModule } from 'src/modules/enso/notifications/notification-settings.module';
 import { OutboundEmailModule } from 'src/modules/enso/outbound-email/outbound-email.module';
 import { EnsoLeadLookupModule } from 'src/modules/enso/record-lookup/enso-lead-lookup.module';
@@ -137,6 +138,7 @@ import { FileModule } from './file/file.module';
     SendEmailModule,
     NotificationSettingsModule,
     OutboundEmailModule,
+    DealCommentModule,
     EnsoLeadLookupModule,
     EnsoRoutingAvailabilitySelfModule,
     EnsoViewerScopeModule,

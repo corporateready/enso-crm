@@ -94,6 +94,10 @@ const OBSERVED_OBJECTS = [
   'personProjectConsentEvent',
   'sequenceRun',
   'marketingEnrollment',
+  // Written only through the deal comment actions, which apply their own rules
+  // about who may comment. Object-level write would add nothing they allow.
+  'dealComment',
+  'dealCommentMention',
 ];
 
 // Reference data every manager needs in full, with no record scoping: a deal is

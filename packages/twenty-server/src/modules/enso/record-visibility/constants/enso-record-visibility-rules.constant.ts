@@ -181,6 +181,29 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
   marketingEnrollment: {
     buildCondition: (args) => personColumnIsOwned(args, 'personId'),
   },
+  // A comment is readable on a deal you own, and by everyone it was addressed
+  // to — the colleague a comment mentions has to be able to read it.
+  dealComment: {
+    buildCondition: (args) =>
+      anyOf([
+        opportunityColumnIsOwned(args, 'opportunityId'),
+        wasCreatedByMe(args),
+        `EXISTS (
+          SELECT 1 FROM ${args.schema}."_dealCommentMention" dcm
+          WHERE dcm."dealCommentId" = ${args.ref('id')}
+            AND dcm."deletedAt" IS NULL
+            AND dcm."mentionedMemberId" = ${args.me}
+        )`,
+      ]),
+  },
+  dealCommentMention: {
+    buildCondition: (args) =>
+      anyOf([
+        opportunityColumnIsOwned(args, 'opportunityId'),
+        wasCreatedByMe(args),
+        `${args.ref('mentionedMemberId')} = ${args.me}`,
+      ]),
+  },
   noteTarget: {
     buildCondition: (args) => targetRowIsOwned(args),
   },
