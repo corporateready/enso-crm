@@ -138,13 +138,13 @@ export const SidePanelRecordInfo = ({
   return (
     <SidePanelPageInfoLayout
       icon={
-        recordIdentifier ? (
+        isNonEmptyString(recordIdentifier?.avatarUrl) ? (
           <Avatar
-            avatarUrl={recordIdentifier.avatarUrl}
-            placeholder={recordIdentifier.name}
+            avatarUrl={recordIdentifier?.avatarUrl}
+            placeholder={recordIdentifier?.name}
             placeholderColorSeed={objectRecordId}
             size="md"
-            type={recordIdentifier.avatarType}
+            type={recordIdentifier?.avatarType}
           />
         ) : undefined
       }
