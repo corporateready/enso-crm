@@ -223,6 +223,7 @@ export class WorkspaceDeleteQueryBuilder<
       internalContext: this.internalContext,
       authContext: this.authContext,
       useDirectTableReference,
+      access: 'write',
     });
   }
 

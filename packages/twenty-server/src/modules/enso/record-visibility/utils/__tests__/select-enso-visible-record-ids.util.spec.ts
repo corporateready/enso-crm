@@ -80,7 +80,8 @@ describe('selectEnsoVisibleRecordIds', () => {
 
     expect(result).toEqual(new Set(['opp-1']));
 
-    const [sql, parameters] = runQuery.mock.calls[0];
+    const [sql, parameters] =
+      runQuery.mock.calls[runQuery.mock.calls.length - 1];
 
     expect(sql).toContain('."opportunity" rec');
     expect(sql).toContain('rec."ownerId" = $2');
@@ -104,8 +105,49 @@ describe('selectEnsoVisibleRecordIds', () => {
       runQuery,
     });
 
-    expect(runQuery.mock.calls[0][0]).toContain(
+    expect(runQuery.mock.calls[runQuery.mock.calls.length - 1][0]).toContain(
       '."_personProjectAssignment" rec',
     );
+  });
+
+  it('should let a mentioned subscriber see the deal once the mention table exists', async () => {
+    const runQuery = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: true }])
+      .mockResolvedValue([{ id: 'opp-1' }]);
+
+    await selectEnsoVisibleRecordIds({
+      workspaceId: '20202020-0000-4000-8000-0000000000a1',
+      objectMetadata: { nameSingular: 'opportunity', isCustom: false },
+      roleId: scopedRoleId,
+      workspaceMemberId: memberId,
+      recordIds: ['opp-1'],
+      runQuery,
+    });
+
+    expect(runQuery.mock.calls[0][0]).toContain('to_regclass');
+    expect(runQuery.mock.calls[runQuery.mock.calls.length - 1][0]).toContain(
+      '"_dealCommentMention"',
+    );
+  });
+
+  it('should leave the mention table out while it does not exist yet', async () => {
+    const runQuery = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: false }])
+      .mockResolvedValue([]);
+
+    await selectEnsoVisibleRecordIds({
+      workspaceId: '20202020-0000-4000-8000-0000000000a2',
+      objectMetadata: { nameSingular: 'opportunity', isCustom: false },
+      roleId: scopedRoleId,
+      workspaceMemberId: memberId,
+      recordIds: ['opp-1'],
+      runQuery,
+    });
+
+    expect(
+      runQuery.mock.calls[runQuery.mock.calls.length - 1][0],
+    ).not.toContain('_dealCommentMention');
   });
 });

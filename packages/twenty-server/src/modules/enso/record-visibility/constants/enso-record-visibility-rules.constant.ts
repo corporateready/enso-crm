@@ -3,9 +3,27 @@ import {
   type EnsoRecordVisibilityRule,
 } from 'src/modules/enso/record-visibility/types/enso-record-visibility-rule.type';
 
+// Deals a colleague mentioned this member on, in a comment. Read-only: only
+// emitted when includeMentionedDeals is set, which is never on a write.
+const mentionedOpportunityIds = ({
+  schema,
+  me,
+}: EnsoRecordVisibilityConditionArgs) => `
+  SELECT dcm."opportunityId"
+  FROM ${schema}."_dealCommentMention" dcm
+  WHERE dcm."deletedAt" IS NULL
+    AND dcm."mentionedMemberId" = ${me}
+    AND dcm."opportunityId" IS NOT NULL
+`;
+
 // A scoped member owns a contact through the project x contact assignment, and
 // through being the owner of a deal that contact is the point of contact for.
-const ownedPersonIds = ({ schema, me }: EnsoRecordVisibilityConditionArgs) => `
+// A mention lends them the contact of the mentioned deal too, so the deal does
+// not open on an empty contact.
+const ownedPersonIds = (args: EnsoRecordVisibilityConditionArgs) => {
+  const { schema, me, includeMentionedDeals } = args;
+
+  return `
   SELECT ppa."personId"
   FROM ${schema}."_personProjectAssignment" ppa
   WHERE ppa."deletedAt" IS NULL AND ppa."managerId" = ${me}
@@ -14,16 +32,30 @@ const ownedPersonIds = ({ schema, me }: EnsoRecordVisibilityConditionArgs) => `
   FROM ${schema}."opportunity" opp
   WHERE opp."deletedAt" IS NULL
     AND opp."ownerId" = ${me}
-    AND opp."pointOfContactId" IS NOT NULL
+    AND opp."pointOfContactId" IS NOT NULL${
+      includeMentionedDeals
+        ? `
+  UNION
+  SELECT mopp."pointOfContactId"
+  FROM ${schema}."opportunity" mopp
+  WHERE mopp."deletedAt" IS NULL
+    AND mopp."pointOfContactId" IS NOT NULL
+    AND mopp."id" IN (${mentionedOpportunityIds(args)})`
+        : ''
+    }
 `;
+};
 
-const ownedOpportunityIds = ({
-  schema,
-  me,
-}: EnsoRecordVisibilityConditionArgs) => `
+const ownedOpportunityIds = (args: EnsoRecordVisibilityConditionArgs) => `
   SELECT opp."id"
-  FROM ${schema}."opportunity" opp
-  WHERE opp."deletedAt" IS NULL AND opp."ownerId" = ${me}
+  FROM ${args.schema}."opportunity" opp
+  WHERE opp."deletedAt" IS NULL AND opp."ownerId" = ${args.me}${
+    args.includeMentionedDeals
+      ? `
+  UNION
+  ${mentionedOpportunityIds(args)}`
+      : ''
+  }
 `;
 
 const ownedCompanyIds = ({ schema, me }: EnsoRecordVisibilityConditionArgs) => `
@@ -122,7 +154,13 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
       ]),
   },
   opportunity: {
-    buildCondition: ({ ref, me }) => `${ref('ownerId')} = ${me}`,
+    buildCondition: (args) =>
+      args.includeMentionedDeals
+        ? anyOf([
+            `${args.ref('ownerId')} = ${args.me}`,
+            `${args.ref('id')} IN (${mentionedOpportunityIds(args)})`,
+          ])
+        : `${args.ref('ownerId')} = ${args.me}`,
   },
   personProjectAssignment: {
     buildCondition: ({ ref, me }) => `${ref('managerId')} = ${me}`,
@@ -181,19 +219,13 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
   marketingEnrollment: {
     buildCondition: (args) => personColumnIsOwned(args, 'personId'),
   },
-  // A comment is readable on a deal you own, and by everyone it was addressed
-  // to — the colleague a comment mentions has to be able to read it.
+  // The whole thread of a deal is readable wherever the deal is, which already
+  // includes every deal the member was mentioned on.
   dealComment: {
     buildCondition: (args) =>
       anyOf([
         opportunityColumnIsOwned(args, 'opportunityId'),
         wasCreatedByMe(args),
-        `EXISTS (
-          SELECT 1 FROM ${args.schema}."_dealCommentMention" dcm
-          WHERE dcm."dealCommentId" = ${args.ref('id')}
-            AND dcm."deletedAt" IS NULL
-            AND dcm."mentionedMemberId" = ${args.me}
-        )`,
       ]),
   },
   dealCommentMention: {

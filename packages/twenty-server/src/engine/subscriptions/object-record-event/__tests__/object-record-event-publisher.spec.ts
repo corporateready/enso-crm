@@ -1576,8 +1576,10 @@ describe('ObjectRecordEventPublisher', () => {
 
         await service.publish(opportunityBatch as WorkspaceEventBatch<never>);
 
-        expect(mockCoreDataSourceQuery).toHaveBeenCalledTimes(1);
-        expect(mockCoreDataSourceQuery.mock.calls[0][1]).toEqual([
+        // The first query asks whether the deal-comment mention table exists;
+        // the second is the visibility re-select itself.
+        expect(mockCoreDataSourceQuery).toHaveBeenCalledTimes(2);
+        expect(mockCoreDataSourceQuery.mock.calls[1][1]).toEqual([
           ['owned-opp', 'foreign-opp'],
           'test-workspace-member-id',
         ]);
