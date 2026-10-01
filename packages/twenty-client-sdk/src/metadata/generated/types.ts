@@ -79,7 +79,7 @@ export default {
         360,
         396,
         473,
-        488
+        489
     ],
     "types": {
         "BillingProductDTO": {
@@ -5377,6 +5377,9 @@ export default {
             "personalColumnWidths": [
                 295
             ],
+            "personalViewObjectMetadataIds": [
+                1
+            ],
             "__typename": [
                 1
             ]
@@ -9009,6 +9012,28 @@ export default {
                     ]
                 }
             ],
+            "ensoSetRoleViewTemplates": [
+                21,
+                {
+                    "roleId": [
+                        1,
+                        "String!"
+                    ],
+                    "templates": [
+                        479,
+                        "[EnsoRoleViewTemplateInput!]!"
+                    ]
+                }
+            ],
+            "ensoProvisionRoleViewCopies": [
+                21,
+                {
+                    "roleId": [
+                        1,
+                        "String!"
+                    ]
+                }
+            ],
             "ensoSetMyRoutingAvailability": [
                 304,
                 {
@@ -9058,7 +9083,7 @@ export default {
                 289,
                 {
                     "input": [
-                        479,
+                        480,
                         "SetGoogleChatWebhookUrlInput!"
                     ]
                 }
@@ -9144,7 +9169,7 @@ export default {
                 292,
                 {
                     "input": [
-                        480,
+                        481,
                         "SetProjectChatWebhookUrlInput!"
                     ]
                 }
@@ -9171,7 +9196,7 @@ export default {
                 286,
                 {
                     "input": [
-                        481,
+                        482,
                         "SendEmailInput!"
                     ]
                 }
@@ -9193,7 +9218,7 @@ export default {
                         "String!"
                     ],
                     "connectionParameters": [
-                        483,
+                        484,
                         "EmailAccountConnectionParameters!"
                     ],
                     "id": [
@@ -9205,7 +9230,7 @@ export default {
                 168,
                 {
                     "input": [
-                        485,
+                        486,
                         "UpdateLabPublicFeatureFlagInput!"
                     ]
                 }
@@ -9287,7 +9312,7 @@ export default {
                 77,
                 {
                     "input": [
-                        486,
+                        487,
                         "CreateOneAppTokenInput!"
                     ]
                 }
@@ -9362,7 +9387,7 @@ export default {
                         "String!"
                     ],
                     "fileFolder": [
-                        488,
+                        489,
                         "FileFolder!"
                     ],
                     "filePath": [
@@ -11730,6 +11755,17 @@ export default {
                 1
             ]
         },
+        "EnsoRoleViewTemplateInput": {
+            "objectMetadataId": [
+                1
+            ],
+            "viewIds": [
+                1
+            ],
+            "__typename": [
+                1
+            ]
+        },
         "SetGoogleChatWebhookUrlInput": {
             "webhookUrl": [
                 1
@@ -11772,7 +11808,7 @@ export default {
                 1
             ],
             "files": [
-                482
+                483
             ],
             "__typename": [
                 1
@@ -11791,13 +11827,13 @@ export default {
         },
         "EmailAccountConnectionParameters": {
             "IMAP": [
-                484
+                485
             ],
             "SMTP": [
-                484
+                485
             ],
             "CALDAV": [
-                484
+                485
             ],
             "__typename": [
                 1
@@ -11836,7 +11872,7 @@ export default {
         },
         "CreateOneAppTokenInput": {
             "appToken": [
-                487
+                488
             ],
             "__typename": [
                 1
@@ -11865,7 +11901,7 @@ export default {
                 230,
                 {
                     "input": [
-                        490,
+                        491,
                         "LogicFunctionLogsInput!"
                     ]
                 }

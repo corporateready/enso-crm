@@ -2662,6 +2662,7 @@ type EnsoViewerScope {
   defaultViewsVersion: String
   personalDefaultViews: [EnsoDefaultView!]!
   personalColumnWidths: [EnsoColumnWidth!]!
+  personalViewObjectMetadataIds: [String!]!
 }
 
 type EnsoLeadLookupProject {
@@ -3479,6 +3480,8 @@ type Mutation {
   ensoSetMyDefaultView(objectMetadataId: String!, viewId: String): [EnsoDefaultView!]!
   ensoSetMyColumnWidth(viewId: String!, fieldMetadataId: String!, size: Int): [EnsoColumnWidth!]!
   ensoSetRoleDefaultViews(roleId: String!, defaultViews: [EnsoDefaultViewInput!]!): [EnsoDefaultView!]!
+  ensoSetRoleViewTemplates(roleId: String!, templates: [EnsoRoleViewTemplateInput!]!): Int!
+  ensoProvisionRoleViewCopies(roleId: String!): Int!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
   sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!
   sendRecordEmail(opportunityId: String, personId: String, subject: String!, body: String!): GoogleChatTestResult!
@@ -4545,6 +4548,11 @@ input EditSsoInput {
 input EnsoDefaultViewInput {
   objectMetadataId: String!
   viewId: String!
+}
+
+input EnsoRoleViewTemplateInput {
+  objectMetadataId: String!
+  viewIds: [String!]!
 }
 
 input SetGoogleChatWebhookUrlInput {

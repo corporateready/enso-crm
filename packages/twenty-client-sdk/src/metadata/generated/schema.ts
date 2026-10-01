@@ -2367,6 +2367,7 @@ export interface EnsoViewerScope {
     defaultViewsVersion?: Scalars['String']
     personalDefaultViews: EnsoDefaultView[]
     personalColumnWidths: EnsoColumnWidth[]
+    personalViewObjectMetadataIds: Scalars['String'][]
     __typename: 'EnsoViewerScope'
 }
 
@@ -3030,6 +3031,8 @@ export interface Mutation {
     ensoSetMyDefaultView: EnsoDefaultView[]
     ensoSetMyColumnWidth: EnsoColumnWidth[]
     ensoSetRoleDefaultViews: EnsoDefaultView[]
+    ensoSetRoleViewTemplates: Scalars['Int']
+    ensoProvisionRoleViewCopies: Scalars['Int']
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
     sendTaskEmail: GoogleChatTestResult
     sendRecordEmail: GoogleChatTestResult
@@ -5604,6 +5607,7 @@ export interface EnsoViewerScopeGenqlSelection{
     defaultViewsVersion?: boolean | number
     personalDefaultViews?: EnsoDefaultViewGenqlSelection
     personalColumnWidths?: EnsoColumnWidthGenqlSelection
+    personalViewObjectMetadataIds?: boolean | number
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -6311,6 +6315,8 @@ export interface MutationGenqlSelection{
     ensoSetMyDefaultView?: (EnsoDefaultViewGenqlSelection & { __args: {objectMetadataId: Scalars['String'], viewId?: (Scalars['String'] | null)} })
     ensoSetMyColumnWidth?: (EnsoColumnWidthGenqlSelection & { __args: {viewId: Scalars['String'], fieldMetadataId: Scalars['String'], size?: (Scalars['Int'] | null)} })
     ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
+    ensoSetRoleViewTemplates?: { __args: {roleId: Scalars['String'], templates: EnsoRoleViewTemplateInput[]} }
+    ensoProvisionRoleViewCopies?: { __args: {roleId: Scalars['String']} }
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
     sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })
     sendRecordEmail?: (GoogleChatTestResultGenqlSelection & { __args: {opportunityId?: (Scalars['String'] | null), personId?: (Scalars['String'] | null), subject: Scalars['String'], body: Scalars['String']} })
@@ -6692,6 +6698,8 @@ export interface DeleteSsoInput {identityProviderId: Scalars['UUID']}
 export interface EditSsoInput {id: Scalars['UUID'],status: SSOIdentityProviderStatus}
 
 export interface EnsoDefaultViewInput {objectMetadataId: Scalars['String'],viewId: Scalars['String']}
+
+export interface EnsoRoleViewTemplateInput {objectMetadataId: Scalars['String'],viewIds: Scalars['String'][]}
 
 export interface SetGoogleChatWebhookUrlInput {webhookUrl: Scalars['String']}
 

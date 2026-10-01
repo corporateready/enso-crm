@@ -1643,6 +1643,11 @@ export type EnsoLeadProfileProject = {
   utmSource?: Maybe<Scalars['String']>;
 };
 
+export type EnsoRoleViewTemplateInput = {
+  objectMetadataId: Scalars['String'];
+  viewIds: Array<Scalars['String']>;
+};
+
 export type EnsoRoutingAvailability = {
   __typename?: 'EnsoRoutingAvailability';
   isAvailableForRouting: Scalars['Boolean'];
@@ -1656,6 +1661,7 @@ export type EnsoViewerScope = {
   isRecordScoped: Scalars['Boolean'];
   personalColumnWidths: Array<EnsoColumnWidth>;
   personalDefaultViews: Array<EnsoDefaultView>;
+  personalViewObjectMetadataIds: Array<Scalars['String']>;
 };
 
 export type EnterpriseLicenseInfoDto = {
@@ -2601,10 +2607,12 @@ export type Mutation = {
   editSSOIdentityProvider: EditSso;
   emailPasswordResetLink: EmailPasswordResetLink;
   endSubscriptionTrialPeriod: BillingEndTrialPeriod;
+  ensoProvisionRoleViewCopies: Scalars['Int'];
   ensoSetMyColumnWidth: Array<EnsoColumnWidth>;
   ensoSetMyDefaultView: Array<EnsoDefaultView>;
   ensoSetMyRoutingAvailability: EnsoRoutingAvailability;
   ensoSetRoleDefaultViews: Array<EnsoDefaultView>;
+  ensoSetRoleViewTemplates: Scalars['Int'];
   evaluateAgentTurn: AgentTurnEvaluation;
   executeOneLogicFunction: LogicFunctionExecutionResult;
   generateApiKeyToken: ApiKeyToken;
@@ -3208,6 +3216,11 @@ export type MutationEmailPasswordResetLinkArgs = {
 };
 
 
+export type MutationEnsoProvisionRoleViewCopiesArgs = {
+  roleId: Scalars['String'];
+};
+
+
 export type MutationEnsoSetMyColumnWidthArgs = {
   fieldMetadataId: Scalars['String'];
   size?: InputMaybe<Scalars['Int']>;
@@ -3229,6 +3242,12 @@ export type MutationEnsoSetMyRoutingAvailabilityArgs = {
 export type MutationEnsoSetRoleDefaultViewsArgs = {
   defaultViews: Array<EnsoDefaultViewInput>;
   roleId: Scalars['String'];
+};
+
+
+export type MutationEnsoSetRoleViewTemplatesArgs = {
+  roleId: Scalars['String'];
+  templates: Array<EnsoRoleViewTemplateInput>;
 };
 
 
