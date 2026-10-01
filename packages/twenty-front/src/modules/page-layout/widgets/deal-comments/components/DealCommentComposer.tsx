@@ -1,6 +1,6 @@
 import { styled } from '@linaria/react';
 import { useLingui } from '@lingui/react/macro';
-import { type KeyboardEvent, useRef, useState } from 'react';
+import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { Button } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -11,6 +11,9 @@ import {
   getMentionedMemberIds,
   insertMention,
 } from '@/page-layout/widgets/deal-comments/utils/dealCommentMentions';
+import { usePushFocusItemToFocusStack } from '@/ui/utilities/focus/hooks/usePushFocusItemToFocusStack';
+import { useRemoveFocusItemFromFocusStackById } from '@/ui/utilities/focus/hooks/useRemoveFocusItemFromFocusStackById';
+import { FocusComponentType } from '@/ui/utilities/focus/types/FocusComponentType';
 
 const MAX_SUGGESTIONS = 6;
 
@@ -102,6 +105,10 @@ export const DealCommentComposer = ({
 }: DealCommentComposerProps) => {
   const { t } = useLingui();
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const focusId = `deal-comment-composer-${useId()}`;
+  const { pushFocusItemToFocusStack } = usePushFocusItemToFocusStack();
+  const { removeFocusItemFromFocusStackById } =
+    useRemoveFocusItemFromFocusStackById();
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [pickedMembers, setPickedMembers] = useState<MentionableMember[]>([]);
@@ -228,6 +235,22 @@ export const DealCommentComposer = ({
         }
         onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
         onKeyDown={handleKeyDown}
+        // A plain textarea is invisible to the app's hotkey system, so typing
+        // "g" then "o" would fire the go-to-Opportunities shortcut mid-comment.
+        // Registering focus the way TextArea does turns those off while typing.
+        onFocus={() =>
+          pushFocusItemToFocusStack({
+            focusId,
+            component: {
+              type: FocusComponentType.TEXT_AREA,
+              instanceId: focusId,
+            },
+            globalHotkeysConfig: {
+              enableGlobalHotkeysConflictingWithKeyboard: false,
+            },
+          })
+        }
+        onBlur={() => removeFocusItemFromFocusStackById({ focusId })}
       />
       <StyledFooter>
         <StyledHint>
