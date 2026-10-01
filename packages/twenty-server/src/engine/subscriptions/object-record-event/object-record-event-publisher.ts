@@ -47,6 +47,12 @@ import { isRecordMatchingRLSRowLevelPermissionPredicate } from 'src/engine/twent
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 import { WorkspaceEventBatch } from 'src/engine/workspace-event-emitter/types/workspace-event-batch.type';
 import { parseEventNameOrThrow } from 'src/engine/workspace-event-emitter/utils/parse-event-name';
+import { selectEnsoVisibleRecordIds } from 'src/modules/enso/record-visibility/utils/select-enso-visible-record-ids.util';
+
+type MatchedObjectRecordEvent = {
+  queryIds: string[];
+  objectRecordEvent: ObjectRecordSubscriptionEvent;
+};
 
 @Injectable()
 export class ObjectRecordEventPublisher {
@@ -159,10 +165,7 @@ export class ObjectRecordEventPublisher {
       return;
     }
 
-    const matchedEvents: {
-      queryIds: string[];
-      objectRecordEvent: ObjectRecordSubscriptionEvent;
-    }[] = [];
+    const candidateEvents: MatchedObjectRecordEvent[] = [];
 
     const objectNameSingular = workspaceEventBatch.objectMetadata.nameSingular;
 
@@ -214,11 +217,19 @@ export class ObjectRecordEventPublisher {
         continue;
       }
 
-      matchedEvents.push({
+      candidateEvents.push({
         queryIds: matchedQueryIds,
         objectRecordEvent: filteredEvent,
       });
     }
+
+    const matchedEvents = await this.keepEnsoVisibleEvents({
+      events: candidateEvents,
+      workspaceId: workspaceEventBatch.workspaceId,
+      objectMetadata: workspaceEventBatch.objectMetadata,
+      roleId,
+      workspaceMemberId: streamData.authContext.workspaceMemberId,
+    });
 
     if (matchedEvents.length > 0) {
       try {
@@ -251,6 +262,65 @@ export class ObjectRecordEventPublisher {
         eventStreamChannelId: streamChannelId,
         payload,
       });
+    }
+  }
+
+  private async keepEnsoVisibleEvents({
+    events,
+    workspaceId,
+    objectMetadata,
+    roleId,
+    workspaceMemberId,
+  }: {
+    events: MatchedObjectRecordEvent[];
+    workspaceId: string;
+    objectMetadata: FlatObjectMetadata;
+    roleId: string;
+    workspaceMemberId: string | undefined;
+  }): Promise<MatchedObjectRecordEvent[]> {
+    if (events.length === 0) {
+      return events;
+    }
+
+    try {
+      const visibleRecordIds = await selectEnsoVisibleRecordIds({
+        workspaceId,
+        objectMetadata,
+        roleId,
+        workspaceMemberId,
+        recordIds: [
+          ...new Set(events.map((event) => event.objectRecordEvent.recordId)),
+        ],
+        // Primary, not the replica: a just-created record may not have
+        // replicated yet and would be dropped as invisible.
+        runQuery: async (sql, parameters) => {
+          const globalWorkspaceDataSource =
+            await this.globalWorkspaceOrmManager.getGlobalWorkspaceDataSource();
+
+          return globalWorkspaceDataSource.coreDataSource.query(
+            sql,
+            parameters,
+          );
+        },
+      });
+
+      if (visibleRecordIds === null) {
+        return events;
+      }
+
+      return events.filter((event) =>
+        visibleRecordIds.has(event.objectRecordEvent.recordId),
+      );
+    } catch (error) {
+      // Fail closed for this subscriber only; throwing would abort delivery to
+      // every remaining stream in the batch.
+      this.logger.warn(
+        `Failed to check record visibility for ${objectMetadata.nameSingular} subscription events, dropping them: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return [];
     }
   }
 

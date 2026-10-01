@@ -17,6 +17,10 @@ import {
   PersonConsentHistory,
 } from '@/page-layout/widgets/iframe/components/PersonConsentHistory';
 import {
+  ENSO_PERSON_FAMILY_TREE_MARKER,
+  PersonFamilyTree,
+} from '@/page-layout/widgets/iframe/components/PersonFamilyTree';
+import {
   ENSO_MARKETING_JOURNEYS_MARKER,
   MarketingJourneysWidget,
 } from '@/page-layout/widgets/iframe/components/MarketingJourneysWidget';
@@ -120,6 +124,11 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
   // Opportunity records.
   if (isDefined(url) && url.includes(ENSO_MARKETING_JOURNEYS_MARKER)) {
     return <MarketingJourneysWidget />;
+  }
+
+  // ENSO sentinel — "<Last name> Family" tree tab on Person records.
+  if (isDefined(url) && url.includes(ENSO_PERSON_FAMILY_TREE_MARKER)) {
+    return <PersonFamilyTree />;
   }
 
   const handleIframeLoad = () => {

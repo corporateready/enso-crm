@@ -100,6 +100,15 @@ export class WorkspaceDeleteQueryBuilder<
         objectRecordsPermissions: this.objectRecordsPermissions,
       });
 
+      // The event select reads the same rows under the entity alias, so it gets
+      // its own copy of the filters and the alias form of the visibility rule.
+      // Adding the table-name form before this read made Postgres reject it
+      // for every custom object ("_name" table, "name" alias).
+      eventSelectQueryBuilder.expressionMap.wheres = [
+        ...this.expressionMap.wheres,
+      ];
+      this.applyEnsoVisibility(eventSelectQueryBuilder, false);
+
       const tableName = computeTableName(
         objectMetadata.nameSingular,
         objectMetadata.isCustom,
@@ -114,6 +123,9 @@ export class WorkspaceDeleteQueryBuilder<
         tableName,
         aliasName: objectMetadata.nameSingular,
       }) as WhereClause[];
+
+      // The statement itself has no alias, so the rule addresses the table.
+      this.applyEnsoVisibility(this, true);
 
       const result = await super.execute();
 
@@ -190,13 +202,27 @@ export class WorkspaceDeleteQueryBuilder<
       authContext: this.authContext,
       featureFlagMap: this.featureFlagMap,
     });
+  }
+
+  private applyEnsoVisibility(
+    queryBuilder: Parameters<
+      typeof applyEnsoRecordVisibility
+    >[0]['queryBuilder'],
+    useDirectTableReference: boolean,
+  ): void {
+    if (this.shouldBypassPermissionChecks) {
+      return;
+    }
 
     applyEnsoRecordVisibility({
-      queryBuilder: this,
-      objectMetadata,
+      queryBuilder,
+      objectMetadata: getObjectMetadataFromEntityTarget(
+        this.getMainAliasTarget(),
+        this.internalContext,
+      ),
       internalContext: this.internalContext,
       authContext: this.authContext,
-      useDirectTableReference: true,
+      useDirectTableReference,
       access: 'write',
     });
   }
