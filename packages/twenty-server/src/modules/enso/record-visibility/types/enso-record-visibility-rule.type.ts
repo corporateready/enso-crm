@@ -6,6 +6,11 @@ export type EnsoRecordVisibilityConditionArgs = {
   schema: string;
   // Bound parameter placeholder holding the current workspace member id.
   me: string;
+  // Deals a member was mentioned on are theirs to read, never to edit, so the
+  // mention grant is only added on selects. Also false until the mention object
+  // exists in the workspace — the rule would otherwise reference a missing
+  // table and break every scoped query.
+  includeMentionedDeals: boolean;
 };
 
 export type EnsoRecordVisibilityRule = {

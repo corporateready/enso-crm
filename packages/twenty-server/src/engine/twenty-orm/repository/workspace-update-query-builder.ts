@@ -649,6 +649,7 @@ export class WorkspaceUpdateQueryBuilder<
       internalContext: this.internalContext,
       authContext: this.authContext,
       useDirectTableReference: true,
+      access: 'write',
     });
   }
 
