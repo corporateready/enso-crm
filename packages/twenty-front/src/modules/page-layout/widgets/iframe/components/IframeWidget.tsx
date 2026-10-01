@@ -5,6 +5,10 @@ import {
   ENSO_CHATWOOT_CONVERSATION_MARKER,
 } from '@/page-layout/widgets/iframe/components/ChatwootConversationEmbed';
 import {
+  DealCommentsWidget,
+  ENSO_DEAL_COMMENTS_MARKER,
+} from '@/page-layout/widgets/deal-comments/components/DealCommentsWidget';
+import {
   ENSO_PERSON_CONSENT_MARKER,
   PersonConsentCard,
 } from '@/page-layout/widgets/iframe/components/PersonConsentCard';
@@ -105,6 +109,11 @@ export const IframeWidget = ({ widget }: IframeWidgetProps) => {
   // ENSO sentinel — manager consent card on the Person record.
   if (isDefined(url) && url.includes(ENSO_PERSON_CONSENT_MARKER)) {
     return <PersonConsentCard />;
+  }
+
+  // ENSO sentinel — internal comment thread on the Opportunity record.
+  if (isDefined(url) && url.includes(ENSO_DEAL_COMMENTS_MARKER)) {
+    return <DealCommentsWidget />;
   }
 
   // ENSO sentinel — marketing-journey view (journeys + messages) on Person /
