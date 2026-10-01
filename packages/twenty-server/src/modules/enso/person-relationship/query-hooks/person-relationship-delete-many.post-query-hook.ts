@@ -10,10 +10,10 @@ import { PersonRelationshipMirrorService } from 'src/modules/enso/person-relatio
 
 @Injectable()
 @WorkspaceQueryHook({
-  key: `personRelationship.createMany`,
+  key: `personRelationship.deleteMany`,
   type: WorkspaceQueryHookType.POST_HOOK,
 })
-export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQueryHookInstance {
+export class PersonRelationshipDeleteManyPostQueryHook implements WorkspacePostQueryHookInstance {
   constructor(
     private readonly mirrorService: PersonRelationshipMirrorService,
   ) {}
@@ -23,8 +23,9 @@ export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQ
     _objectName: string,
     payload: unknown,
   ): Promise<void> {
+    // Bulk delete from the Families list: each row takes its other half.
     for (const ref of extractRowRefs(payload)) {
-      await this.mirrorService.syncPairFor(authContext, ref);
+      await this.mirrorService.deletePartnerOf(authContext, ref);
     }
   }
 }

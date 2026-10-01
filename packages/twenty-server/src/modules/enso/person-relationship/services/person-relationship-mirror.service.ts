@@ -6,29 +6,36 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { PersonRelationshipNameService } from 'src/modules/enso/person-relationship/services/person-relationship-name.service';
+import {
+  type PartnerFields,
+  partnerNeedsUpdate,
+  planPartnerSync,
+  type RelationshipRow,
+} from 'src/modules/enso/person-relationship/utils/plan-partner-sync.util';
 
-// Mirror-write for personRelationship: when a canonical row is created
-// (person=A, relatedPerson=B, type=CHILD), a mirror row is auto-created from
-// B's perspective (person=B, relatedPerson=A, type=PARENT). The mirror row's
-// `mirrorOfId` points back to the canonical — that's the loop-guard: any hook
-// short-circuits when `mirrorOfId IS NOT NULL`, so mirror writes never cascade
-// further. Updates on canonical sync the mirror; deletes cascade.
+// Keeps the two halves of a family link in step. A canonical row
+// (person=A, relatedPerson=B, type=CHILD) has a mirror from B's side
+// (person=B, relatedPerson=A, type=PARENT) whose `mirrorOfId` points back to
+// the canonical. Managers see and edit whichever half sits on the record they
+// are looking at, so every write — on either half — is propagated to the
+// other one: edits sync it, deletes and restores follow it, and a half that
+// stops being a complete link takes its partner with it.
+//
+// All writes here go straight to the repository, which bypasses the query
+// hooks, so propagating to the partner never re-enters this service.
 //
 // IMPORTANT: post-query hooks receive the resolver result, whose fields depend
 // on the client's GraphQL selection set — so the flat FK columns
 // (personId / relatedPersonId / relationType) may be ABSENT. We therefore only
-// trust the `id` from the hook payload and re-fetch the full row from the
-// repository here. All reads/writes use a system auth context with
-// `shouldBypassPermissionChecks` (same pattern as PersonRelationshipNameService).
+// trust the `id` from the hook payload and re-fetch the full row here, with a
+// system auth context that bypasses permission checks: a Sales Manager may own
+// only one of the two people.
 
 type RowRef = { id?: string | null };
 
-type RelationshipRow = {
-  id: string;
-  personId?: string | null;
-  relatedPersonId?: string | null;
-  relationType?: string | null;
-  mirrorOfId?: string | null;
+type StoredRelationshipRow = RelationshipRow & {
+  name?: string | null;
+  deletedAt?: Date | string | null;
 };
 
 // Raw inserts bypass the create resolver that normally fills the `createdBy`
@@ -40,16 +47,6 @@ const SYSTEM_ACTOR = {
   context: {},
 } as const;
 
-// Symmetric types map to themselves; asymmetric (CHILD/PARENT) invert.
-const INVERSE_RELATION_TYPE: Record<string, string> = {
-  SPOUSE: 'SPOUSE',
-  PARTNER: 'PARTNER',
-  SIBLING: 'SIBLING',
-  OTHER: 'OTHER',
-  CHILD: 'PARENT',
-  PARENT: 'CHILD',
-};
-
 @Injectable()
 export class PersonRelationshipMirrorService {
   constructor(
@@ -57,19 +54,10 @@ export class PersonRelationshipMirrorService {
     private readonly nameService: PersonRelationshipNameService,
   ) {}
 
-  private inverseType(type: string | null | undefined): string | undefined {
-    if (!type) return undefined;
-
-    return INVERSE_RELATION_TYPE[type] ?? type;
-  }
-
-  private async loadRow(
+  private async withRepository<TResult>(
     workspaceId: string,
-    id: string,
-    withDeleted = false,
-  ): Promise<RelationshipRow | null> {
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
-
+    callback: (repository: any) => Promise<TResult>,
+  ): Promise<TResult> {
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const repository =
@@ -79,181 +67,189 @@ export class PersonRelationshipMirrorService {
             { shouldBypassPermissionChecks: true },
           );
 
-        return repository.findOne({ where: { id }, withDeleted });
+        return callback(repository);
       },
-      systemAuthContext,
+      buildSystemAuthContext(workspaceId),
     );
   }
 
-  // Create the mirror counterpart of a canonical row. Idempotent.
-  async createMirrorFor(
-    authContext: WorkspaceAuthContext,
-    ref: RowRef,
-  ): Promise<void> {
-    const workspaceId = authContext.workspace?.id;
-
-    if (!workspaceId || !isDefined(ref.id)) return;
-
-    const canonical = await this.loadRow(workspaceId, ref.id);
-
-    if (!canonical || isDefined(canonical.mirrorOfId)) return; // not canonical
-    if (
-      !isDefined(canonical.personId) ||
-      !isDefined(canonical.relatedPersonId) ||
-      !isDefined(canonical.relationType)
-    ) {
-      return;
-    }
-
-    // Mirror is from the other person's perspective: people swapped, type inverted.
-    const mirrorPersonId = canonical.relatedPersonId;
-    const mirrorRelatedPersonId = canonical.personId;
-    const mirrorType = this.inverseType(canonical.relationType);
-
-    // Compute the mirror's composite name (the raw insert below bypasses the
-    // pre-query name hook, so we set it explicitly).
-    const name = await this.nameService.computeName(authContext, {
-      relatedPersonId: mirrorRelatedPersonId,
-      relationType: mirrorType,
+  private async findLivePartner(
+    repository: any,
+    row: StoredRelationshipRow,
+  ): Promise<StoredRelationshipRow | null> {
+    return repository.findOne({
+      where: isDefined(row.mirrorOfId)
+        ? { id: row.mirrorOfId }
+        : { mirrorOfId: row.id },
     });
-
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
-
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
-      const repository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'personRelationship',
-          { shouldBypassPermissionChecks: true },
-        );
-
-      const existing = await repository.findOne({
-        where: { mirrorOfId: canonical.id },
-      });
-
-      if (existing) return;
-
-      // Raw insert bypasses the create resolver, which is what normally
-      // auto-assigns `position`. Set it explicitly (mirrors create-person.service).
-      const lastPosition = await repository.maximum('position', undefined);
-
-      await repository.insert({
-        personId: mirrorPersonId,
-        relatedPersonId: mirrorRelatedPersonId,
-        relationType: mirrorType,
-        mirrorOfId: canonical.id,
-        position: (lastPosition ?? 0) + 1,
-        createdBy: SYSTEM_ACTOR,
-        updatedBy: SYSTEM_ACTOR,
-        ...(isDefined(name) ? { name } : {}),
-      });
-    }, systemAuthContext);
   }
 
-  // Sync the mirror's fields when the canonical's people or type change.
-  async syncMirrorFor(
+  // After a create or an update on either half: create, update or remove the
+  // other half so both people see the same link.
+  async syncPairFor(
     authContext: WorkspaceAuthContext,
     ref: RowRef,
   ): Promise<void> {
     const workspaceId = authContext.workspace?.id;
 
-    if (!workspaceId || !isDefined(ref.id)) return;
+    if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
 
-    const canonical = await this.loadRow(workspaceId, ref.id);
+    const { row, partner } = await this.withRepository(
+      workspaceId,
+      async (repository) => {
+        const row: StoredRelationshipRow | null = await repository.findOne({
+          where: { id: ref.id },
+        });
 
-    if (!canonical || isDefined(canonical.mirrorOfId)) return; // not canonical
-    if (
-      !isDefined(canonical.personId) ||
-      !isDefined(canonical.relatedPersonId) ||
-      !isDefined(canonical.relationType)
-    ) {
+        return {
+          row,
+          partner: isDefined(row)
+            ? await this.findLivePartner(repository, row)
+            : null,
+        };
+      },
+    );
+
+    if (!isDefined(row)) return;
+
+    const plan = planPartnerSync(row, partner);
+
+    if (plan.kind === 'none') return;
+
+    if (plan.kind === 'remove') {
+      await this.withRepository(workspaceId, async (repository) => {
+        await repository.softDelete({ id: plan.partnerId });
+
+        if (plan.removeSelf) {
+          await repository.softDelete({ id: row.id });
+        }
+      });
+
       return;
     }
 
-    const mirrorPersonId = canonical.relatedPersonId;
-    const mirrorRelatedPersonId = canonical.personId;
-    const mirrorType = this.inverseType(canonical.relationType);
+    // Bulk updates skip the name pre-hook, so rebuild both labels here.
+    const [ownName, partnerName] = await Promise.all([
+      this.nameService.computeName(authContext, {
+        relatedPersonId: row.relatedPersonId,
+        relationType: row.relationType,
+      }),
+      this.nameService.computeName(authContext, plan.fields),
+    ]);
 
-    const name = await this.nameService.computeName(authContext, {
-      relatedPersonId: mirrorRelatedPersonId,
-      relationType: mirrorType,
-    });
+    await this.withRepository(workspaceId, async (repository) => {
+      if (isDefined(ownName) && row.name !== ownName) {
+        await repository.update({ id: row.id }, { name: ownName });
+      }
 
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
+      if (plan.kind === 'create') {
+        await this.insertPartner(repository, row.id, plan.fields, partnerName);
 
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
-      const repository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'personRelationship',
-          { shouldBypassPermissionChecks: true },
-        );
-
-      const mirror = await repository.findOne({
-        where: { mirrorOfId: canonical.id },
-      });
-
-      if (!mirror) {
-        // Canonical has no mirror yet (e.g. pre-dates this feature) — create it.
-        const lastPosition = await repository.maximum('position', undefined);
-
-        await repository.insert({
-          personId: mirrorPersonId,
-          relatedPersonId: mirrorRelatedPersonId,
-          relationType: mirrorType,
-          mirrorOfId: canonical.id,
-          position: (lastPosition ?? 0) + 1,
-          createdBy: SYSTEM_ACTOR,
-          updatedBy: SYSTEM_ACTOR,
-          ...(isDefined(name) ? { name } : {}),
-        });
+        if (plan.promoteSelf) {
+          await repository.update({ id: row.id }, { mirrorOfId: null });
+        }
 
         return;
       }
 
-      await repository.update(
-        { id: mirror.id },
-        {
-          personId: mirrorPersonId,
-          relatedPersonId: mirrorRelatedPersonId,
-          relationType: mirrorType,
-          ...(isDefined(name) ? { name } : {}),
-        },
-      );
-    }, systemAuthContext);
+      if (
+        isDefined(partner) &&
+        (partnerNeedsUpdate(partner, plan.fields) ||
+          (isDefined(partnerName) && partner.name !== partnerName))
+      ) {
+        await repository.update(
+          { id: plan.partnerId },
+          {
+            ...plan.fields,
+            ...(isDefined(partnerName) ? { name: partnerName } : {}),
+          },
+        );
+      }
+    });
   }
 
-  // Soft-delete the mirror after the canonical is soft-deleted.
-  async deleteMirrorFor(
+  private async insertPartner(
+    repository: any,
+    canonicalId: string,
+    fields: PartnerFields,
+    name: string | undefined,
+  ): Promise<void> {
+    // Raw insert bypasses the create resolver, which is what normally
+    // auto-assigns `position`. Set it explicitly (mirrors create-person.service).
+    const lastPosition = await repository.maximum('position', undefined);
+
+    await repository.insert({
+      ...fields,
+      mirrorOfId: canonicalId,
+      position: (lastPosition ?? 0) + 1,
+      createdBy: SYSTEM_ACTOR,
+      updatedBy: SYSTEM_ACTOR,
+      ...(isDefined(name) ? { name } : {}),
+    });
+  }
+
+  // After either half is soft-deleted: soft-delete the other half.
+  async deletePartnerOf(
     authContext: WorkspaceAuthContext,
     ref: RowRef,
   ): Promise<void> {
     const workspaceId = authContext.workspace?.id;
 
-    if (!workspaceId || !isDefined(ref.id)) return;
+    if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
 
-    // Load with deleted rows included — the canonical was just soft-deleted.
-    const canonical = await this.loadRow(workspaceId, ref.id, true);
-
-    if (!canonical || isDefined(canonical.mirrorOfId)) return; // not canonical
-
-    const systemAuthContext = buildSystemAuthContext(workspaceId);
-
-    await this.globalWorkspaceOrmManager.executeInWorkspaceContext(async () => {
-      const repository =
-        await this.globalWorkspaceOrmManager.getRepository<any>(
-          workspaceId,
-          'personRelationship',
-          { shouldBypassPermissionChecks: true },
-        );
-
-      const mirror = await repository.findOne({
-        where: { mirrorOfId: canonical.id },
+    await this.withRepository(workspaceId, async (repository) => {
+      const row: StoredRelationshipRow | null = await repository.findOne({
+        where: { id: ref.id },
+        withDeleted: true,
       });
 
-      if (!mirror) return;
+      if (!isDefined(row)) return;
 
-      await repository.softDelete({ id: mirror.id });
-    }, systemAuthContext);
+      const partner = await this.findLivePartner(repository, row);
+
+      if (isDefined(partner)) {
+        await repository.softDelete({ id: partner.id });
+      }
+    });
+  }
+
+  // After either half is restored from trash: restore the other half too, so
+  // the link reappears on both people at once.
+  async restorePartnerOf(
+    authContext: WorkspaceAuthContext,
+    ref: RowRef,
+  ): Promise<void> {
+    const workspaceId = authContext.workspace?.id;
+
+    if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
+
+    await this.withRepository(workspaceId, async (repository) => {
+      const row: StoredRelationshipRow | null = await repository.findOne({
+        where: { id: ref.id },
+      });
+
+      if (!isDefined(row)) return;
+
+      const candidates: StoredRelationshipRow[] = await repository.find({
+        where: isDefined(row.mirrorOfId)
+          ? { id: row.mirrorOfId }
+          : { mirrorOfId: row.id },
+        withDeleted: true,
+      });
+
+      if (candidates.some((candidate) => !isDefined(candidate.deletedAt))) {
+        return;
+      }
+
+      const latestDeleted = candidates.sort(
+        (left, right) =>
+          new Date(right.deletedAt ?? 0).getTime() -
+          new Date(left.deletedAt ?? 0).getTime(),
+      )[0];
+
+      if (isDefined(latestDeleted)) {
+        await repository.restore({ id: latestDeleted.id });
+      }
+    });
   }
 }

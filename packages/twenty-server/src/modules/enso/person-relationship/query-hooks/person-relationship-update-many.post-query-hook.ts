@@ -10,10 +10,10 @@ import { PersonRelationshipMirrorService } from 'src/modules/enso/person-relatio
 
 @Injectable()
 @WorkspaceQueryHook({
-  key: `personRelationship.createMany`,
+  key: `personRelationship.updateMany`,
   type: WorkspaceQueryHookType.POST_HOOK,
 })
-export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQueryHookInstance {
+export class PersonRelationshipUpdateManyPostQueryHook implements WorkspacePostQueryHookInstance {
   constructor(
     private readonly mirrorService: PersonRelationshipMirrorService,
   ) {}
@@ -23,6 +23,7 @@ export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQ
     _objectName: string,
     payload: unknown,
   ): Promise<void> {
+    // Bulk edit from the Families list: each row's other half follows.
     for (const ref of extractRowRefs(payload)) {
       await this.mirrorService.syncPairFor(authContext, ref);
     }

@@ -2,6 +2,7 @@ import { styled } from '@linaria/react';
 import { motion } from 'framer-motion';
 import { useCallback, useContext } from 'react';
 
+import { ENSO_NO_DETACH_RELATION_OBJECT_NAMES } from '@/enso/relation-cards/constants/EnsoNoDetachRelationObjectNames';
 import { useObjectMetadataItem } from '@/object-metadata/hooks/useObjectMetadataItem';
 import { useObjectMetadataItems } from '@/object-metadata/hooks/useObjectMetadataItems';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
@@ -127,6 +128,13 @@ export const RecordDetailRelationRecordsListItem = ({
     relationObjectMetadataNameSingular ===
     CoreObjectNameSingular.WorkspaceMember;
 
+  const canDetach = !ENSO_NO_DETACH_RELATION_OBJECT_NAMES.includes(
+    relationObjectMetadataNameSingular,
+  );
+  const canDelete =
+    !isAccountOwnerRelation &&
+    relationObjectPermissions.canSoftDeleteObjectRecords;
+
   const dropdownInstanceId = `record-field-card-menu:${scopeInstanceId}:${relationFieldMetadataId}:${relationRecord.id}`;
 
   const { closeDropdown } = useCloseDropdown();
@@ -231,7 +239,7 @@ export const RecordDetailRelationRecordsListItem = ({
             accent="tertiary"
           />
         </StyledClickableZone>
-        {!parentIsRecordFieldReadOnly && (
+        {!parentIsRecordFieldReadOnly && (canDetach || canDelete) && (
           <Dropdown
             dropdownId={dropdownInstanceId}
             dropdownPlacement="right-start"
@@ -245,20 +253,21 @@ export const RecordDetailRelationRecordsListItem = ({
             dropdownComponents={
               <DropdownContent>
                 <DropdownMenuItemsContainer>
-                  <MenuItem
-                    LeftIcon={IconUnlink}
-                    text={t`Detach`}
-                    onClick={handleDetach}
-                  />
-                  {!isAccountOwnerRelation &&
-                    relationObjectPermissions.canSoftDeleteObjectRecords && (
-                      <MenuItem
-                        LeftIcon={IconTrash}
-                        text={t`Delete`}
-                        accent="danger"
-                        onClick={handleDelete}
-                      />
-                    )}
+                  {canDetach && (
+                    <MenuItem
+                      LeftIcon={IconUnlink}
+                      text={t`Detach`}
+                      onClick={handleDetach}
+                    />
+                  )}
+                  {canDelete && (
+                    <MenuItem
+                      LeftIcon={IconTrash}
+                      text={t`Delete`}
+                      accent="danger"
+                      onClick={handleDelete}
+                    />
+                  )}
                 </DropdownMenuItemsContainer>
               </DropdownContent>
             }

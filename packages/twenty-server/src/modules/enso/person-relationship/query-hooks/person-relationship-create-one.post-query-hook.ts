@@ -24,7 +24,7 @@ export class PersonRelationshipCreateOnePostQueryHook implements WorkspacePostQu
     payload: unknown,
   ): Promise<void> {
     for (const ref of extractRowRefs(payload)) {
-      await this.mirrorService.createMirrorFor(authContext, ref);
+      await this.mirrorService.syncPairFor(authContext, ref);
     }
   }
 }

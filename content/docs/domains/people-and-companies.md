@@ -152,7 +152,35 @@ The mapping inverts asymmetric kinships:
 | CHILD | PARENT |
 | PARENT | CHILD |
 
-Updates and deletes on the canonical row cascade to the mirror.
+The two rows are kept in step whichever one is touched — a manager only
+ever sees the half on the record they are looking at, and cannot tell
+canonical from mirror:
+
+- **Edit either side** (one row or a bulk edit) → the other side is updated
+  to match (people swapped, type inverted, label rebuilt).
+- **Delete either side** (one row or a bulk delete) → the other side goes to
+  trash too. **Restore** either side → both come back.
+- A row that stops being a complete link (relative or type cleared) takes
+  its other side with it. The record page's **Detach** action is hidden on
+  Family cards — it would leave a row pointing at nobody; Delete is offered
+  instead.
+
+Guards, enforced before the write:
+
+- A person can't be linked to themselves.
+- Two people can be linked only once — adding the same pair again, from
+  either person's page, is rejected with "These two people are already
+  linked as family".
+
+**Drafts.** Twenty creates the record the moment a manager clicks *Add new*,
+before the relative and type are chosen. A draft that is still incomplete
+after 24 h untouched is moved to trash by the daily
+`EnsoPersonRelationshipDraftCleanup` cron (03:17).
+
+Not covered: a permanent delete (destroy) from trash does not cascade — the
+pair is already in trash together, so destroy both. A person merge repoints
+both columns raw, so merging two people who were linked to each other leaves
+a self-link.
 
 The pattern (composite-name + mirror-write) is documented as a reusable
 recipe in [systems/junction-composite-name-pattern](../systems/junction-composite-name-pattern).

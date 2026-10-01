@@ -8,12 +8,14 @@ import { type CreateOneResolverArgs } from 'src/engine/api/graphql/workspace-res
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { PersonRelationshipNameService } from 'src/modules/enso/person-relationship/services/person-relationship-name.service';
+import { PersonRelationshipValidationService } from 'src/modules/enso/person-relationship/services/person-relationship-validation.service';
 
 @Injectable()
 @WorkspaceQueryHook(`personRelationship.createOne`)
 export class PersonRelationshipCreateOnePreQueryHook implements WorkspacePreQueryHookInstance {
   constructor(
     private readonly personRelationshipNameService: PersonRelationshipNameService,
+    private readonly personRelationshipValidationService: PersonRelationshipValidationService,
   ) {}
 
   async execute(
@@ -24,6 +26,11 @@ export class PersonRelationshipCreateOnePreQueryHook implements WorkspacePreQuer
     if (!isDefined(payload.data)) {
       return payload;
     }
+
+    await this.personRelationshipValidationService.assertCanLink(
+      authContext,
+      payload.data,
+    );
 
     const name = await this.personRelationshipNameService.computeName(
       authContext,

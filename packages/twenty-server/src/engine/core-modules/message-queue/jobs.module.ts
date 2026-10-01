@@ -46,6 +46,7 @@ import { TelephonyJobsModule } from 'src/modules/enso/telephony/telephony-jobs.m
 import { MarketingSyncModule } from 'src/modules/enso/marketing-sync/marketing-sync.module';
 import { PersonMergeJobsModule } from 'src/modules/enso/person-merge/person-merge-jobs.module';
 import { EnsoTaskDueModule } from 'src/modules/enso/notifications/task-due-scanner.module';
+import { EnsoPersonRelationshipDraftCleanupModule } from 'src/modules/enso/person-relationship/person-relationship-draft-cleanup.module';
 import { EnsoSmsDeliveryModule } from 'src/modules/enso/notifications/sms-delivery-scanner.module';
 import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
 import { MessagingModule } from 'src/modules/messaging/messaging.module';
@@ -91,6 +92,7 @@ import { WorkflowModule } from 'src/modules/workflow/workflow.module';
     EnterpriseModule,
     LeadPipelineJobsModule,
     EnsoTaskDueModule,
+    EnsoPersonRelationshipDraftCleanupModule,
     EnsoSmsDeliveryModule,
     PersonMergeJobsModule,
     EnsoSequencingModule,

@@ -10,10 +10,10 @@ import { PersonRelationshipMirrorService } from 'src/modules/enso/person-relatio
 
 @Injectable()
 @WorkspaceQueryHook({
-  key: `personRelationship.createMany`,
+  key: `personRelationship.restoreMany`,
   type: WorkspaceQueryHookType.POST_HOOK,
 })
-export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQueryHookInstance {
+export class PersonRelationshipRestoreManyPostQueryHook implements WorkspacePostQueryHookInstance {
   constructor(
     private readonly mirrorService: PersonRelationshipMirrorService,
   ) {}
@@ -23,8 +23,9 @@ export class PersonRelationshipCreateManyPostQueryHook implements WorkspacePostQ
     _objectName: string,
     payload: unknown,
   ): Promise<void> {
+    // Restoring either half from trash brings the link back for both people.
     for (const ref of extractRowRefs(payload)) {
-      await this.mirrorService.syncPairFor(authContext, ref);
+      await this.mirrorService.restorePartnerOf(authContext, ref);
     }
   }
 }

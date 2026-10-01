@@ -19,6 +19,7 @@ import { CalendarEventsImportCronCommand } from 'src/modules/calendar/calendar-e
 import { CalendarOngoingStaleCronCommand } from 'src/modules/calendar/calendar-event-import-manager/crons/commands/calendar-ongoing-stale.cron.command';
 import { CalendarRelaunchFailedCalendarChannelsCronCommand } from 'src/modules/calendar/calendar-event-import-manager/crons/commands/calendar-relaunch-failed-calendar-channels.cron.command';
 import { TaskDueScannerCronCommand } from 'src/modules/enso/notifications/commands/task-due-scanner.cron.command';
+import { PersonRelationshipDraftCleanupCronCommand } from 'src/modules/enso/person-relationship/commands/person-relationship-draft-cleanup.cron.command';
 import { SequencingScannerCronCommand } from 'src/modules/enso/sequencing/commands/sequencing-scanner.cron.command';
 import { MessagingMessageListFetchCronCommand } from 'src/modules/messaging/message-import-manager/crons/commands/messaging-message-list-fetch.cron.command';
 import { MessagingMessagesImportCronCommand } from 'src/modules/messaging/message-import-manager/crons/commands/messaging-messages-import.cron.command';
@@ -66,6 +67,7 @@ export class CronRegisterAllCommand extends CommandRunner {
     private readonly staleRegistrationCleanupCronCommand: StaleRegistrationCleanupCronCommand,
     private readonly sequencingScannerCronCommand: SequencingScannerCronCommand,
     private readonly taskDueScannerCronCommand: TaskDueScannerCronCommand,
+    private readonly personRelationshipDraftCleanupCronCommand: PersonRelationshipDraftCleanupCronCommand,
   ) {
     super();
   }
@@ -177,6 +179,10 @@ export class CronRegisterAllCommand extends CommandRunner {
       {
         name: 'EnsoTaskDueScanner',
         command: this.taskDueScannerCronCommand,
+      },
+      {
+        name: 'EnsoPersonRelationshipDraftCleanup',
+        command: this.personRelationshipDraftCleanupCronCommand,
       },
     ];
 

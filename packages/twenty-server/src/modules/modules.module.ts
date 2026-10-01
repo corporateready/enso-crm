@@ -7,6 +7,7 @@ import { EnsoNotificationListenersModule } from 'src/modules/enso/lead-pipeline/
 import { MarketingCallbackModule } from 'src/modules/enso/marketing-sync/marketing-callback.module';
 import { MarketingSyncModule } from 'src/modules/enso/marketing-sync/marketing-sync.module';
 import { EnsoTaskDueModule } from 'src/modules/enso/notifications/task-due-scanner.module';
+import { EnsoPersonRelationshipDraftCleanupModule } from 'src/modules/enso/person-relationship/person-relationship-draft-cleanup.module';
 import { EnsoSmsDeliveryModule } from 'src/modules/enso/notifications/sms-delivery-scanner.module';
 import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
 import { TelephonyModule } from 'src/modules/enso/telephony/telephony.module';
@@ -25,6 +26,7 @@ import { WorkspaceMemberModule } from 'src/modules/workspace-member/workspace-me
     MarketingCallbackModule,
     EnsoNotificationListenersModule,
     EnsoTaskDueModule,
+    EnsoPersonRelationshipDraftCleanupModule,
     EnsoSmsDeliveryModule,
     TelephonyModule,
     WorkflowModule,
