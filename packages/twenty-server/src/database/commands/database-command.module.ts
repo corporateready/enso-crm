@@ -47,6 +47,7 @@ import { WorkspaceMigrationModule } from 'src/engine/workspace-manager/workspace
 import { WorkspaceVersionModule } from 'src/engine/workspace-manager/workspace-version/workspace-version.module';
 import { CalendarEventImportManagerModule } from 'src/modules/calendar/calendar-event-import-manager/calendar-event-import-manager.module';
 import { EnsoTaskDueModule } from 'src/modules/enso/notifications/task-due-scanner.module';
+import { EnsoPersonRelationshipDraftCleanupModule } from 'src/modules/enso/person-relationship/person-relationship-draft-cleanup.module';
 import { EnsoSmsDeliveryModule } from 'src/modules/enso/notifications/sms-delivery-scanner.module';
 import { MarketingFeedBackfillModule } from 'src/modules/enso/marketing-sync/marketing-feed-backfill.module';
 import { EnsoSequencingModule } from 'src/modules/enso/sequencing/sequencing.module';
@@ -66,6 +67,7 @@ import { AutomatedTriggerModule } from 'src/modules/workflow/workflow-trigger/au
     MarketingFeedBackfillModule,
     EnsoSequencingModule,
     EnsoTaskDueModule,
+    EnsoPersonRelationshipDraftCleanupModule,
     EnsoSmsDeliveryModule,
     FileModule,
     WorkspaceModule,

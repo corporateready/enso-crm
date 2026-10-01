@@ -23,10 +23,9 @@ export class PersonRelationshipDeleteOnePostQueryHook implements WorkspacePostQu
     _objectName: string,
     payload: unknown,
   ): Promise<void> {
-    // deleteMirrorFor short-circuits on mirror rows so deleting a mirror
-    // never cascades back to canonical.
+    // Deleting either half removes the link from both people.
     for (const ref of extractRowRefs(payload)) {
-      await this.mirrorService.deleteMirrorFor(authContext, ref);
+      await this.mirrorService.deletePartnerOf(authContext, ref);
     }
   }
 }

@@ -23,10 +23,9 @@ export class PersonRelationshipUpdateOnePostQueryHook implements WorkspacePostQu
     _objectName: string,
     payload: unknown,
   ): Promise<void> {
-    // syncMirrorFor short-circuits on mirror rows (mirrorOfId set), so the
-    // mirror's own post-update doesn't cascade.
+    // Either half may be the one edited; the other follows.
     for (const ref of extractRowRefs(payload)) {
-      await this.mirrorService.syncMirrorFor(authContext, ref);
+      await this.mirrorService.syncPairFor(authContext, ref);
     }
   }
 }
