@@ -18,9 +18,10 @@ export const buildDealCommentTimelineSegments = ({
       ? `${body.slice(0, TIMELINE_PREVIEW_LENGTH)}…`
       : body;
 
-  return [
-    {
-      text: `Commented, mentioning ${mentionedMemberNames.join(', ')}: “${preview}”`,
-    },
-  ];
+  const mentioning =
+    mentionedMemberNames.length > 0
+      ? `, mentioning ${mentionedMemberNames.join(', ')}`
+      : '';
+
+  return [{ text: `Commented${mentioning}: “${preview}”` }];
 };

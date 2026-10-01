@@ -1,8 +1,9 @@
 export const DEAL_COMMENT_OBJECT = 'dealComment';
 export const DEAL_COMMENT_MENTION_OBJECT = 'dealCommentMention';
 
-// Both objects are written only through createDealComment / deleteDealComment,
-// so the "must mention someone" rule cannot be skipped through the generic API.
+// Both objects are written only through createDealComment / deleteDealComment.
+// A mention row lets that colleague read the deal, so mentions must only ever
+// be created alongside a real comment, never through the generic API.
 export const DEAL_COMMENT_GUARDED_OBJECTS: ReadonlySet<string> = new Set([
   DEAL_COMMENT_OBJECT,
   DEAL_COMMENT_MENTION_OBJECT,

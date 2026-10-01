@@ -95,9 +95,9 @@ type DealCommentComposerProps = {
   ) => Promise<boolean>;
 };
 
-// Comments are addressed to someone, so Send stays off until at least one
-// colleague is tagged. Typing @ opens the picker; deleting an inserted @name
-// takes that mention back.
+// A manager's own summary or thoughts, or a question to a colleague. Tagging
+// is optional: typing @ opens the picker, and only tagged colleagues are
+// notified. Deleting an inserted @name takes that mention back.
 export const DealCommentComposer = ({
   members,
   isSending,
@@ -124,7 +124,7 @@ export const DealCommentComposer = ({
           MAX_SUGGESTIONS,
         );
   const mentionedIds = getMentionedMemberIds(text, pickedMembers);
-  const canSend = text.trim() !== '' && mentionedIds.length > 0 && !isSending;
+  const canSend = text.trim() !== '' && !isSending;
 
   const updateText = (nextText: string, nextCaret: number) => {
     setText(nextText);
@@ -229,7 +229,7 @@ export const DealCommentComposer = ({
       <StyledTextArea
         ref={textAreaRef}
         value={text}
-        placeholder={t`Write a comment and @mention a colleague…`}
+        placeholder={t`Write a summary or a thought, or @tag a colleague…`}
         onChange={(event) =>
           updateText(event.target.value, event.target.selectionStart)
         }
@@ -255,8 +255,8 @@ export const DealCommentComposer = ({
       <StyledFooter>
         <StyledHint>
           {mentionedIds.length > 0
-            ? t`⌘/Ctrl + Enter to send`
-            : t`Mention at least one colleague with @ to send.`}
+            ? t`Tagged colleagues get a Google Chat message. ⌘/Ctrl + Enter to send.`
+            : t`Tag a colleague with @ to notify them. ⌘/Ctrl + Enter to send.`}
         </StyledHint>
         <Button
           title={isSending ? t`Sending…` : t`Send`}

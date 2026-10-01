@@ -123,7 +123,7 @@ const main = async () => {
     labelSingular: 'Deal Comment',
     labelPlural: 'Deal Comments',
     icon: 'IconMessageCircle',
-    description: 'Internal discussion on a deal. Every comment mentions at least one colleague.',
+    description: 'The deal free-text thread: summaries, thoughts, and questions to tagged colleagues.',
   });
 
   await ensureFields(dealCommentId, 'dealComment', [
