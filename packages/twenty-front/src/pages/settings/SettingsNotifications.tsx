@@ -24,6 +24,7 @@ const NOTIFICATION_EVENT_LABELS: { event: string; label: string }[] = [
   { event: 'taskAssigned', label: 'Task assigned to me' },
   { event: 'taskDue', label: 'Task due' },
   { event: 'consentChanged', label: 'Consent changed for my contact' },
+  { event: 'commentMention', label: 'Mentioned in a deal comment' },
 ];
 
 const StyledInstructions = styled.ol`

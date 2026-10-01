@@ -27,6 +27,7 @@ export const NOTIFICATION_EVENTS = {
   TASK_ASSIGNED: 'taskAssigned',
   TASK_DUE: 'taskDue',
   CONSENT_CHANGED: 'consentChanged',
+  COMMENT_MENTION: 'commentMention',
 } as const;
 
 // Task-due scanner (Phase 2b): a per-minute cron sweeps tasks that have just

@@ -14,6 +14,9 @@ import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.
 
 type DealStateTransition = 'stalled' | 'deferred' | 'active' | 'stage';
 
+// Google Chat cards stay readable at a glance; the full comment is on the deal.
+const COMMENT_MENTION_PREVIEW_LENGTH = 500;
+
 // Manager notification via Google Chat.
 //
 // Per-manager events go to the assigned manager's PERSONAL webhook (their
@@ -490,6 +493,81 @@ export class ManagerNotificationService {
     );
   }
 
+  // A colleague mentioned this manager in a comment on a deal. Comments are
+  // addressed to someone, so the card leads with who wrote it and what they said.
+  async notifyCommentMention(
+    authContext: WorkspaceAuthContext,
+    params: { commentId: string; managerId: string },
+  ): Promise<void> {
+    const workspaceId = authContext.workspace?.id;
+
+    if (!isDefined(workspaceId)) {
+      return;
+    }
+
+    const comment = await this.loadDealComment(workspaceId, params.commentId);
+
+    // Deleted before the worker got to it: the author took it back.
+    if (!isDefined(comment?.opportunityId)) {
+      return;
+    }
+
+    const details = await this.loadDealDetails(
+      workspaceId,
+      comment.opportunityId,
+      params.managerId,
+    );
+
+    if (
+      await this.isMuted(
+        workspaceId,
+        details.managerUserId,
+        NOTIFICATION_EVENTS.COMMENT_MENTION,
+      )
+    ) {
+      return;
+    }
+
+    const webhookUrl = await this.resolveManagerWebhookUrl(
+      workspaceId,
+      details.managerUserId,
+    );
+
+    if (!isDefined(webhookUrl)) {
+      return;
+    }
+
+    const authorName = comment.authorName || 'A colleague';
+    const body =
+      comment.body.length > COMMENT_MENTION_PREVIEW_LENGTH
+        ? `${comment.body.slice(0, COMMENT_MENTION_PREVIEW_LENGTH)}…`
+        : comment.body;
+
+    const rows = [
+      { icon: 'EMAIL', label: authorName, text: body },
+      details.dealName
+        ? { icon: 'DESCRIPTION', label: 'Deal', text: details.dealName }
+        : undefined,
+      details.projectName
+        ? { icon: 'STORE', label: 'Project', text: details.projectName }
+        : undefined,
+      details.who
+        ? { icon: 'PERSON', label: 'Contact', text: details.who }
+        : undefined,
+    ].filter(isDefined);
+
+    await this.googleChatWebhookService.post(
+      webhookUrl,
+      this.buildDealCard({
+        title: `💬 ${authorName} mentioned you`,
+        subtitle: 'ENSO CRM · Deal comment',
+        rows,
+        recordUrl: this.recordUrl('opportunity', comment.opportunityId),
+        buttonText: 'Open deal',
+      }),
+    );
+  }
+
   // A task assigned to this manager has reached its due time (cron scanner).
   async notifyTaskDue(
     authContext: WorkspaceAuthContext,
@@ -737,6 +815,44 @@ export class ManagerNotificationService {
         });
 
         return manager?.userId ?? undefined;
+      },
+      systemAuthContext,
+    );
+  }
+
+  private async loadDealComment(
+    workspaceId: string,
+    commentId: string,
+  ): Promise<
+    { body: string; opportunityId?: string; authorName?: string } | undefined
+  > {
+    const systemAuthContext = buildSystemAuthContext(workspaceId);
+
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const dealCommentRepository =
+          await this.globalWorkspaceOrmManager.getRepository<{
+            id: string;
+            body: string | null;
+            opportunityId: string | null;
+            createdBy: { name?: string } | null;
+          }>(workspaceId, 'dealComment', {
+            shouldBypassPermissionChecks: true,
+          });
+
+        const comment = await dealCommentRepository.findOne({
+          where: { id: commentId },
+        });
+
+        if (!isDefined(comment)) {
+          return undefined;
+        }
+
+        return {
+          body: comment.body ?? '',
+          opportunityId: comment.opportunityId ?? undefined,
+          authorName: comment.createdBy?.name ?? undefined,
+        };
       },
       systemAuthContext,
     );
