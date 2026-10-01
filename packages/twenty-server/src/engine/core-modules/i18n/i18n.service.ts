@@ -8,6 +8,8 @@ import {
 } from '@lingui/core';
 import { type APP_LOCALES, SOURCE_LOCALE } from 'twenty-shared/translations';
 
+import { passThroughMessageCompiler } from 'src/engine/core-modules/i18n/utils/setup-global-i18n.util';
+
 import { messages as afMessages } from 'src/engine/core-modules/i18n/locales/generated/af-ZA';
 import { messages as arMessages } from 'src/engine/core-modules/i18n/locales/generated/ar-SA';
 import { messages as caMessages } from 'src/engine/core-modules/i18n/locales/generated/ca-ES';
@@ -89,6 +91,7 @@ export class I18nService implements OnModuleInit {
     ).forEach(([locale, messages]) => {
       const localeI18n = setupI18n();
 
+      localeI18n.setMessagesCompiler(passThroughMessageCompiler);
       localeI18n.load(locale, messages);
       localeI18n.activate(locale);
 

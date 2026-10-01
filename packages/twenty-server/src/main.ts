@@ -11,6 +11,7 @@ import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 import { NodeEnvironment } from 'src/engine/core-modules/twenty-config/interfaces/node-environment.interface';
 
 import { setPgDateTypeParser } from 'src/database/pg/set-pg-date-type-parser';
+import { setupGlobalI18n } from 'src/engine/core-modules/i18n/utils/setup-global-i18n.util';
 import { LoggerService } from 'src/engine/core-modules/logger/logger.service';
 import { getSessionStorageOptions } from 'src/engine/core-modules/session-storage/session-storage.module-factory';
 import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
@@ -26,6 +27,7 @@ import { generateFrontConfig } from './utils/generate-front-config';
 // Trigger
 const bootstrap = async () => {
   setPgDateTypeParser();
+  setupGlobalI18n();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Expose WWW-Authenticate so browser-based MCP clients can read the
