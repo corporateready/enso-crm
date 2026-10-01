@@ -228,7 +228,13 @@ export class ObjectRecordEventPublisher {
       workspaceId: workspaceEventBatch.workspaceId,
       objectMetadata: workspaceEventBatch.objectMetadata,
       roleId,
-      workspaceMemberId: streamData.authContext.workspaceMemberId,
+      // The stream resolver stores userId but never workspaceMemberId, so
+      // without the lookup every scoped subscriber would fail closed.
+      workspaceMemberId:
+        streamData.authContext.workspaceMemberId ??
+        (isDefined(streamData.authContext.userId)
+          ? flatWorkspaceMemberMaps.idByUserId[streamData.authContext.userId]
+          : undefined),
     });
 
     if (matchedEvents.length > 0) {

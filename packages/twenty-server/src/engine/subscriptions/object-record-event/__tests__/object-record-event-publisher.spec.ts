@@ -1618,6 +1618,45 @@ describe('ObjectRecordEventPublisher', () => {
         ).not.toHaveBeenCalled();
       });
 
+      it('should resolve the workspace member from userId when the stream does not store it', async () => {
+        useRole(scopedRoleId);
+        mockCoreDataSourceQuery.mockResolvedValue([{ id: 'owned-opp' }]);
+
+        // The shape the stream resolver actually persists: no member id.
+        const { workspaceMemberId: _omitted, ...authContextWithoutMember } =
+          opportunityQueryStreamData.authContext;
+
+        mockEventStreamService.getStreamsData.mockResolvedValue(
+          new Map([
+            [
+              streamChannelId,
+              {
+                ...opportunityQueryStreamData,
+                authContext: authContextWithoutMember,
+              },
+            ],
+          ]) as Map<string, EventStreamData | undefined>,
+        );
+
+        await service.publish(opportunityBatch as WorkspaceEventBatch<never>);
+
+        // The first call is the mention-table existence check.
+        expect(mockCoreDataSourceQuery).toHaveBeenCalledTimes(2);
+        expect(mockCoreDataSourceQuery.mock.calls[1][1]).toEqual([
+          ['owned-opp', 'foreign-opp'],
+          'test-workspace-member-id',
+        ]);
+
+        const payload = mockSubscriptionService.publishToEventStream.mock
+          .calls[0][0].payload as EventStreamPayload;
+
+        expect(
+          payload.objectRecordEventsWithQueryIds.map(
+            (event) => event.objectRecordEvent.recordId,
+          ),
+        ).toEqual(['owned-opp']);
+      });
+
       it('should deliver everything to an unscoped subscriber without querying', async () => {
         useRole(roleId);
 
