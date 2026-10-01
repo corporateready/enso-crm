@@ -18,7 +18,7 @@ describe('validateDealCommentInput', () => {
     });
   });
 
-  it('should reject a comment when no one is mentioned', () => {
+  it('should accept a comment that mentions no one', () => {
     expect(
       validateDealCommentInput({
         body: 'Client wants a discount',
@@ -26,19 +26,24 @@ describe('validateDealCommentInput', () => {
         authorWorkspaceMemberId: AUTHOR_ID,
       }),
     ).toEqual({
-      isValid: false,
-      error: 'Mention at least one colleague with @ to post a comment.',
+      isValid: true,
+      body: 'Client wants a discount',
+      mentionedWorkspaceMemberIds: [],
     });
   });
 
-  it('should reject a comment when the author only mentions themselves', () => {
+  it('should drop the author when they mention themselves', () => {
     expect(
       validateDealCommentInput({
         body: 'Note to self',
         mentionedWorkspaceMemberIds: [AUTHOR_ID],
         authorWorkspaceMemberId: AUTHOR_ID,
-      }).isValid,
-    ).toBe(false);
+      }),
+    ).toEqual({
+      isValid: true,
+      body: 'Note to self',
+      mentionedWorkspaceMemberIds: [],
+    });
   });
 
   it('should reject an empty comment even when someone is mentioned', () => {

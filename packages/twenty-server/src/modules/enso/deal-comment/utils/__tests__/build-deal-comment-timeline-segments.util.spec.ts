@@ -24,4 +24,13 @@ describe('buildDealCommentTimelineSegments', () => {
       { text: `Commented, mentioning Ana Popescu: “${'a'.repeat(140)}…”` },
     ]);
   });
+
+  it('should leave out the mention clause when nobody was tagged', () => {
+    expect(
+      buildDealCommentTimelineSegments({
+        body: 'Sounded unsure about the price',
+        mentionedMemberNames: [],
+      }),
+    ).toEqual([{ text: 'Commented: “Sounded unsure about the price”' }]);
+  });
 });

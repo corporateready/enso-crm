@@ -12,8 +12,9 @@ export type ValidatedDealCommentInput =
   | { isValid: true; body: string; mentionedWorkspaceMemberIds: string[] }
   | { isValid: false; error: string };
 
-// A comment is internal discussion, so it has to be addressed to somebody.
-// Mentioning yourself does not count: it would notify no one.
+// A comment is the deal's free-text thread: a manager's own summary or
+// thoughts, or a question to a colleague. Mentions are optional; mentioning
+// yourself is dropped, since it would notify no one.
 export const validateDealCommentInput = ({
   body,
   mentionedWorkspaceMemberIds,
@@ -41,13 +42,6 @@ export const validateDealCommentInput = ({
       ),
     ),
   ];
-
-  if (mentionedIds.length === 0) {
-    return {
-      isValid: false,
-      error: 'Mention at least one colleague with @ to post a comment.',
-    };
-  }
 
   return {
     isValid: true,

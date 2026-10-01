@@ -55,11 +55,10 @@ type DealCommentMentionRow = {
 const formatMemberName = (member: WorkspaceMemberRow) =>
   `${member.name?.firstName ?? ''} ${member.name?.lastName ?? ''}`.trim();
 
-// Internal discussion on a deal. Every write goes through here rather than the
-// generic record API (see DealCommentWriteGuard), because a comment and its
-// mentions only make sense together: a comment with no mention addresses no
-// one, and a mention with no comment would grant visibility of a deal for
-// nothing.
+// The deal's free-text thread. Every write goes through here rather than the
+// generic record API (see DealCommentWriteGuard), because a mention lets the
+// colleague read the deal: it must only ever be created alongside a real
+// comment by someone who can see that deal.
 //
 // Writes bypass permission checks, so this service is the one place that
 // decides who may comment. A scoped manager may comment where they can see the
@@ -204,19 +203,21 @@ export class DealCommentService {
         });
 
         try {
-          await mentionRepository.insert(
-            mentionedMembers.map((member) => ({
-              name: formatMemberName(member),
-              dealCommentId: comment.id,
-              opportunityId,
-              mentionedMemberId: member.id,
-              createdBy: authorActor,
-              updatedBy: authorActor,
-            })),
-          );
+          if (mentionedMembers.length > 0) {
+            await mentionRepository.insert(
+              mentionedMembers.map((member) => ({
+                name: formatMemberName(member),
+                dealCommentId: comment.id,
+                opportunityId,
+                mentionedMemberId: member.id,
+                createdBy: authorActor,
+                updatedBy: authorActor,
+              })),
+            );
+          }
         } catch (error) {
-          // A comment without its mentions breaks the rule this service exists
-          // to keep, so take it back down rather than leave it half-written.
+          // The author tagged someone so they would be told; a comment that
+          // silently lost its mentions would leave them waiting for nothing.
           this.logger.error(
             `Could not save mentions for comment ${comment.id}: ${
               (error as Error)?.message

@@ -18,8 +18,9 @@ import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
-// ENSO sentinel for the deal's Comments tab — internal discussion between
-// colleagues, separate from notes (which record something about the client).
+// ENSO sentinel for the deal's Comments tab — the deal's one free-text thread
+// for whatever doesn't fit a structured field: summaries, thoughts, and
+// questions to colleagues (tagged ones are notified).
 export const ENSO_DEAL_COMMENTS_MARKER = '__enso_deal_comments';
 
 type DealCommentResult = {
@@ -229,7 +230,7 @@ export const DealCommentsWidget = () => {
         )}
         {!loading && comments.length === 0 && (
           <StyledHint>
-            {t`No comments yet. Ask a colleague something about this deal — they'll get a Google Chat message.`}
+            {t`No comments yet. Write anything that doesn't fit a field — a summary, a thought, or @tag a colleague to ask them.`}
           </StyledHint>
         )}
         {comments.map((comment) => {
