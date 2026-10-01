@@ -19,10 +19,12 @@ import { type FlatObjectMetadata } from 'src/engine/metadata-modules/flat-object
 import { EventStreamService } from 'src/engine/subscriptions/event-stream.service';
 import { SubscriptionService } from 'src/engine/subscriptions/subscription.service';
 import { type EventStreamData } from 'src/engine/subscriptions/types/event-stream-data.type';
+import { type EventStreamPayload } from 'src/engine/subscriptions/types/event-stream-payload.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 import { type WorkspaceEventBatch } from 'src/engine/workspace-event-emitter/types/workspace-event-batch.type';
 import { ObjectRecordEventPublisher } from 'src/engine/subscriptions/object-record-event/object-record-event-publisher';
+import { resetEnsoScopedRoleIdsCache } from 'src/modules/enso/record-visibility/utils/get-enso-scoped-role-ids.util';
 
 jest.mock(
   'src/engine/twenty-orm/utils/build-row-level-permission-record-filter.util',
@@ -94,8 +96,12 @@ describe('ObjectRecordEventPublisher', () => {
   >;
 
   let mockGlobalWorkspaceOrmManager: jest.Mocked<
-    Pick<GlobalWorkspaceOrmManager, 'getGlobalWorkspaceDataSourceReplica'>
+    Pick<
+      GlobalWorkspaceOrmManager,
+      'getGlobalWorkspaceDataSourceReplica' | 'getGlobalWorkspaceDataSource'
+    >
   >;
+  let mockCoreDataSourceQuery: jest.Mock;
 
   const workspaceId = COMPANY_FLAT_OBJECT_MOCK.workspaceId;
   const streamChannelId = 'test-stream-channel-id';
@@ -259,11 +265,16 @@ describe('ObjectRecordEventPublisher', () => {
       } as never),
     };
 
+    mockCoreDataSourceQuery = jest.fn().mockResolvedValue([]);
+
     mockGlobalWorkspaceOrmManager = {
       getGlobalWorkspaceDataSourceReplica: jest.fn().mockResolvedValue({
         getRepository: jest.fn(),
       }),
-    };
+      getGlobalWorkspaceDataSource: jest.fn().mockResolvedValue({
+        coreDataSource: { query: mockCoreDataSourceQuery },
+      }),
+    } as never;
 
     (buildRowLevelPermissionRecordFilter as jest.Mock).mockReturnValue({});
     (
@@ -1497,6 +1508,125 @@ describe('ObjectRecordEventPublisher', () => {
             },
           }),
         );
+      });
+    });
+    describe('enso record visibility', () => {
+      const scopedRoleId = 'sales-manager-role-id';
+      const originalScopedRoleIds = process.env.ENSO_SCOPED_VISIBILITY_ROLE_IDS;
+
+      const opportunityObjectMetadata: FlatObjectMetadata = {
+        ...companyObjectMetadata,
+        nameSingular: 'opportunity',
+        namePlural: 'opportunities',
+      };
+
+      const opportunityQueryStreamData: EventStreamData = {
+        ...mockStreamData,
+        queries: {
+          'query-1': { objectNameSingular: 'opportunity', variables: {} },
+        },
+      };
+
+      beforeEach(() => {
+        process.env.ENSO_SCOPED_VISIBILITY_ROLE_IDS = scopedRoleId;
+        resetEnsoScopedRoleIdsCache();
+
+        mockEventStreamService.getStreamsData.mockResolvedValue(
+          new Map([[streamChannelId, opportunityQueryStreamData]]) as Map<
+            string,
+            EventStreamData | undefined
+          >,
+        );
+      });
+
+      afterAll(() => {
+        process.env.ENSO_SCOPED_VISIBILITY_ROLE_IDS = originalScopedRoleIds;
+        resetEnsoScopedRoleIdsCache();
+      });
+
+      const useRole = (subscriberRoleId: string) =>
+        mockWorkspaceCacheService.getOrRecompute.mockImplementation(
+          createCacheMock({
+            userWorkspaceRoleMap: { [userWorkspaceId]: subscriberRoleId },
+            rolesPermissions: {
+              [subscriberRoleId]: mockRolesPermissions[roleId],
+            },
+          }),
+        );
+
+      const opportunityBatch: WorkspaceEventBatch<MockObjectRecordEvent> = {
+        name: 'opportunity.created',
+        workspaceId,
+        objectMetadata: opportunityObjectMetadata,
+        events: [
+          createMockEvent({
+            recordId: 'owned-opp',
+            properties: { after: { id: 'owned-opp', name: 'Mine' } },
+          }),
+          createMockEvent({
+            recordId: 'foreign-opp',
+            properties: { after: { id: 'foreign-opp', name: 'Not mine' } },
+          }),
+        ],
+      };
+
+      it('should only deliver records a scoped subscriber can see', async () => {
+        useRole(scopedRoleId);
+        mockCoreDataSourceQuery.mockResolvedValue([{ id: 'owned-opp' }]);
+
+        await service.publish(opportunityBatch as WorkspaceEventBatch<never>);
+
+        expect(mockCoreDataSourceQuery).toHaveBeenCalledTimes(1);
+        expect(mockCoreDataSourceQuery.mock.calls[0][1]).toEqual([
+          ['owned-opp', 'foreign-opp'],
+          'test-workspace-member-id',
+        ]);
+
+        const payload = mockSubscriptionService.publishToEventStream.mock
+          .calls[0][0].payload as EventStreamPayload;
+
+        expect(
+          payload.objectRecordEventsWithQueryIds.map(
+            (event) => event.objectRecordEvent.recordId,
+          ),
+        ).toEqual(['owned-opp']);
+      });
+
+      it('should not publish at all when none of the records are visible', async () => {
+        useRole(scopedRoleId);
+        mockCoreDataSourceQuery.mockResolvedValue([]);
+
+        await service.publish(opportunityBatch as WorkspaceEventBatch<never>);
+
+        expect(
+          mockSubscriptionService.publishToEventStream,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('should drop the events, not throw, when the visibility check fails', async () => {
+        useRole(scopedRoleId);
+        mockCoreDataSourceQuery.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.publish(opportunityBatch as WorkspaceEventBatch<never>),
+        ).resolves.toBeUndefined();
+
+        expect(
+          mockSubscriptionService.publishToEventStream,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('should deliver everything to an unscoped subscriber without querying', async () => {
+        useRole(roleId);
+
+        await service.publish(opportunityBatch as WorkspaceEventBatch<never>);
+
+        expect(mockCoreDataSourceQuery).not.toHaveBeenCalled();
+
+        const payload = mockSubscriptionService.publishToEventStream.mock
+          .calls[0][0].payload as EventStreamPayload;
+
+        expect(payload.objectRecordEventsWithQueryIds).toHaveLength(2);
       });
     });
   });
