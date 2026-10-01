@@ -1,3 +1,4 @@
+import { isNonEmptyString } from '@sniptt/guards';
 import { useCloseCommandMenu } from '@/command-menu-item/hooks/useCloseCommandMenu';
 import { CommandMenuItem } from '@/command-menu/components/CommandMenuItem';
 import { useEnsoLeadLookup } from '@/enso/lead-lookup/hooks/useEnsoLeadLookup';
@@ -90,12 +91,14 @@ export const SidePanelSearchRecordsPage = () => {
                   description={item.objectLabel}
                   onClick={handleClick}
                   LeftComponent={
-                    <Avatar
-                      type={item.avatarType}
-                      avatarUrl={item.imageUrl}
-                      placeholderColorSeed={item.recordId}
-                      placeholder={item.label}
-                    />
+                    isNonEmptyString(item.imageUrl) ? (
+                      <Avatar
+                        type={item.avatarType}
+                        avatarUrl={item.imageUrl}
+                        placeholderColorSeed={item.recordId}
+                        placeholder={item.label}
+                      />
+                    ) : undefined
                   }
                 />
               </SelectableListItem>
@@ -129,13 +132,6 @@ export const SidePanelSearchRecordsPage = () => {
                   match.displayName,
                 )
               }
-              LeftComponent={
-                <Avatar
-                  type="rounded"
-                  placeholderColorSeed={match.personId}
-                  placeholder={match.displayName}
-                />
-              }
             />
           ))}
           {foreignDealMatches.map((match) => (
@@ -152,13 +148,6 @@ export const SidePanelSearchRecordsPage = () => {
                   },
                   match.displayName,
                 )
-              }
-              LeftComponent={
-                <Avatar
-                  type="squared"
-                  placeholderColorSeed={match.opportunityId}
-                  placeholder={match.dealLabel}
-                />
               }
             />
           ))}
