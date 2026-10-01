@@ -21,8 +21,10 @@ import { ProcessNestedRelationsHelper } from 'src/engine/api/common/common-neste
 import { CommonSelectFieldsHelper } from 'src/engine/api/common/common-select-fields/common-select-fields-helper';
 import { DatabaseEventAction } from 'src/engine/api/graphql/graphql-query-runner/enums/database-event-action';
 import { GraphqlQueryParser } from 'src/engine/api/graphql/graphql-query-runner/graphql-query-parsers/graphql-query.parser';
+import { CoreEntityCacheService } from 'src/engine/core-entity-cache/services/core-entity-cache.service';
 import { type SerializableAuthContext } from 'src/engine/core-modules/auth/types/auth-context.type';
-import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { type UserWorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { buildUserAuthContext } from 'src/engine/core-modules/auth/utils/build-user-auth-context.util';
 import { type FlatWorkspaceMemberMaps } from 'src/engine/core-modules/user/types/flat-workspace-member-maps.type';
 import { WorkspaceManyOrAllFlatEntityMapsCacheService } from 'src/engine/metadata-modules/flat-entity/services/workspace-many-or-all-flat-entity-maps-cache.service';
 import { type FlatEntityMaps } from 'src/engine/metadata-modules/flat-entity/types/flat-entity-maps.type';
@@ -66,6 +68,7 @@ export class ObjectRecordEventPublisher {
     private readonly workspaceManyOrAllFlatEntityMapsCacheService: WorkspaceManyOrAllFlatEntityMapsCacheService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly commonSelectFieldsHelper: CommonSelectFieldsHelper,
+    private readonly coreEntityCacheService: CoreEntityCacheService,
   ) {}
 
   async publish(
@@ -223,32 +226,51 @@ export class ObjectRecordEventPublisher {
       });
     }
 
+    // The stream resolver stores userId but never workspaceMemberId, so
+    // without the lookup every scoped subscriber would fail closed.
+    const subscriberWorkspaceMemberId =
+      streamData.authContext.workspaceMemberId ??
+      (isDefined(streamData.authContext.userId)
+        ? flatWorkspaceMemberMaps.idByUserId[streamData.authContext.userId]
+        : undefined);
+
     const matchedEvents = await this.keepEnsoVisibleEvents({
       events: candidateEvents,
       workspaceId: workspaceEventBatch.workspaceId,
       objectMetadata: workspaceEventBatch.objectMetadata,
       roleId,
-      // The stream resolver stores userId but never workspaceMemberId, so
-      // without the lookup every scoped subscriber would fail closed.
-      workspaceMemberId:
-        streamData.authContext.workspaceMemberId ??
-        (isDefined(streamData.authContext.userId)
-          ? flatWorkspaceMemberMaps.idByUserId[streamData.authContext.userId]
-          : undefined),
+      workspaceMemberId: subscriberWorkspaceMemberId,
     });
 
     if (matchedEvents.length > 0) {
       try {
-        await this.enrichEventBatchWithNestedRelations({
-          objectMetadata: workspaceEventBatch.objectMetadata,
-          events: matchedEvents.map(
-            (matchedEvent) => matchedEvent.objectRecordEvent,
-          ),
-          streamData,
-          permissionsContext,
+        const subscriberAuthContext = await this.buildSubscriberAuthContext({
           workspaceId: workspaceEventBatch.workspaceId,
-          roleId,
+          userId: streamData.authContext.userId,
+          userWorkspaceId,
+          workspaceMemberId: subscriberWorkspaceMemberId,
+          flatWorkspaceMemberMaps,
         });
+
+        // The publisher runs inside the writer's request, and the repository
+        // reads its auth context from the ambient workspace context, not from
+        // its arguments. Without switching contexts, related records would be
+        // row-scoped as the writer (unscoped for system, API-key and admin
+        // writes) instead of as this subscriber.
+        await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+          () =>
+            this.enrichEventBatchWithNestedRelations({
+              objectMetadata: workspaceEventBatch.objectMetadata,
+              events: matchedEvents.map(
+                (matchedEvent) => matchedEvent.objectRecordEvent,
+              ),
+              subscriberAuthContext,
+              permissionsContext,
+              workspaceId: workspaceEventBatch.workspaceId,
+              roleId,
+            }),
+          subscriberAuthContext,
+        );
       } catch (error) {
         this.logger.warn(
           `Failed to enrich nested relations for ${workspaceEventBatch.name} subscription event, broadcasting without them: ${
@@ -330,15 +352,61 @@ export class ObjectRecordEventPublisher {
     }
   }
 
+  private async buildSubscriberAuthContext({
+    workspaceId,
+    userId,
+    userWorkspaceId,
+    workspaceMemberId,
+    flatWorkspaceMemberMaps,
+  }: {
+    workspaceId: string;
+    userId: string | undefined;
+    userWorkspaceId: string;
+    workspaceMemberId: string | undefined;
+    flatWorkspaceMemberMaps: FlatWorkspaceMemberMaps;
+  }): Promise<UserWorkspaceAuthContext> {
+    const workspaceMember = isDefined(workspaceMemberId)
+      ? flatWorkspaceMemberMaps.byId[workspaceMemberId]
+      : undefined;
+
+    const [workspace, user] = await Promise.all([
+      this.coreEntityCacheService.get('workspaceEntity', workspaceId),
+      isDefined(userId)
+        ? this.coreEntityCacheService.get('user', userId)
+        : undefined,
+    ]);
+
+    // Throwing skips enrichment for this stream only; falling back to the
+    // writer's context would leak related records the subscriber can't see.
+    if (
+      !isDefined(workspace) ||
+      !isDefined(user) ||
+      !isDefined(workspaceMemberId) ||
+      !isDefined(workspaceMember)
+    ) {
+      throw new Error(
+        `Cannot build the auth context of subscriber ${userWorkspaceId}`,
+      );
+    }
+
+    return buildUserAuthContext({
+      workspace,
+      userWorkspaceId,
+      user,
+      workspaceMemberId,
+      workspaceMember,
+    });
+  }
+
   private async enrichEventBatchWithNestedRelations({
-    streamData,
+    subscriberAuthContext,
     objectMetadata,
     events,
     workspaceId,
     permissionsContext,
     roleId,
   }: {
-    streamData: EventStreamData;
+    subscriberAuthContext: UserWorkspaceAuthContext;
     objectMetadata: FlatObjectMetadata;
     events: ObjectRecordEvent[];
     workspaceId: string;
@@ -410,7 +478,7 @@ export class ObjectRecordEventPublisher {
       flatFieldMetadataMaps,
       parentObjectMetadataItem: objectMetadata,
       parentObjectRecords: allRecords,
-      authContext: streamData.authContext as unknown as WorkspaceAuthContext,
+      authContext: subscriberAuthContext,
       limit: QUERY_MAX_RECORDS_FROM_RELATION,
       rolePermissionConfig,
       workspaceDataSource: globalWorkspaceDataSource,
