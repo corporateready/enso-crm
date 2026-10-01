@@ -23,9 +23,15 @@ type ApplyEnsoRecordVisibilityArgs = {
   objectMetadata: FlatObjectMetadata;
   internalContext: WorkspaceInternalContext;
   authContext: WorkspaceAuthContext;
-  // Updates and deletes emit no alias, so the target table is addressed by name.
+  // Set by the update, soft-delete and delete builders. Their statements emit
+  // no alias, but the same WHERE clauses are also copied into the "before" and
+  // "after" event SELECT, which does alias the table.
   useDirectTableReference?: boolean;
 };
+
+// Alias for the visibility subquery's own copy of the table. Must not collide
+// with the aliases the rules use internally (ppa, opp, cpa).
+const VISIBLE_ROW_ALIAS = 'ensoVisibleRow';
 
 export const applyEnsoRecordVisibility = ({
   queryBuilder,
@@ -57,7 +63,7 @@ export const applyEnsoRecordVisibility = ({
   // outer column has to stay qualified or Postgres resolves it against the
   // innermost subquery instead.
   const recordReference = useDirectTableReference
-    ? computeTableName(objectMetadata.nameSingular, objectMetadata.isCustom)
+    ? VISIBLE_ROW_ALIAS
     : queryBuilder.expressionMap.mainAlias?.name;
 
   if (!recordReference) {
@@ -66,16 +72,31 @@ export const applyEnsoRecordVisibility = ({
 
   const paramName = `ensoVisibilityMemberId_${randomBytes(5).toString('hex')}`;
   const workspaceMemberId = authContext.workspaceMember?.id;
+  const schema = `"${getWorkspaceSchemaName(internalContext.workspaceId)}"`;
 
   // A scoped role with no workspace member owns nothing, so it sees nothing.
   // Failing closed matters more here than a friendlier empty state.
-  const condition = workspaceMemberId
+  const ruleCondition = workspaceMemberId
     ? rule.buildCondition({
         ref: (columnName) => `"${recordReference}"."${columnName}"`,
-        schema: `"${getWorkspaceSchemaName(internalContext.workspaceId)}"`,
+        schema,
         me: `:${paramName}`,
       })
     : 'FALSE';
+
+  // A mutation's table can be addressed by its bare name (the UPDATE itself)
+  // or by whatever alias TypeORM gave the builder (the event SELECT): "task"
+  // for the record a user deletes, but "workspace_x.taskTarget" for the rows a
+  // delete cascades to. Naming the table directly broke every cascade from a
+  // scoped role ("missing FROM-clause entry"). Filtering by id through a
+  // subquery with its own alias works under either name. The bare outer "id"
+  // is safe because these statements never join another table.
+  const condition = useDirectTableReference
+    ? `"id" IN (SELECT "${VISIBLE_ROW_ALIAS}"."id" FROM ${schema}."${computeTableName(
+        objectMetadata.nameSingular,
+        objectMetadata.isCustom,
+      )}" "${VISIBLE_ROW_ALIAS}" WHERE ${ruleCondition})`
+    : ruleCondition;
 
   const parameters = workspaceMemberId
     ? { [paramName]: workspaceMemberId }
