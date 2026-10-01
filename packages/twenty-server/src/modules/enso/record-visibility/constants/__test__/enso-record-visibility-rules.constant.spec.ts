@@ -96,3 +96,15 @@ describe('mention-granted deals', () => {
     },
   );
 });
+
+describe('personRelationship', () => {
+  it('should let a manager see links between relatives they created', () => {
+    const condition =
+      ENSO_RECORD_VISIBILITY_RULES.personRelationship.buildCondition(readArgs);
+
+    // Relatives are rarely assigned to a project, so ownership alone would
+    // hide the links among them from the manager who entered them.
+    expect(condition).toContain('"createdByWorkspaceMemberId" = :memberId');
+    expect(condition).toContain('"person"."relatedPersonId" IN');
+  });
+});

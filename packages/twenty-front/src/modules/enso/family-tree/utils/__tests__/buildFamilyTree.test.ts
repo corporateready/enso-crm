@@ -111,14 +111,38 @@ describe('buildFamilyTree connections', () => {
   });
 });
 
+describe('buildFamilyTree in-laws', () => {
+  it("should show the partner's parents as in-laws", () => {
+    const tree = buildFamilyTree('ion', [
+      link('ion', 'maria', 'SPOUSE'),
+      link('ion', 'petru', 'PARENT'),
+      link('maria', 'ion', 'SPOUSE'),
+      link('maria', 'gheorghe', 'PARENT'),
+      link('maria', 'ana', 'PARENT'),
+    ]);
+
+    expect(names(tree.parents)).toEqual(['petru Vasiliev']);
+    expect(tree.inLaws).toEqual([
+      expect.objectContaining({
+        displayName: 'gheorghe Vasiliev',
+        via: ['maria Vasiliev'],
+      }),
+      expect.objectContaining({
+        displayName: 'ana Vasiliev',
+        via: ['maria Vasiliev'],
+      }),
+    ]);
+  });
+});
+
 describe('getFirstGenerationIds', () => {
-  it('should return parents and children only', () => {
+  it('should return parents, children and partners', () => {
     expect(
       getFirstGenerationIds('ivan', [
         link('ivan', 'petru', 'PARENT'),
         link('ivan', 'ana', 'CHILD'),
         link('ivan', 'maria', 'SPOUSE'),
       ]),
-    ).toEqual(['petru', 'ana']);
+    ).toEqual(['petru', 'ana', 'maria']);
   });
 });

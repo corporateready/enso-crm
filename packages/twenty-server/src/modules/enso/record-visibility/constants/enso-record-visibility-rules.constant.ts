@@ -97,6 +97,36 @@ const opportunityColumnIsOwned = (
 const wasCreatedByMe = ({ ref, me }: EnsoRecordVisibilityConditionArgs) =>
   `${ref('createdByWorkspaceMemberId')} = ${me}`;
 
+// Contacts this member created that nobody has been assigned yet — the same
+// set the person rule lets them see. Relatives a manager adds to a client's
+// family are usually never assigned (they are not leads), so without this the
+// links between two such relatives would be hidden from the manager who
+// entered them.
+const createdUnassignedPersonIds = ({
+  schema,
+  me,
+}: EnsoRecordVisibilityConditionArgs) => `
+  SELECT cp."id"
+  FROM ${schema}."person" cp
+  WHERE cp."deletedAt" IS NULL
+    AND cp."createdByWorkspaceMemberId" = ${me}
+    AND NOT EXISTS (
+      SELECT 1 FROM ${schema}."_personProjectAssignment" cppa
+      WHERE cppa."personId" = cp."id"
+        AND cppa."deletedAt" IS NULL
+        AND cppa."managerId" IS NOT NULL
+    )
+`;
+
+const personColumnIsVisible = (
+  args: EnsoRecordVisibilityConditionArgs,
+  columnName: string,
+) =>
+  anyOf([
+    personColumnIsOwned(args, columnName),
+    `${args.ref(columnName)} IN (${createdUnassignedPersonIds(args)})`,
+  ]);
+
 const anyOf = (conditions: string[]) =>
   `(${conditions.map((condition) => `(${condition})`).join(' OR ')})`;
 
@@ -206,11 +236,13 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
   personProjectConsentEvent: {
     buildCondition: (args) => personTextColumnIsOwned(args, 'personId'),
   },
+  // A family link is visible when either person on it is: the manager's own
+  // client, or a relative they created themselves.
   personRelationship: {
     buildCondition: (args) =>
       anyOf([
-        personColumnIsOwned(args, 'personId'),
-        personColumnIsOwned(args, 'relatedPersonId'),
+        personColumnIsVisible(args, 'personId'),
+        personColumnIsVisible(args, 'relatedPersonId'),
       ]),
   },
   sequenceRun: {

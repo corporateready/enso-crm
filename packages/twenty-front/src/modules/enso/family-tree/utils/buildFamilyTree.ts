@@ -24,6 +24,7 @@ export type FamilyMember = { id: string; displayName: string; via?: string[] };
 export type FamilyTree = {
   grandparents: FamilyMember[];
   parents: FamilyMember[];
+  inLaws: FamilyMember[];
   siblings: FamilyMember[];
   partners: FamilyMember[];
   children: FamilyMember[];
@@ -95,15 +96,18 @@ export const getFirstGenerationIds = (
 ): string[] => {
   const self = new Set([personId]);
 
+  // Partners too, so their parents can be shown as in-laws.
   return [
     ...relatedOf(links, self, ['PARENT']),
     ...relatedOf(links, self, ['CHILD']),
+    ...relatedOf(links, self, PARTNER_TYPES),
   ].map((member) => member.id);
 };
 
-// Three generations around one person: grandparents → parents → the person
-// with siblings and partners → children → grandchildren. `links` holds the
-// person's own rows plus the rows of their parents and children.
+// Three generations around one person: grandparents → parents and in-laws →
+// the person with siblings and partners → children → grandchildren. `links`
+// holds the person's own rows plus the rows of their parents, children and
+// partners.
 export const buildFamilyTree = (
   personId: string,
   links: FamilyLink[],
@@ -169,12 +173,29 @@ export const buildFamilyTree = (
       }),
     ),
   );
+  const partnerNames = new Map(
+    partners.map((partner) => [partner.id, partner.displayName]),
+  );
+
+  const inLaws = place(
+    groupByRelative(
+      relatedOf(links, new Set(partners.map((partner) => partner.id)), [
+        'PARENT',
+      ]),
+    ).map(({ throughIds, ...inLaw }) => ({
+      ...inLaw,
+      via: throughIds
+        .map((id) => partnerNames.get(id))
+        .filter(isNonEmptyString),
+    })),
+  );
   const grandchildren = place(relatedOf(links, childIds, ['CHILD']));
   const others = place(relatedOf(links, self, ['OTHER']));
 
   return {
     grandparents,
     parents,
+    inLaws,
     siblings,
     partners,
     children,
