@@ -103,7 +103,9 @@ const OBSERVED_OBJECTS = [
 // Reference data every manager needs in full, with no record scoping: a deal is
 // unreadable without its project, and a company here is a building, not a book
 // of business.
-const REFERENCE_OBJECTS = ['project', 'company'];
+// manualLeadSource is the list the manual lead form offers — marketing edits
+// it, managers only pick from it.
+const REFERENCE_OBJECTS = ['project', 'company', 'manualLeadSource'];
 
 // Operations and marketing surfaces. Nothing here is part of selling, and most
 // of it exposes the whole pipeline sideways.
