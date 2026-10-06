@@ -255,7 +255,7 @@ export const DealCommentComposer = ({
       <StyledFooter>
         <StyledHint>
           {mentionedIds.length > 0
-            ? t`Tagged colleagues get a Google Chat message. ⌘/Ctrl + Enter to send.`
+            ? t`Tagged colleagues are notified. ⌘/Ctrl + Enter to send.`
             : t`Tag a colleague with @ to notify them. ⌘/Ctrl + Enter to send.`}
         </StyledHint>
         <Button
