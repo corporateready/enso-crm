@@ -1065,6 +1065,30 @@ export interface PageLayout {
 
 export type PageLayoutType = 'RECORD_INDEX' | 'RECORD_PAGE' | 'DASHBOARD' | 'STANDALONE_PAGE'
 
+export interface EnsoDefaultView {
+    objectMetadataId: Scalars['String']
+    viewId: Scalars['String']
+    __typename: 'EnsoDefaultView'
+}
+
+export interface EnsoColumnWidth {
+    viewId: Scalars['String']
+    fieldMetadataId: Scalars['String']
+    size: Scalars['Int']
+    __typename: 'EnsoColumnWidth'
+}
+
+export interface EnsoViewerScope {
+    isRecordScoped: Scalars['Boolean']
+    hiddenNavigationObjectNameSingulars: Scalars['String'][]
+    defaultViews: EnsoDefaultView[]
+    defaultViewsVersion?: Scalars['String']
+    personalDefaultViews: EnsoDefaultView[]
+    personalColumnWidths: EnsoColumnWidth[]
+    personalViewObjectMetadataIds: Scalars['String'][]
+    __typename: 'EnsoViewerScope'
+}
+
 export interface ApplicationConnectionProviderOAuthConfig {
     scopes: Scalars['String'][]
     isClientCredentialsConfigured: Scalars['Boolean']
@@ -2304,30 +2328,6 @@ export interface DealCommentResult {
     __typename: 'DealCommentResult'
 }
 
-export interface EnsoDefaultView {
-    objectMetadataId: Scalars['String']
-    viewId: Scalars['String']
-    __typename: 'EnsoDefaultView'
-}
-
-export interface EnsoColumnWidth {
-    viewId: Scalars['String']
-    fieldMetadataId: Scalars['String']
-    size: Scalars['Int']
-    __typename: 'EnsoColumnWidth'
-}
-
-export interface EnsoViewerScope {
-    isRecordScoped: Scalars['Boolean']
-    hiddenNavigationObjectNameSingulars: Scalars['String'][]
-    defaultViews: EnsoDefaultView[]
-    defaultViewsVersion?: Scalars['String']
-    personalDefaultViews: EnsoDefaultView[]
-    personalColumnWidths: EnsoColumnWidth[]
-    personalViewObjectMetadataIds: Scalars['String'][]
-    __typename: 'EnsoViewerScope'
-}
-
 export interface GoogleChatNotificationPreference {
     event: Scalars['String']
     enabled: Scalars['Boolean']
@@ -2749,6 +2749,7 @@ export interface Query {
     getViewFieldGroup?: ViewFieldGroup
     apiKeys: ApiKey[]
     apiKey?: ApiKey
+    ensoViewerScope: EnsoViewerScope
     billingPortalSession: BillingSession
     listPlans: BillingPlan[]
     getResourceCreditUsage: BillingResourceCreditUsage[]
@@ -2820,7 +2821,6 @@ export interface Query {
     pieChartData: PieChartData
     lineChartData: LineChartData
     barChartData: BarChartData
-    ensoViewerScope: EnsoViewerScope
     ensoLeadLookup: EnsoLeadLookupResult
     ensoLeadProfile: EnsoLeadProfile
     taskEmailContext: TaskEmailContext
@@ -2898,6 +2898,11 @@ export interface Mutation {
     assignRoleToApiKey: Scalars['Boolean']
     createObjectEvent: Analytics
     trackAnalytics: Analytics
+    ensoSetMyDefaultView: EnsoDefaultView[]
+    ensoSetMyColumnWidth: EnsoColumnWidth[]
+    ensoSetRoleDefaultViews: EnsoDefaultView[]
+    ensoSetRoleViewTemplates: Scalars['Int']
+    ensoProvisionRoleViewCopies: Scalars['Int']
     skipSyncEmailOnboardingStep: OnboardingStepSuccess
     skipBookOnboardingStep: OnboardingStepSuccess
     checkoutSession: BillingSession
@@ -3035,11 +3040,6 @@ export interface Mutation {
     duplicateDashboard: DuplicatedDashboard
     impersonate: Impersonate
     callViaPbx: CallViaPbxResult
-    ensoSetMyDefaultView: EnsoDefaultView[]
-    ensoSetMyColumnWidth: EnsoColumnWidth[]
-    ensoSetRoleDefaultViews: EnsoDefaultView[]
-    ensoSetRoleViewTemplates: Scalars['Int']
-    ensoProvisionRoleViewCopies: Scalars['Int']
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
     createDealComment: DealCommentResult
     deleteDealComment: DealCommentResult
@@ -4208,6 +4208,33 @@ export interface PageLayoutGenqlSelection{
     createdAt?: boolean | number
     updatedAt?: boolean | number
     deletedAt?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoDefaultViewGenqlSelection{
+    objectMetadataId?: boolean | number
+    viewId?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoColumnWidthGenqlSelection{
+    viewId?: boolean | number
+    fieldMetadataId?: boolean | number
+    size?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoViewerScopeGenqlSelection{
+    isRecordScoped?: boolean | number
+    hiddenNavigationObjectNameSingulars?: boolean | number
+    defaultViews?: EnsoDefaultViewGenqlSelection
+    defaultViewsVersion?: boolean | number
+    personalDefaultViews?: EnsoDefaultViewGenqlSelection
+    personalColumnWidths?: EnsoColumnWidthGenqlSelection
+    personalViewObjectMetadataIds?: boolean | number
     __typename?: boolean | number
     __scalar?: boolean | number
 }
@@ -5545,33 +5572,6 @@ export interface DealCommentResultGenqlSelection{
     __scalar?: boolean | number
 }
 
-export interface EnsoDefaultViewGenqlSelection{
-    objectMetadataId?: boolean | number
-    viewId?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
-export interface EnsoColumnWidthGenqlSelection{
-    viewId?: boolean | number
-    fieldMetadataId?: boolean | number
-    size?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
-export interface EnsoViewerScopeGenqlSelection{
-    isRecordScoped?: boolean | number
-    hiddenNavigationObjectNameSingulars?: boolean | number
-    defaultViews?: EnsoDefaultViewGenqlSelection
-    defaultViewsVersion?: boolean | number
-    personalDefaultViews?: EnsoDefaultViewGenqlSelection
-    personalColumnWidths?: EnsoColumnWidthGenqlSelection
-    personalViewObjectMetadataIds?: boolean | number
-    __typename?: boolean | number
-    __scalar?: boolean | number
-}
-
 export interface GoogleChatNotificationPreferenceGenqlSelection{
     event?: boolean | number
     enabled?: boolean | number
@@ -6004,6 +6004,7 @@ export interface QueryGenqlSelection{
     getViewFieldGroup?: (ViewFieldGroupGenqlSelection & { __args: {id: Scalars['String']} })
     apiKeys?: ApiKeyGenqlSelection
     apiKey?: (ApiKeyGenqlSelection & { __args: {input: GetApiKeyInput} })
+    ensoViewerScope?: EnsoViewerScopeGenqlSelection
     billingPortalSession?: (BillingSessionGenqlSelection & { __args?: {returnUrlPath?: (Scalars['String'] | null)} })
     listPlans?: BillingPlanGenqlSelection
     getResourceCreditUsage?: BillingResourceCreditUsageGenqlSelection
@@ -6093,7 +6094,6 @@ export interface QueryGenqlSelection{
     pieChartData?: (PieChartDataGenqlSelection & { __args: {input: PieChartDataInput} })
     lineChartData?: (LineChartDataGenqlSelection & { __args: {input: LineChartDataInput} })
     barChartData?: (BarChartDataGenqlSelection & { __args: {input: BarChartDataInput} })
-    ensoViewerScope?: EnsoViewerScopeGenqlSelection
     ensoLeadLookup?: (EnsoLeadLookupResultGenqlSelection & { __args: {searchTerm: Scalars['String']} })
     ensoLeadProfile?: (EnsoLeadProfileGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null)} })
     taskEmailContext?: (TaskEmailContextGenqlSelection & { __args: {taskId: Scalars['String']} })
@@ -6192,6 +6192,11 @@ export interface MutationGenqlSelection{
     assignRoleToApiKey?: { __args: {apiKeyId: Scalars['UUID'], roleId: Scalars['UUID']} }
     createObjectEvent?: (AnalyticsGenqlSelection & { __args: {event: Scalars['String'], recordId: Scalars['UUID'], objectMetadataId: Scalars['UUID'], properties?: (Scalars['JSON'] | null)} })
     trackAnalytics?: (AnalyticsGenqlSelection & { __args: {type: AnalyticsType, name?: (Scalars['String'] | null), event?: (Scalars['String'] | null), properties?: (Scalars['JSON'] | null)} })
+    ensoSetMyDefaultView?: (EnsoDefaultViewGenqlSelection & { __args: {objectMetadataId: Scalars['String'], viewId?: (Scalars['String'] | null)} })
+    ensoSetMyColumnWidth?: (EnsoColumnWidthGenqlSelection & { __args: {viewId: Scalars['String'], fieldMetadataId: Scalars['String'], size?: (Scalars['Int'] | null)} })
+    ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
+    ensoSetRoleViewTemplates?: { __args: {roleId: Scalars['String'], templates: EnsoRoleViewTemplateInput[]} }
+    ensoProvisionRoleViewCopies?: { __args: {roleId: Scalars['String']} }
     skipSyncEmailOnboardingStep?: OnboardingStepSuccessGenqlSelection
     skipBookOnboardingStep?: OnboardingStepSuccessGenqlSelection
     checkoutSession?: (BillingSessionGenqlSelection & { __args: {recurringInterval: SubscriptionInterval, plan: BillingPlanKey, requirePaymentMethod: Scalars['Boolean'], successUrlPath?: (Scalars['String'] | null)} })
@@ -6329,11 +6334,6 @@ export interface MutationGenqlSelection{
     duplicateDashboard?: (DuplicatedDashboardGenqlSelection & { __args: {id: Scalars['UUID']} })
     impersonate?: (ImpersonateGenqlSelection & { __args: {userId: Scalars['UUID'], workspaceId: Scalars['UUID']} })
     callViaPbx?: (CallViaPbxResultGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
-    ensoSetMyDefaultView?: (EnsoDefaultViewGenqlSelection & { __args: {objectMetadataId: Scalars['String'], viewId?: (Scalars['String'] | null)} })
-    ensoSetMyColumnWidth?: (EnsoColumnWidthGenqlSelection & { __args: {viewId: Scalars['String'], fieldMetadataId: Scalars['String'], size?: (Scalars['Int'] | null)} })
-    ensoSetRoleDefaultViews?: (EnsoDefaultViewGenqlSelection & { __args: {roleId: Scalars['String'], defaultViews: EnsoDefaultViewInput[]} })
-    ensoSetRoleViewTemplates?: { __args: {roleId: Scalars['String'], templates: EnsoRoleViewTemplateInput[]} }
-    ensoProvisionRoleViewCopies?: { __args: {roleId: Scalars['String']} }
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
     createDealComment?: (DealCommentResultGenqlSelection & { __args: {opportunityId: Scalars['String'], body: Scalars['String'], mentionedWorkspaceMemberIds: Scalars['String'][]} })
     deleteDealComment?: (DealCommentResultGenqlSelection & { __args: {commentId: Scalars['String']} })
@@ -6515,6 +6515,10 @@ export interface CreateApiKeyInput {name: Scalars['String'],expiresAt: Scalars['
 export interface UpdateApiKeyInput {id: Scalars['UUID'],name?: (Scalars['String'] | null),expiresAt?: (Scalars['String'] | null),revokedAt?: (Scalars['String'] | null)}
 
 export interface RevokeApiKeyInput {id: Scalars['UUID']}
+
+export interface EnsoDefaultViewInput {objectMetadataId: Scalars['String'],viewId: Scalars['String']}
+
+export interface EnsoRoleViewTemplateInput {objectMetadataId: Scalars['String'],viewIds: Scalars['String'][]}
 
 export interface CreateApprovedAccessDomainInput {domain: Scalars['String'],email: Scalars['String']}
 
@@ -6715,10 +6719,6 @@ export interface SetupSAMLSsoInput {name: Scalars['String'],issuer: Scalars['Str
 export interface DeleteSsoInput {identityProviderId: Scalars['UUID']}
 
 export interface EditSsoInput {id: Scalars['UUID'],status: SSOIdentityProviderStatus}
-
-export interface EnsoDefaultViewInput {objectMetadataId: Scalars['String'],viewId: Scalars['String']}
-
-export interface EnsoRoleViewTemplateInput {objectMetadataId: Scalars['String'],viewIds: Scalars['String'][]}
 
 export interface SetGoogleChatWebhookUrlInput {webhookUrl: Scalars['String']}
 
@@ -7363,6 +7363,30 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     export const isPageLayout = (obj?: { __typename?: any } | null): obj is PageLayout => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isPageLayout"')
       return PageLayout_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoDefaultView_possibleTypes: string[] = ['EnsoDefaultView']
+    export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
+      return EnsoDefaultView_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoColumnWidth_possibleTypes: string[] = ['EnsoColumnWidth']
+    export const isEnsoColumnWidth = (obj?: { __typename?: any } | null): obj is EnsoColumnWidth => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoColumnWidth"')
+      return EnsoColumnWidth_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoViewerScope_possibleTypes: string[] = ['EnsoViewerScope']
+    export const isEnsoViewerScope = (obj?: { __typename?: any } | null): obj is EnsoViewerScope => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoViewerScope"')
+      return EnsoViewerScope_possibleTypes.includes(obj.__typename)
     }
     
 
@@ -8515,30 +8539,6 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     export const isDealCommentResult = (obj?: { __typename?: any } | null): obj is DealCommentResult => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isDealCommentResult"')
       return DealCommentResult_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoDefaultView_possibleTypes: string[] = ['EnsoDefaultView']
-    export const isEnsoDefaultView = (obj?: { __typename?: any } | null): obj is EnsoDefaultView => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoDefaultView"')
-      return EnsoDefaultView_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoColumnWidth_possibleTypes: string[] = ['EnsoColumnWidth']
-    export const isEnsoColumnWidth = (obj?: { __typename?: any } | null): obj is EnsoColumnWidth => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoColumnWidth"')
-      return EnsoColumnWidth_possibleTypes.includes(obj.__typename)
-    }
-    
-
-
-    const EnsoViewerScope_possibleTypes: string[] = ['EnsoViewerScope']
-    export const isEnsoViewerScope = (obj?: { __typename?: any } | null): obj is EnsoViewerScope => {
-      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoViewerScope"')
-      return EnsoViewerScope_possibleTypes.includes(obj.__typename)
     }
     
 
