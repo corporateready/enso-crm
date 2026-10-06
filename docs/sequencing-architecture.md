@@ -67,7 +67,8 @@ same gate:
 
 ## The stage gate (lock the steps)
 
-Two hard rules on the stage field, **scoped to Connected for now**:
+Two hard rules on the stage field, **across all open stages** (backend guard built —
+`src/modules/enso/deal-stage-gate`; the frontend popup is not built yet):
 
 1. **No skipping** — a deal can move forward only to the immediately-next stage.
 2. **No advance without that stage's required fields.**
@@ -92,7 +93,12 @@ Enforcement lives in two new surfaces (this is **not** the scanner):
   The engine's auto-advance flows through this same guard — one set of rules for
   humans and the engine alike.
 
-Required fields per stage (from the real pipeline; only Connected enforced now):
+Required fields per stage live in ONE list, `DEAL_STAGE_REQUIREMENTS`
+(`deal-stage-gate.constants.ts`), read by the guard, the manual lead form and the
+future popup. Enforced today: Lead Claimed = owner, Connected = first contact
+date + channel, Closed Lost = lost reason; Deep Qualification/Demo/Contracting have
+none until their fields exist. Moving back, closing, and reopening a closed deal
+are never skip-checked. Design table:
 
 | Transition | Required fields | Who fills |
 |---|---|---|

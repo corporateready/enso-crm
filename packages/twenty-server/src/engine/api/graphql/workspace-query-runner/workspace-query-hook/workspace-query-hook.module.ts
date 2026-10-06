@@ -11,6 +11,7 @@ import { DashboardQueryHookModule } from 'src/modules/dashboard/query-hooks/dash
 import { CompanyEnrichmentModule } from 'src/modules/enso/company-enrichment/company-enrichment.module';
 import { CompanyMergeModule } from 'src/modules/enso/company-merge/company-merge.module';
 import { DealCommentQueryHookModule } from 'src/modules/enso/deal-comment/deal-comment-query-hook.module';
+import { DealStageGateQueryHookModule } from 'src/modules/enso/deal-stage-gate/deal-stage-gate-query-hook.module';
 import { InboundActivityQueryHookModule } from 'src/modules/enso/inbound-activity/inbound-activity-query-hook.module';
 import { LeadPipelineModule } from 'src/modules/enso/lead-pipeline/lead-pipeline.module';
 import { PersonMergeModule } from 'src/modules/enso/person-merge/person-merge.module';
@@ -37,6 +38,7 @@ import { WorkspaceMemberQueryHookModule } from 'src/modules/workspace-member/que
     CompanyEnrichmentModule,
     CompanyMergeModule,
     DealCommentQueryHookModule,
+    DealStageGateQueryHookModule,
     LeadPipelineModule,
     PersonMergeModule,
     PersonProjectAssignmentQueryHookModule,
