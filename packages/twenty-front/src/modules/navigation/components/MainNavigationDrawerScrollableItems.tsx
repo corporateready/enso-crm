@@ -2,6 +2,7 @@ import { NavigationDrawerOpenedSection } from '@/navigation-menu-item/display/se
 import { NavigationDrawerWorkspaceSectionSkeletonLoader } from '@/object-metadata/components/NavigationDrawerWorkspaceSectionSkeletonLoader';
 
 import { isLayoutCustomizationModeEnabledState } from '@/layout-customization/states/isLayoutCustomizationModeEnabledState';
+import { NewLeadLauncher } from '@/enso/manual-lead/components/NewLeadLauncher';
 import { LogActivityLauncher } from '@/navigation/components/LogActivityLauncher';
 import { NavigationDrawerOtherSection } from '@/navigation/components/NavigationDrawerOtherSection';
 import { RoutingPresenceSection } from '@/navigation/components/RoutingPresenceSection';
@@ -51,6 +52,7 @@ export const MainNavigationDrawerScrollableItems = () => {
           {/* One section, so these sit at list spacing rather than floating
               apart as separate blocks. */}
           <NavigationDrawerSection>
+            <NewLeadLauncher />
             <LogActivityLauncher />
             <RoutingPresenceSection />
           </NavigationDrawerSection>

@@ -100,5 +100,11 @@ task due today until call/form cadences exist.
      person first touch); VERBAL consent limited to the ticked channels.
    - Known gap: a B2B contact (work email) can attach to another manager's open
      company deal through the company dedup, which the duplicate check does not see.
-4. Frontend "New lead" launcher.
+4. ✅ Frontend — `packages/twenty-front/src/modules/enso/manual-lead`: "New lead" in the
+   sidebar above "Log activity" → modal: project, contact (duplicate check on blur
+   shows REUSE / BLOCKED before submit), source (filtered by project; referral asks
+   for a name), when, who works it (Me + Lead Claimed / Connected with first
+   contact date + channel; a colleague; routing), verbal consent ticks, note. On
+   success opens the deal. v1 takes the referrer as a name only (no contact
+   picker).
 5. Done = real managers' leads reaching Connected, not a synthetic test.
