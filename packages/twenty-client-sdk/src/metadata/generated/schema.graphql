@@ -1409,6 +1409,27 @@ enum PageLayoutType {
   STANDALONE_PAGE
 }
 
+type EnsoDefaultView {
+  objectMetadataId: String!
+  viewId: String!
+}
+
+type EnsoColumnWidth {
+  viewId: String!
+  fieldMetadataId: String!
+  size: Int!
+}
+
+type EnsoViewerScope {
+  isRecordScoped: Boolean!
+  hiddenNavigationObjectNameSingulars: [String!]!
+  defaultViews: [EnsoDefaultView!]!
+  defaultViewsVersion: String
+  personalDefaultViews: [EnsoDefaultView!]!
+  personalColumnWidths: [EnsoColumnWidth!]!
+  personalViewObjectMetadataIds: [String!]!
+}
+
 type ApplicationConnectionProviderOAuthConfig {
   scopes: [String!]!
   isClientCredentialsConfigured: Boolean!
@@ -2607,27 +2628,6 @@ type DealCommentResult {
   commentId: String
 }
 
-type EnsoDefaultView {
-  objectMetadataId: String!
-  viewId: String!
-}
-
-type EnsoColumnWidth {
-  viewId: String!
-  fieldMetadataId: String!
-  size: Int!
-}
-
-type EnsoViewerScope {
-  isRecordScoped: Boolean!
-  hiddenNavigationObjectNameSingulars: [String!]!
-  defaultViews: [EnsoDefaultView!]!
-  defaultViewsVersion: String
-  personalDefaultViews: [EnsoDefaultView!]!
-  personalColumnWidths: [EnsoColumnWidth!]!
-  personalViewObjectMetadataIds: [String!]!
-}
-
 type GoogleChatNotificationPreference {
   event: String!
   enabled: Boolean!
@@ -3103,6 +3103,7 @@ type Query {
   getViewFieldGroup(id: String!): ViewFieldGroup
   apiKeys: [ApiKey!]!
   apiKey(input: GetApiKeyInput!): ApiKey
+  ensoViewerScope: EnsoViewerScope!
   billingPortalSession(returnUrlPath: String): BillingSession!
   listPlans: [BillingPlan!]!
   getResourceCreditUsage: [BillingResourceCreditUsage!]!
@@ -3201,7 +3202,6 @@ type Query {
   pieChartData(input: PieChartDataInput!): PieChartData!
   lineChartData(input: LineChartDataInput!): LineChartData!
   barChartData(input: BarChartDataInput!): BarChartData!
-  ensoViewerScope: EnsoViewerScope!
   ensoLeadLookup(searchTerm: String!): EnsoLeadLookupResult!
   ensoLeadProfile(personId: String, opportunityId: String): EnsoLeadProfile!
   taskEmailContext(taskId: String!): TaskEmailContext!
@@ -3346,6 +3346,11 @@ type Mutation {
   assignRoleToApiKey(apiKeyId: UUID!, roleId: UUID!): Boolean!
   createObjectEvent(event: String!, recordId: UUID!, objectMetadataId: UUID!, properties: JSON): Analytics!
   trackAnalytics(type: AnalyticsType!, name: String, event: String, properties: JSON): Analytics!
+  ensoSetMyDefaultView(objectMetadataId: String!, viewId: String): [EnsoDefaultView!]!
+  ensoSetMyColumnWidth(viewId: String!, fieldMetadataId: String!, size: Int): [EnsoColumnWidth!]!
+  ensoSetRoleDefaultViews(roleId: String!, defaultViews: [EnsoDefaultViewInput!]!): [EnsoDefaultView!]!
+  ensoSetRoleViewTemplates(roleId: String!, templates: [EnsoRoleViewTemplateInput!]!): Int!
+  ensoProvisionRoleViewCopies(roleId: String!): Int!
   skipSyncEmailOnboardingStep: OnboardingStepSuccess!
   skipBookOnboardingStep: OnboardingStepSuccess!
   checkoutSession(recurringInterval: SubscriptionInterval!, plan: BillingPlanKey! = PRO, requirePaymentMethod: Boolean! = true, successUrlPath: String): BillingSession!
@@ -3483,11 +3488,6 @@ type Mutation {
   duplicateDashboard(id: UUID!): DuplicatedDashboard!
   impersonate(userId: UUID!, workspaceId: UUID!): Impersonate!
   callViaPbx(personId: String, opportunityId: String, taskId: String): CallViaPbxResult!
-  ensoSetMyDefaultView(objectMetadataId: String!, viewId: String): [EnsoDefaultView!]!
-  ensoSetMyColumnWidth(viewId: String!, fieldMetadataId: String!, size: Int): [EnsoColumnWidth!]!
-  ensoSetRoleDefaultViews(roleId: String!, defaultViews: [EnsoDefaultViewInput!]!): [EnsoDefaultView!]!
-  ensoSetRoleViewTemplates(roleId: String!, templates: [EnsoRoleViewTemplateInput!]!): Int!
-  ensoProvisionRoleViewCopies(roleId: String!): Int!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
   createDealComment(opportunityId: String!, body: String!, mentionedWorkspaceMemberIds: [String!]!): DealCommentResult!
   deleteDealComment(commentId: String!): DealCommentResult!
@@ -3880,6 +3880,16 @@ input RevokeApiKeyInput {
 enum AnalyticsType {
   PAGEVIEW
   TRACK
+}
+
+input EnsoDefaultViewInput {
+  objectMetadataId: String!
+  viewId: String!
+}
+
+input EnsoRoleViewTemplateInput {
+  objectMetadataId: String!
+  viewIds: [String!]!
 }
 
 input CreateApprovedAccessDomainInput {
@@ -4551,16 +4561,6 @@ input DeleteSsoInput {
 input EditSsoInput {
   id: UUID!
   status: SSOIdentityProviderStatus!
-}
-
-input EnsoDefaultViewInput {
-  objectMetadataId: String!
-  viewId: String!
-}
-
-input EnsoRoleViewTemplateInput {
-  objectMetadataId: String!
-  viewIds: [String!]!
 }
 
 input SetGoogleChatWebhookUrlInput {
