@@ -11,6 +11,7 @@ import {
   PERSON_RELATION_REASSIGNMENTS,
 } from 'src/modules/enso/person-merge/person-merge.constants';
 import { arePhonesSameLine } from 'src/modules/enso/person-merge/utils/phone-match.util';
+import { selectFamilyLinksToRemoveAfterMerge } from 'src/modules/enso/person-relationship/utils/select-family-links-to-remove-after-merge.util';
 import { buildMergeTimelineActivityInsert } from 'src/modules/enso/record-merge/merge-timeline.util';
 import { reassignRelations } from 'src/modules/enso/record-merge/reassign-relations.util';
 
@@ -129,6 +130,38 @@ export class PersonMergeExecutorService {
         if (redundantRowCount > 0) {
           this.logger.log(
             `Person merge into keeper ${keeper.id}: left ${redundantRowCount} redundant row(s) on the duplicates; the keeper already had an equivalent.`,
+          );
+        }
+
+        // 1b) Family links now all point at the keeper: drop the self-link a
+        // duplicate↔keeper link turned into, and any relative now linked
+        // twice (best-effort — a leftover row is cosmetic, not a lost record).
+        try {
+          const relationshipRepository =
+            await this.globalWorkspaceOrmManager.getRepository<any>(
+              workspaceId,
+              'personRelationship',
+              { shouldBypassPermissionChecks: true },
+            );
+          const keeperLinks = await relationshipRepository.find({
+            where: [{ personId: keeper.id }, { relatedPersonId: keeper.id }],
+          });
+          const linkIdsToRemove =
+            selectFamilyLinksToRemoveAfterMerge(keeperLinks);
+
+          if (linkIdsToRemove.length > 0) {
+            await relationshipRepository.softDelete({
+              id: In(linkIdsToRemove),
+            });
+            this.logger.log(
+              `Person merge into keeper ${keeper.id}: moved ${linkIdsToRemove.length} self-referencing or duplicate family link row(s) to trash.`,
+            );
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Family link tidy-up after merging into ${keeper.id} failed: ${
+              (error as Error).message
+            }`,
           );
         }
 
