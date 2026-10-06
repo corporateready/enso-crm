@@ -236,6 +236,23 @@ export const ENSO_RECORD_VISIBILITY_RULES: Record<
   personProjectConsentEvent: {
     buildCondition: (args) => personTextColumnIsOwned(args, 'personId'),
   },
+  // A household (shown as "Families") is visible when anyone in it is: it is
+  // only a name over people, so it carries no more than its members do.
+  household: {
+    buildCondition: (args) => {
+      const memberArgs: EnsoRecordVisibilityConditionArgs = {
+        ...args,
+        ref: (columnName) => `hm."${columnName}"`,
+      };
+
+      return `EXISTS (
+        SELECT 1 FROM ${args.schema}."person" hm
+        WHERE hm."householdId" = ${args.ref('id')}
+          AND hm."deletedAt" IS NULL
+          AND ${personColumnIsVisible(memberArgs, 'id')}
+      )`;
+    },
+  },
   // A family link is visible when either person on it is: the manager's own
   // client, or a relative they created themselves.
   personRelationship: {

@@ -17,6 +17,7 @@ import {
   PERSON_RELATIONSHIP_DRAFT_CLEANUP_CRON_PATTERN,
   PERSON_RELATIONSHIP_DRAFT_MAX_AGE_HOURS,
 } from 'src/modules/enso/person-relationship/person-relationship.constants';
+import { HouseholdSyncService } from 'src/modules/enso/person-relationship/services/household-sync.service';
 import { type RelationshipRow } from 'src/modules/enso/person-relationship/utils/plan-partner-sync.util';
 
 // Twenty creates the family-link record the moment a manager clicks "Add new",
@@ -35,6 +36,7 @@ export class PersonRelationshipDraftCleanupCronJob {
     private readonly workspaceRepository: Repository<WorkspaceEntity>,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly exceptionHandlerService: ExceptionHandlerService,
+    private readonly householdSyncService: HouseholdSyncService,
   ) {}
 
   @Process(PersonRelationshipDraftCleanupCronJob.name)
@@ -50,6 +52,9 @@ export class PersonRelationshipDraftCleanupCronJob {
     for (const workspace of workspaces) {
       try {
         await this.cleanWorkspace(workspace.id);
+        // Households are derived from the links; repair whatever an
+        // individual edit could not see (a relative swapped out, a merge).
+        await this.householdSyncService.reconcileWorkspace(workspace.id);
       } catch (error) {
         this.logger.error(
           `family-link draft cleanup failed for workspace ${workspace.id}: ${(error as Error).message}`,
