@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { PersonRelationshipDraftCleanupCronCommand } from 'src/modules/enso/person-relationship/commands/person-relationship-draft-cleanup.cron.command';
+import { HouseholdSyncService } from 'src/modules/enso/person-relationship/services/household-sync.service';
 import { PersonRelationshipDraftCleanupCronJob } from 'src/modules/enso/person-relationship/jobs/person-relationship-draft-cleanup.cron.job';
 
 // The abandoned family-link draft cleanup + its registration command. Imported
@@ -14,6 +15,7 @@ import { PersonRelationshipDraftCleanupCronJob } from 'src/modules/enso/person-r
   providers: [
     PersonRelationshipDraftCleanupCronJob,
     PersonRelationshipDraftCleanupCronCommand,
+    HouseholdSyncService,
   ],
   exports: [PersonRelationshipDraftCleanupCronCommand],
 })

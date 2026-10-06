@@ -185,6 +185,27 @@ a self-link.
 The pattern (composite-name + mirror-write) is documented as a reusable
 recipe in [systems/junction-composite-name-pattern](../systems/junction-composite-name-pattern).
 
+### Households — the Families list
+
+Everyone connected through family links forms one **household** (object
+`household`, labelled **Family / Families**; each person has a `household`
+field, inverse **Members**). Households are derived, never entered:
+
+- After every family-link write the server regroups the people on that link
+  (`HouseholdSyncService.syncAround`); the daily 03:17 cron re-derives the
+  whole workspace (`reconcileWorkspace`) to repair anything an edit could not
+  see (a relative swapped out, a merge).
+- A group keeps the household most of its members already had, so manual
+  names survive. When two families connect, the smaller household folds into
+  the larger; when one splits, the larger part keeps it and the rest get a new
+  one. A new household is named "<most common last name> Family".
+- A Sales Manager sees a household only when they can see at least one of its
+  members, and may rename but not delete one.
+
+Opening a Family record shows the family diagram, started from its
+longest-known member. The individual links are labelled **Family Links** and
+are edited from a person's Family tab (Add relative, and each card's menu).
+
 ### Hidden complement on Person
 
 Person has two inverse collections from `personRelationship`:

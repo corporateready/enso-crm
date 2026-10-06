@@ -19,6 +19,9 @@ export const ENSO_HIDDEN_NAVIGATION_OBJECT_NAME_SINGULARS = [
   // Read on the deal's Comments tab, never browsed as a table.
   'dealComment',
   'dealCommentMention',
+  // Individual family links are edited on a person's Family tab; the
+  // Families list (households) is what a manager browses.
+  'personRelationship',
   // The Consent, Projects and Activities folders. Assignments, consents and
   // touches are things a manager reads and writes ON a contact or a deal, in
   // the relation panels of a record they own — not tables they browse. Hiding

@@ -1,8 +1,6 @@
 import { useContext } from 'react';
 
 import { useActivityTargetObjectRecords } from '@/activities/hooks/useActivityTargetObjectRecords';
-import { EnsoFamilyFieldSummary } from '@/enso/family-tree/components/EnsoFamilyFieldSummary';
-import { isEnsoFamilyField } from '@/enso/family-tree/utils/isEnsoFamilyField';
 import { type NoteTarget } from '@/activities/types/NoteTarget';
 import { type TaskTarget } from '@/activities/types/TaskTarget';
 import { useObjectMetadataItems } from '@/object-metadata/hooks/useObjectMetadataItems';
@@ -74,12 +72,6 @@ export const RelationFromManyFieldDisplay = () => {
 
   if (!isDefined(relationObjectNameSingular)) {
     return null;
-  }
-
-  if (isEnsoFamilyField(objectMetadataNameSingular, fieldName)) {
-    return fieldValue.length > 0 ? (
-      <EnsoFamilyFieldSummary relativeCount={fieldValue.length} />
-    ) : null;
   }
 
   const isRelationFromActivityTargets = isActivityTargetField(

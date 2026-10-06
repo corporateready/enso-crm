@@ -11,6 +11,7 @@ import { PersonRelationshipRestoreOnePostQueryHook } from 'src/modules/enso/pers
 import { PersonRelationshipUpdateManyPostQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-update-many.post-query-hook';
 import { PersonRelationshipUpdateOnePostQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-update-one.post-query-hook';
 import { PersonRelationshipUpdateOnePreQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-update-one.pre-query-hook';
+import { HouseholdSyncService } from 'src/modules/enso/person-relationship/services/household-sync.service';
 import { PersonRelationshipMirrorService } from 'src/modules/enso/person-relationship/services/person-relationship-mirror.service';
 import { PersonRelationshipNameService } from 'src/modules/enso/person-relationship/services/person-relationship-name.service';
 import { PersonRelationshipValidationService } from 'src/modules/enso/person-relationship/services/person-relationship-validation.service';
@@ -19,6 +20,7 @@ import { PersonRelationshipValidationService } from 'src/modules/enso/person-rel
   providers: [
     PersonRelationshipNameService,
     PersonRelationshipMirrorService,
+    HouseholdSyncService,
     PersonRelationshipValidationService,
     PersonRelationshipCreateOnePreQueryHook,
     PersonRelationshipCreateManyPreQueryHook,

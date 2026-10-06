@@ -82,6 +82,10 @@ const WORKED_OBJECTS = [
 // Ownership records: editable, never deletable. See EDITABLE_NOT_DELETABLE.
 const OWNERSHIP_OBJECTS = ['personProjectAssignment', 'companyProjectAssignment'];
 
+// Households are derived from family links by the server; a manager may rename
+// one but never delete it (it would come back on the next link change).
+const HOUSEHOLD_OBJECTS = ['household'];
+
 // System objects (attachment, noteTarget, taskTarget, blocklist) reject object
 // permissions by design and inherit access from what they hang off. They are
 // still record-scoped by src/modules/enso/record-visibility.
@@ -122,6 +126,7 @@ const HIDDEN_OBJECTS = [
 const PLAN = [
   ...WORKED_OBJECTS.map((name) => [name, FULL]),
   ...OWNERSHIP_OBJECTS.map((name) => [name, EDITABLE_NOT_DELETABLE]),
+  ...HOUSEHOLD_OBJECTS.map((name) => [name, EDITABLE_NOT_DELETABLE]),
   ...OBSERVED_OBJECTS.map((name) => [name, READ_ONLY]),
   ...REFERENCE_OBJECTS.map((name) => [name, READ_ONLY]),
   ...HIDDEN_OBJECTS.map((name) => [name, HIDDEN]),

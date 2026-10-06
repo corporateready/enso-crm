@@ -5,37 +5,31 @@ import { useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { FamilyTreeCard } from '@/enso/family-tree/components/FamilyTreeCard';
+import { useFamilyTreeLinks } from '@/enso/family-tree/hooks/useFamilyTreeLinks';
 import {
   buildFamilyGraph,
-  type FamilyLink,
   type FamilyRelation,
 } from '@/enso/family-tree/utils/buildFamilyGraph';
-import {
-  FAMILY_NODE_HEIGHT,
-  FAMILY_NODE_WIDTH,
-  layoutFamilyGraph,
-} from '@/enso/family-tree/utils/layoutFamilyGraph';
+import { layoutFamilyGraph } from '@/enso/family-tree/utils/layoutFamilyGraph';
+import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
+import { useDeleteOneRecord } from '@/object-record/hooks/useDeleteOneRecord';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 
-// ENSO — "<Last name> Family" tab on a Person: a connected family tree drawn
-// from the family links. Couples are joined by a line and each set of parents
+// ENSO — the family diagram, on a Person's Family tab and on a Family
+// (household) record. Couples are joined by a line and each set of parents
 // connects to their own children. Clicking a relative re-centres the tree on
-// them in place. Read-only; links are added and removed on the Family field.
-// A scoped manager sees only the links their visibility rules allow.
+// them in place; each card's menu opens the profile or changes / removes the
+// link, and "Add relative" starts a new one. A scoped manager sees only the
+// links their visibility rules allow.
 export const ENSO_PERSON_FAMILY_TREE_MARKER = '__enso_person_family_tree';
 
-const LINK_GQL_FIELDS = {
-  id: true,
-  name: true,
-  personId: true,
-  relatedPersonId: true,
-  relationType: true,
-  relatedPerson: { id: true, name: true },
-};
-
 type PersonName = { firstName?: string; lastName?: string };
+
+// Space under the last row so a card's menu is not clipped.
+const MENU_ROOM = 120;
 
 const StyledContainer = styled.div`
   box-sizing: border-box;
@@ -62,14 +56,25 @@ const StyledTitle = styled.div`
 
 const StyledActions = styled.div`
   display: flex;
+  flex-wrap: wrap;
   gap: ${themeCssVariables.spacing[2]};
 `;
 
-const StyledAction = styled.button`
-  background: ${themeCssVariables.background.secondary};
-  border: 1px solid ${themeCssVariables.border.color.medium};
+const StyledAction = styled.button<{ $isPrimary?: boolean }>`
+  background: ${({ $isPrimary }) =>
+    $isPrimary
+      ? themeCssVariables.color.blue
+      : themeCssVariables.background.secondary};
+  border: 1px solid
+    ${({ $isPrimary }) =>
+      $isPrimary
+        ? themeCssVariables.color.blue
+        : themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${themeCssVariables.font.color.secondary};
+  color: ${({ $isPrimary }) =>
+    $isPrimary
+      ? themeCssVariables.font.color.inverted
+      : themeCssVariables.font.color.secondary};
   cursor: pointer;
   font-size: ${themeCssVariables.font.size.sm};
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
@@ -98,111 +103,69 @@ const StyledLines = styled.svg`
   top: 0;
 `;
 
-const StyledMember = styled.button<{ $isFocus: boolean }>`
-  align-items: center;
-  background: ${({ $isFocus }) =>
-    $isFocus
-      ? themeCssVariables.background.tertiary
-      : themeCssVariables.background.primary};
-  border: 1px solid
-    ${({ $isFocus }) =>
-      $isFocus
-        ? themeCssVariables.border.color.strong
-        : themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.md};
-  box-sizing: border-box;
-  color: ${themeCssVariables.font.color.primary};
-  cursor: ${({ $isFocus }) => ($isFocus ? 'default' : 'pointer')};
-  display: flex;
-  flex-direction: column;
-  font-size: ${themeCssVariables.font.size.sm};
-  justify-content: center;
-  padding: 0 ${themeCssVariables.spacing[2]};
-  position: absolute;
-`;
-
-const StyledName = styled.span`
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const StyledRelation = styled.span`
-  color: ${themeCssVariables.font.color.tertiary};
-  font-size: ${themeCssVariables.font.size.xs};
-`;
-
 export const PersonFamilyTree = () => {
   const { t } = useLingui();
   const { targetRecordIdentifier } = useLayoutRenderingContext();
   const recordId = targetRecordIdentifier?.id;
-  const isPerson =
-    targetRecordIdentifier?.targetObjectNameSingular === 'person';
+  const objectName = targetRecordIdentifier?.targetObjectNameSingular;
+  const isPerson = objectName === 'person';
+  const isHousehold = objectName === 'household';
 
-  // Which relative the tree is centred on; tied to the record so moving to
-  // another person's page starts from that person again.
-  const [focus, setFocus] = useState<{ recordId?: string; personId: string }>();
+  // On a Family record, the tree starts from its longest-known member.
+  const { records: householdRecords = [] } = useFindManyRecords({
+    objectNameSingular: 'household',
+    filter: { id: { eq: recordId } },
+    recordGqlFields: { id: true, name: true },
+    skip: !isHousehold || !isDefined(recordId),
+  });
+  const { records: members = [], loading: membersLoading } = useFindManyRecords(
+    {
+      objectNameSingular: 'person',
+      filter: { householdId: { eq: recordId } },
+      orderBy: [{ createdAt: 'AscNullsLast' }],
+      recordGqlFields: { id: true, name: true },
+      skip: !isHousehold || !isDefined(recordId),
+      limit: 1,
+    },
+  );
+  const startId = isPerson ? recordId : members[0]?.id;
+
+  // Which relative the tree is centred on; tied to the starting person so a
+  // different record starts from its own person again.
+  const [focus, setFocus] = useState<{ startId?: string; personId: string }>();
   const focusId =
-    isDefined(focus) && focus.recordId === recordId ? focus.personId : recordId;
-  const skip = !isPerson || !isDefined(recordId) || !isDefined(focusId);
+    isDefined(focus) && focus.startId === startId ? focus.personId : startId;
 
   const { records: people = [] } = useFindManyRecords({
     objectNameSingular: 'person',
-    filter: { id: { in: [recordId, focusId].filter(isDefined) } },
+    filter: { id: { in: [startId, focusId].filter(isDefined) } },
     recordGqlFields: { id: true, name: true },
-    skip,
+    skip: !isDefined(focusId),
   });
 
-  // Walk outwards from the person in focus, one hop per query. Each person's
-  // own rows are enough because every link is stored from both sides.
-  const { records: firstHop = [], loading: firstHopLoading } =
-    useFindManyRecords<FamilyLink & { __typename: string }>({
-      objectNameSingular: 'personRelationship',
-      filter: { personId: { eq: focusId } },
-      recordGqlFields: LINK_GQL_FIELDS,
-      skip,
-      limit: 200,
-    });
-
-  const relatedIds = (links: FamilyLink[], exclude: Set<string>) => [
-    ...new Set(
-      links
-        .map((link) => link.relatedPersonId)
-        .filter(isNonEmptyString)
-        .filter((id) => !exclude.has(id)),
-    ),
-  ];
-
-  const firstHopIds = relatedIds(firstHop, new Set([focusId ?? '']));
-
-  const { records: secondHop = [], loading: secondHopLoading } =
-    useFindManyRecords<FamilyLink & { __typename: string }>({
-      objectNameSingular: 'personRelationship',
-      filter: { personId: { in: firstHopIds } },
-      recordGqlFields: LINK_GQL_FIELDS,
-      skip: skip || firstHopIds.length === 0,
-      limit: 500,
-    });
-
-  const secondHopIds = relatedIds(
-    secondHop,
-    new Set([focusId ?? '', ...firstHopIds]),
-  );
-
-  const { records: thirdHop = [], loading: thirdHopLoading } =
-    useFindManyRecords<FamilyLink & { __typename: string }>({
-      objectNameSingular: 'personRelationship',
-      filter: { personId: { in: secondHopIds } },
-      recordGqlFields: LINK_GQL_FIELDS,
-      skip: skip || secondHopIds.length === 0,
-      limit: 500,
-    });
-
+  const { ownLinks, links, loading, refetch } = useFamilyTreeLinks(focusId);
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
+  const { createOneRecord } = useCreateOneRecord({
+    objectNameSingular: 'personRelationship',
+  });
+  const { deleteOneRecord } = useDeleteOneRecord({
+    objectNameSingular: 'personRelationship',
+  });
 
-  if (skip || !isDefined(focusId) || !isDefined(recordId)) {
+  if (!isPerson && !isHousehold) {
     return null;
+  }
+
+  if (!isDefined(startId) || !isDefined(focusId)) {
+    return (
+      <StyledContainer>
+        <StyledHint>
+          {isHousehold && !membersLoading
+            ? t`Nobody is in this family any more.`
+            : t`Loading…`}
+        </StyledHint>
+      </StyledContainer>
+    );
   }
 
   const nameOf = (id: string) => {
@@ -216,11 +179,31 @@ export const PersonFamilyTree = () => {
   };
 
   const focusName = nameOf(focusId);
-  const focusLabel = focusName.full || t`profile`;
-  const recordLabel = nameOf(recordId).full || t`this person`;
-  const title = isNonEmptyString(focusName.last)
-    ? t`${focusName.last} Family`
-    : t`Family`;
+  const householdName = householdRecords[0]?.name as string | undefined;
+  const title =
+    isHousehold && focusId === startId && isNonEmptyString(householdName)
+      ? householdName
+      : isNonEmptyString(focusName.last)
+        ? t`${focusName.last} Family`
+        : t`Family`;
+  const startLabel = nameOf(startId).full || t`the start`;
+  const focusLabel = focusName.full || t`this person`;
+
+  const addRelative = async () => {
+    const created = await createOneRecord({ personId: focusId });
+
+    if (isDefined(created?.id)) {
+      openRecordInSidePanel({
+        recordId: created.id,
+        objectNameSingular: 'personRelationship',
+      });
+    }
+  };
+
+  const directLinkTo = (personId: string) =>
+    ownLinks.find(
+      (link) => link.personId === focusId && link.relatedPersonId === personId,
+    );
 
   const relationLabels: Record<FamilyRelation, string> = {
     self: '',
@@ -245,30 +228,22 @@ export const PersonFamilyTree = () => {
     <StyledHeader>
       <StyledTitle>{title}</StyledTitle>
       <StyledActions>
-        <StyledAction
-          type="button"
-          onClick={() =>
-            openRecordInSidePanel({
-              recordId: focusId,
-              objectNameSingular: 'person',
-            })
-          }
-        >
-          {t`Open ${focusLabel}`}
+        <StyledAction type="button" $isPrimary onClick={addRelative}>
+          {t`+ Add relative to ${focusLabel}`}
         </StyledAction>
-        {focusId !== recordId && (
+        {focusId !== startId && (
           <StyledAction
             type="button"
-            onClick={() => setFocus({ recordId, personId: recordId })}
+            onClick={() => setFocus({ startId, personId: startId })}
           >
-            {t`Back to ${recordLabel}`}
+            {t`Back to ${startLabel}`}
           </StyledAction>
         )}
       </StyledActions>
     </StyledHeader>
   );
 
-  if (firstHopLoading || secondHopLoading || thirdHopLoading) {
+  if (loading && links.length === 0) {
     return (
       <StyledContainer>
         {header}
@@ -277,18 +252,14 @@ export const PersonFamilyTree = () => {
     );
   }
 
-  const graph = buildFamilyGraph(focusId, focusName.full, [
-    ...firstHop,
-    ...secondHop,
-    ...thirdHop,
-  ]);
+  const graph = buildFamilyGraph(focusId, focusName.full, links);
 
   if (graph.nodes.length <= 1) {
     return (
       <StyledContainer>
         {header}
         <StyledHint>
-          {t`No family links yet. Add relatives on the Family field.`}
+          {t`No relatives yet. Use "Add relative" to start the family.`}
         </StyledHint>
       </StyledContainer>
     );
@@ -299,35 +270,54 @@ export const PersonFamilyTree = () => {
   return (
     <StyledContainer>
       {header}
-      <StyledHint>{t`Click a relative to see the tree from their side.`}</StyledHint>
+      <StyledHint>
+        {t`Click a relative to see the tree from their side. Hover a card for more.`}
+      </StyledHint>
       <StyledScroller>
-        <StyledCanvas style={{ width: layout.width, height: layout.height }}>
+        <StyledCanvas
+          style={{ width: layout.width, height: layout.height + MENU_ROOM }}
+        >
           <StyledLines width={layout.width} height={layout.height}>
             {layout.paths.map((path, index) => (
               <path key={index} d={path} fill="none" strokeWidth={1.5} />
             ))}
           </StyledLines>
-          {layout.nodes.map((node) => (
-            <StyledMember
-              key={node.id}
-              type="button"
-              title={node.displayName}
-              $isFocus={node.id === focusId}
-              disabled={node.id === focusId}
-              style={{
-                left: node.x,
-                top: node.y,
-                width: FAMILY_NODE_WIDTH,
-                height: FAMILY_NODE_HEIGHT,
-              }}
-              onClick={() => setFocus({ recordId, personId: node.id })}
-            >
-              <StyledName>{node.displayName || t`Unknown`}</StyledName>
-              {isNonEmptyString(relationLabels[node.relation]) && (
-                <StyledRelation>{relationLabels[node.relation]}</StyledRelation>
-              )}
-            </StyledMember>
-          ))}
+          {layout.nodes.map((node) => {
+            const directLink = directLinkTo(node.id);
+
+            return (
+              <FamilyTreeCard
+                key={node.id}
+                name={node.displayName}
+                relation={relationLabels[node.relation]}
+                x={node.x}
+                y={node.y}
+                isFocus={node.id === focusId}
+                canEditLink={isDefined(directLink)}
+                onFocus={() => setFocus({ startId, personId: node.id })}
+                onOpenProfile={() =>
+                  openRecordInSidePanel({
+                    recordId: node.id,
+                    objectNameSingular: 'person',
+                  })
+                }
+                onChangeRelation={() => {
+                  if (isDefined(directLink)) {
+                    openRecordInSidePanel({
+                      recordId: directLink.id,
+                      objectNameSingular: 'personRelationship',
+                    });
+                  }
+                }}
+                onRemove={async () => {
+                  if (isDefined(directLink)) {
+                    await deleteOneRecord(directLink.id);
+                    await refetch();
+                  }
+                }}
+              />
+            );
+          })}
         </StyledCanvas>
       </StyledScroller>
     </StyledContainer>

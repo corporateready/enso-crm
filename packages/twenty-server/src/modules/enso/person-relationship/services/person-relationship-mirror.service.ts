@@ -5,6 +5,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { HouseholdSyncService } from 'src/modules/enso/person-relationship/services/household-sync.service';
 import { PersonRelationshipNameService } from 'src/modules/enso/person-relationship/services/person-relationship-name.service';
 import {
   isCompleteLink,
@@ -53,7 +54,32 @@ export class PersonRelationshipMirrorService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly nameService: PersonRelationshipNameService,
+    private readonly householdSyncService: HouseholdSyncService,
   ) {}
+
+  // Whatever happened to the link, the people on it (and on its other half)
+  // may now belong to a different household.
+  private async syncHouseholdsForLink(
+    authContext: WorkspaceAuthContext,
+    ref: RowRef,
+  ): Promise<void> {
+    const workspaceId = authContext.workspace?.id;
+
+    if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
+
+    const row: StoredRelationshipRow | null = await this.withRepository(
+      workspaceId,
+      (repository) =>
+        repository.findOne({ where: { id: ref.id }, withDeleted: true }),
+    );
+
+    if (!isDefined(row)) return;
+
+    await this.householdSyncService.syncAround(
+      workspaceId,
+      [row.personId, row.relatedPersonId].filter(isDefined),
+    );
+  }
 
   private async withRepository<TResult>(
     workspaceId: string,
@@ -88,6 +114,14 @@ export class PersonRelationshipMirrorService {
   // After a create or an update on either half: create, update or remove the
   // other half so both people see the same link.
   async syncPairFor(
+    authContext: WorkspaceAuthContext,
+    ref: RowRef,
+  ): Promise<void> {
+    await this.syncPair(authContext, ref);
+    await this.syncHouseholdsForLink(authContext, ref);
+  }
+
+  private async syncPair(
     authContext: WorkspaceAuthContext,
     ref: RowRef,
   ): Promise<void> {
@@ -194,6 +228,14 @@ export class PersonRelationshipMirrorService {
     authContext: WorkspaceAuthContext,
     ref: RowRef,
   ): Promise<void> {
+    await this.deletePartner(authContext, ref);
+    await this.syncHouseholdsForLink(authContext, ref);
+  }
+
+  private async deletePartner(
+    authContext: WorkspaceAuthContext,
+    ref: RowRef,
+  ): Promise<void> {
     const workspaceId = authContext.workspace?.id;
 
     if (!isDefined(workspaceId) || !isDefined(ref.id)) return;
@@ -219,6 +261,14 @@ export class PersonRelationshipMirrorService {
   // already broken (Detach clears its person first), so the pair is then
   // rebuilt from whichever half is still a complete link.
   async restorePartnerOf(
+    authContext: WorkspaceAuthContext,
+    ref: RowRef,
+  ): Promise<void> {
+    await this.restorePartner(authContext, ref);
+    await this.syncHouseholdsForLink(authContext, ref);
+  }
+
+  private async restorePartner(
     authContext: WorkspaceAuthContext,
     ref: RowRef,
   ): Promise<void> {
@@ -275,7 +325,7 @@ export class PersonRelationshipMirrorService {
         : null;
 
     if (isDefined(source)) {
-      await this.syncPairFor(authContext, { id: source.id });
+      await this.syncPair(authContext, { id: source.id });
     }
   }
 }
