@@ -24,8 +24,21 @@ describe('findActiveMentionQuery', () => {
     expect(findActiveMentionQuery('mail ana@enso.ro', 16)).toBeNull();
   });
 
-  it('should close once a space is typed after the name', () => {
-    expect(findActiveMentionQuery('@ana ', 5)).toBeNull();
+  it('should keep a space inside the name being typed', () => {
+    expect(findActiveMentionQuery('Ask @Ana Pop', 12)).toEqual({
+      query: 'Ana Pop',
+      start: 4,
+    });
+  });
+
+  it('should stop at a line break', () => {
+    expect(findActiveMentionQuery('@Ana\nnext line', 14)).toBeNull();
+  });
+
+  it('should give up on an @ far back in a long sentence', () => {
+    const text = `@${'a'.repeat(41)}`;
+
+    expect(findActiveMentionQuery(text, text.length)).toBeNull();
   });
 });
 
@@ -57,5 +70,17 @@ describe('getMentionedMemberIds', () => {
 describe('filterMentionableMembers', () => {
   it('should match any part of the name, ignoring case', () => {
     expect(filterMentionableMembers([ANA, ION], 'rus')).toEqual([ION]);
+  });
+
+  it('should narrow by first and last name together', () => {
+    expect(filterMentionableMembers([ANA, ION], 'ana pop')).toEqual([ANA]);
+  });
+
+  it('should keep matching while the space after a first name is typed', () => {
+    expect(filterMentionableMembers([ANA, ION], 'ana ')).toEqual([ANA]);
+  });
+
+  it('should match nobody once a completed mention is followed by a space', () => {
+    expect(filterMentionableMembers([ANA, ION], 'Ana Popescu ')).toEqual([]);
   });
 });

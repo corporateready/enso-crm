@@ -5,15 +5,22 @@ type ActiveMentionQuery = {
   start: number;
 };
 
-// The "@ana" being typed right before the caret, if any. An @ only starts a
-// mention at the beginning of the text or after whitespace, so an email address
-// typed into a comment does not open the picker.
+// Longer than any colleague's full name, so a stray @ earlier in a long
+// sentence stops being treated as a mention in progress.
+const MAX_MENTION_QUERY_LENGTH = 40;
+
+// The "@ana pop" being typed right before the caret, if any. Names have spaces,
+// so the query may too; the picker closes once it matches nobody (see
+// filterMentionableMembers). An @ only starts a mention at the beginning of the
+// text or after whitespace, so an email address does not open the picker.
 export const findActiveMentionQuery = (
   text: string,
   caret: number,
 ): ActiveMentionQuery | null => {
   const beforeCaret = text.slice(0, caret);
-  const match = /(^|\s)@([^\s@]*)$/.exec(beforeCaret);
+  const match = new RegExp(
+    `(^|\\s)@([^@\\n]{0,${MAX_MENTION_QUERY_LENGTH}})$`,
+  ).exec(beforeCaret);
 
   if (match === null) {
     return null;
@@ -62,7 +69,10 @@ export const filterMentionableMembers = (
   members: MentionableMember[],
   query: string,
 ): MentionableMember[] => {
-  const normalizedQuery = query.trim().toLowerCase();
+  // Only the leading space is dropped: a trailing one is meaningful. "ana "
+  // still narrows towards "Ana Popescu", while the space typed after a
+  // completed "@Ana Popescu" makes it match nobody, which closes the picker.
+  const normalizedQuery = query.trimStart().toLowerCase();
 
   return members.filter((member) =>
     member.name.toLowerCase().includes(normalizedQuery),
