@@ -30,6 +30,7 @@ const KIND_LABELS: Record<string, string> = {
   LEAD_AD: 'Lead Ad',
   APPOINTMENT_BOOKED: 'Appointment',
   CALLBACK_REQUEST: 'Callback',
+  MANUAL_ENTRY: 'Manual',
 };
 
 // "2026-05-29T14:30:00.000Z" -> "2026-05-29 14:30" (minute precision, UTC).

@@ -25,6 +25,7 @@ const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   EMAIL_MESSAGE: 'Email Message',
   LEAD_AD: 'Lead Ad Form',
   APPOINTMENT_BOOKED: 'Booking Submission',
+  MANUAL_ENTRY: 'Added by a manager',
 };
 
 export type ProjectDealActivityFacts = {

@@ -41,6 +41,19 @@ export const ACTIVITY_KIND_TO_OPPORTUNITY_SOURCE: Record<string, string> = {
   EMAIL_MESSAGE: 'EMAIL',
   LEAD_AD: 'LEAD_AD',
   APPOINTMENT_BOOKED: 'MANUAL',
+  // Refined by the manual lead source's category — see
+  // MANUAL_LEAD_CATEGORY_TO_OPPORTUNITY_SOURCE.
+  MANUAL_ENTRY: 'MANUAL',
+};
+
+// A manually added lead says where it came from through its manualLeadSource;
+// the categories with a deal source of their own keep it, the rest stay MANUAL.
+export const MANUAL_LEAD_CATEGORY_TO_OPPORTUNITY_SOURCE: Record<
+  string,
+  string
+> = {
+  REFERRAL: 'REFERRAL',
+  WALK_IN: 'WALK_IN',
 };
 
 // Human label per opportunity source, used in the composite opportunity name
@@ -57,7 +70,12 @@ export const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   OTHER: 'Lead',
 };
 
-export const mapOpportunitySource = (activityKind?: string | null): string =>
+export const mapOpportunitySource = (
+  activityKind?: string | null,
+  manualLeadCategory?: string | null,
+): string =>
+  (manualLeadCategory &&
+    MANUAL_LEAD_CATEGORY_TO_OPPORTUNITY_SOURCE[manualLeadCategory]) ||
   (activityKind && ACTIVITY_KIND_TO_OPPORTUNITY_SOURCE[activityKind]) ||
   'OTHER';
 

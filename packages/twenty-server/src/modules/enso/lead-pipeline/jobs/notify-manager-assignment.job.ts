@@ -17,7 +17,13 @@ export class NotifyManagerAssignmentJob {
 
   @Process(NotifyManagerAssignmentJob.name)
   async handle(data: NotifyManagerAssignmentJobData): Promise<void> {
-    const { workspaceId, opportunityId, managerId, autoClaimed } = data;
+    const {
+      workspaceId,
+      opportunityId,
+      managerId,
+      autoClaimed,
+      handedOverByName,
+    } = data;
 
     const authContext = buildSystemAuthContext(workspaceId);
 
@@ -25,6 +31,7 @@ export class NotifyManagerAssignmentJob {
       opportunityId,
       managerId,
       autoClaimed,
+      handedOverByName,
       claimWindowMinutes: Math.round(CLAIM_WINDOW_MS / 60_000),
     });
   }

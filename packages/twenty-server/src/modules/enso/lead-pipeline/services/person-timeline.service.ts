@@ -35,6 +35,7 @@ const INBOUND_CHANNEL_PHRASE: Record<string, string> = {
   LEAD_AD: 'a lead ad',
   APPOINTMENT_BOOKED: 'a booked appointment',
   CALLBACK_REQUEST: 'a callback request',
+  MANUAL_ENTRY: 'a lead a manager added by hand',
 };
 
 // Surfaces related-record events on the PERSON's Timeline. Twenty natively only

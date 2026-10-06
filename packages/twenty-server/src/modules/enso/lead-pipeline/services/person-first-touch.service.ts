@@ -10,6 +10,7 @@ import {
   mapOpportunitySource,
   SYSTEM_ACTOR,
 } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
+import { findManualLeadCategory } from 'src/modules/enso/lead-pipeline/utils/find-manual-lead-category.util';
 
 // Freezes the Person's FIRST-touch attribution from the earliest inbound activity
 // — "what created this person": lead source (channel), traffic type + UTMs, the
@@ -87,10 +88,19 @@ export class PersonFirstTouchService {
             return;
           }
 
+          const manualLeadCategory = await findManualLeadCategory(
+            this.globalWorkspaceOrmManager,
+            workspaceId,
+            activity,
+          );
+
           await personRepository.update(
             { id: person.id },
             {
-              leadSource: mapOpportunitySource(activity.kind),
+              leadSource: mapOpportunitySource(
+                activity.kind,
+                manualLeadCategory,
+              ),
               firstTrafficType: coerceTrafficType(activity.trafficType),
               firstUtmSource: activity.utmSource ?? null,
               firstUtmMedium: activity.utmMedium ?? null,

@@ -18,19 +18,39 @@ import { PersonProjectConsentNameService } from 'src/modules/enso/person-project
 // inbounds (website form / lead ad, where Terms+Privacy are accepted) grant
 // marketing consent; a social DM or inbound call grants a reply/service window,
 // NOT marketing consent, so those are skipped here. Verbal consent ("call me at
-// …") is captured manually with source VERBAL, not from this hook. Best-effort:
-// never fails the pipeline.
+// …") comes from a manager adding the lead by hand, limited to the channels they
+// ticked. Best-effort: never fails the pipeline.
 //
 // kind → consent source. Absence = no marketing consent granted.
 const KIND_TO_CONSENT_SOURCE: Record<string, string> = {
   FORM_SUBMISSION: 'FORM_WEBSITE',
   LEAD_AD: 'LEAD_AD',
+  // A manager adding a lead by hand records only the channels the client
+  // agreed to out loud — read from the activity, never assumed.
+  MANUAL_ENTRY: 'VERBAL',
 };
 
 // Human label for the timeline summary line.
 const SOURCE_LABEL: Record<string, string> = {
   FORM_WEBSITE: 'Website form',
   LEAD_AD: 'Lead ad',
+  VERBAL: 'Told the manager',
+};
+
+// The channels a hand-added lead agreed to, as the manual lead form wrote them
+// into submittedPayload.manualEntry.verbalConsentChannels.
+const readVerbalConsentChannels = (submittedPayload: unknown): string[] => {
+  const channels = (
+    submittedPayload as {
+      manualEntry?: { verbalConsentChannels?: unknown };
+    } | null
+  )?.manualEntry?.verbalConsentChannels;
+
+  return Array.isArray(channels)
+    ? channels.filter(
+        (channel): channel is string => typeof channel === 'string',
+      )
+    : [];
 };
 
 // Channels granted per available contact point. Email needs an email; the
@@ -130,10 +150,19 @@ export class ConsentFromActivityService {
               person?.phones?.primaryPhoneNumber,
             );
 
-            const channels = [
+            const availableChannels: string[] = [
               ...(hasEmail ? EMAIL_CHANNELS : []),
               ...(hasPhone ? PHONE_CHANNELS : []),
             ];
+
+            const channels =
+              source === 'VERBAL'
+                ? availableChannels.filter((channel) =>
+                    readVerbalConsentChannels(
+                      activity.submittedPayload,
+                    ).includes(channel),
+                  )
+                : availableChannels;
 
             if (channels.length === 0) {
               return null;

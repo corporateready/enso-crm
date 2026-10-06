@@ -47,6 +47,8 @@ export type NotifyManagerAssignmentJobData = {
   managerId: string;
   // true = sticky owner auto-claimed (returning client); no claim countdown.
   autoClaimed: boolean;
+  // Set when a colleague added the lead by hand and gave it to this manager.
+  handedOverByName?: string;
 };
 
 // Phase 2 manager notifications. Server-side listeners detect the change and
