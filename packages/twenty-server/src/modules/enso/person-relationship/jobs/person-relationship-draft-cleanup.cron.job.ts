@@ -23,8 +23,8 @@ import { type RelationshipRow } from 'src/modules/enso/person-relationship/utils
 // Twenty creates the family-link record the moment a manager clicks "Add new",
 // before they pick the relative or the relation type. Drafts left that way
 // show up as "Untitled" rows in the Families list. Once a draft has sat
-// untouched for a day it was abandoned: move it to trash (recoverable), along
-// with any other half still pointing at it.
+// untouched for an hour it was abandoned: delete it permanently (it holds
+// nothing worth recovering), and trash any complete half still pointing at it.
 @Processor(MessageQueue.cronQueue)
 export class PersonRelationshipDraftCleanupCronJob {
   private readonly logger = new Logger(
@@ -83,6 +83,7 @@ export class PersonRelationshipDraftCleanupCronJob {
           { relatedPersonId: IsNull(), updatedAt: LessThan(cutoff) },
           { relationType: IsNull(), updatedAt: LessThan(cutoff) },
         ],
+        withDeleted: true,
       });
 
       if (drafts.length === 0) return;
@@ -97,16 +98,38 @@ export class PersonRelationshipDraftCleanupCronJob {
           { mirrorOfId: In(draftIds) },
           ...(canonicalIds.length > 0 ? [{ id: In(canonicalIds) }] : []),
         ],
+        withDeleted: true,
       });
 
-      const idsToTrash = [
-        ...new Set([...draftIds, ...partners.map((partner) => partner.id)]),
+      // A link half that points at nobody has nothing to restore; delete it
+      // outright rather than leave it in trash.
+      const idsToDelete = [
+        ...new Set([
+          ...draftIds,
+          ...partners
+            .filter(
+              (partner) =>
+                !isDefined(partner.personId) ||
+                !isDefined(partner.relatedPersonId) ||
+                !isDefined(partner.relationType),
+            )
+            .map((partner) => partner.id),
+        ]),
       ];
+      const completePartnerIds = partners
+        .map((partner) => partner.id)
+        .filter((id) => !idsToDelete.includes(id));
 
-      await repository.softDelete({ id: In(idsToTrash) });
+      await repository.delete({ id: In(idsToDelete) });
+
+      // The other half of an emptied link is a real link on its own; it goes
+      // to trash (recoverable), as before.
+      if (completePartnerIds.length > 0) {
+        await repository.softDelete({ id: In(completePartnerIds) });
+      }
 
       this.logger.log(
-        `moved ${idsToTrash.length} abandoned family-link row(s) to trash in workspace ${workspaceId}`,
+        `deleted ${idsToDelete.length} abandoned family-link row(s), trashed ${completePartnerIds.length} orphaned half(s) in workspace ${workspaceId}`,
       );
     }, buildSystemAuthContext(workspaceId));
   }
