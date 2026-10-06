@@ -5,9 +5,9 @@ import {
   type FamilyGraphNode,
 } from '@/enso/family-tree/utils/buildFamilyGraph';
 
-export const FAMILY_NODE_WIDTH = 168;
+export const FAMILY_NODE_WIDTH = 148;
 export const FAMILY_NODE_HEIGHT = 48;
-const NODE_GAP = 28;
+const NODE_GAP = 20;
 const ROW_GAP = 64;
 const PADDING = 16;
 
