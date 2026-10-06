@@ -54,6 +54,7 @@ import { isFieldRichTextValue } from '@/object-record/record-field/ui/types/guar
 import { isFieldText } from '@/object-record/record-field/ui/types/guards/isFieldText';
 import { isFieldTextValue } from '@/object-record/record-field/ui/types/guards/isFieldTextValue';
 import { useUpsertRecordsInStore } from '@/object-record/record-store/hooks/useUpsertRecordsInStore';
+import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { getForeignKeyNameFromRelationFieldName } from '@/object-record/utils/getForeignKeyNameFromRelationFieldName';
 import { isDefined } from 'twenty-shared/utils';
 import { isDeeplyEqual } from '~/utils/isDeeplyEqual';
@@ -73,6 +74,7 @@ export const usePersistField = ({
 
   const store = useStore();
   const { upsertRecordsInStore } = useUpsertRecordsInStore();
+  const { enqueueErrorSnackBar } = useSnackBar();
 
   const persistField = useCallback(
     async ({
@@ -267,12 +269,21 @@ export const usePersistField = ({
           return;
         }
 
+        // The value shows straight away; if the server refuses it (a stage
+        // gate, a validation rule), put the old value back and say why, or the
+        // field would keep showing a change that was never saved.
         updateOneRecord({
           objectNameSingular: objectMetadataItem.nameSingular,
           idToUpdate: recordId,
           updateOneRecordInput: {
             [fieldName]: valueToPersist,
           },
+        }).catch((error: Error) => {
+          store.set(
+            recordStoreFamilySelector.selectorFamily({ recordId, fieldName }),
+            currentValue,
+          );
+          enqueueErrorSnackBar({ apolloError: error });
         });
 
         store.set(
@@ -295,6 +306,7 @@ export const usePersistField = ({
       store,
       updateOneRecord,
       upsertRecordsInStore,
+      enqueueErrorSnackBar,
     ],
   );
 
