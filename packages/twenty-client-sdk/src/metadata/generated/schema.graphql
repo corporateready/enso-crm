@@ -2759,6 +2759,26 @@ type EnsoLeadProfile {
   activity: EnsoLeadProfileActivity!
 }
 
+type EnsoManualLeadDuplicateCheck {
+  verdict: String!
+  displayName: String
+  maskedPhone: String
+  maskedEmail: String
+  ownerName: String
+  hasOpenDeal: Boolean!
+  isRateLimited: Boolean!
+}
+
+type EnsoManualLeadResult {
+  success: Boolean!
+  error: String
+  personId: String
+  opportunityId: String
+  activityId: String
+  isNewDeal: Boolean!
+  isNewPerson: Boolean!
+}
+
 type EnsoRoutingAvailability {
   isAvailableForRouting: Boolean!
 }
@@ -3202,6 +3222,7 @@ type Query {
   pieChartData(input: PieChartDataInput!): PieChartData!
   lineChartData(input: LineChartDataInput!): LineChartData!
   barChartData(input: BarChartDataInput!): BarChartData!
+  ensoManualLeadDuplicateCheck(input: EnsoManualLeadDuplicateCheckInput!): EnsoManualLeadDuplicateCheck!
   ensoLeadLookup(searchTerm: String!): EnsoLeadLookupResult!
   ensoLeadProfile(personId: String, opportunityId: String): EnsoLeadProfile!
   taskEmailContext(taskId: String!): TaskEmailContext!
@@ -3277,6 +3298,13 @@ input LineChartDataInput {
 input BarChartDataInput {
   objectMetadataId: UUID!
   configuration: JSON!
+}
+
+input EnsoManualLeadDuplicateCheckInput {
+  projectId: String!
+  phoneNumber: String
+  phoneCallingCode: String
+  email: String
 }
 
 input UsageAnalyticsInput {
@@ -3489,6 +3517,7 @@ type Mutation {
   impersonate(userId: UUID!, workspaceId: UUID!): Impersonate!
   callViaPbx(personId: String, opportunityId: String, taskId: String): CallViaPbxResult!
   ensoSetMyRoutingAvailability(isAvailableForRouting: Boolean!): EnsoRoutingAvailability!
+  ensoCreateManualLead(input: EnsoCreateManualLeadInput!): EnsoManualLeadResult!
   createDealComment(opportunityId: String!, body: String!, mentionedWorkspaceMemberIds: [String!]!): DealCommentResult!
   deleteDealComment(commentId: String!): DealCommentResult!
   sendTaskEmail(taskId: String!, subject: String!, body: String!): GoogleChatTestResult!
@@ -4561,6 +4590,28 @@ input DeleteSsoInput {
 input EditSsoInput {
   id: UUID!
   status: SSOIdentityProviderStatus!
+}
+
+input EnsoCreateManualLeadInput {
+  requestId: String!
+  projectId: String!
+  firstName: String!
+  lastName: String
+  phoneNumber: String
+  phoneCallingCode: String
+  email: String
+  manualLeadSourceId: String!
+  occurredAt: DateTime
+  destination: String!
+  colleagueWorkspaceMemberId: String
+  startStage: String
+  firstContactAt: DateTime
+  firstContactChannel: String
+  referredByPersonId: String
+  referredByCompanyId: String
+  referredByName: String
+  note: String
+  verbalConsentChannels: [String!]
 }
 
 input SetGoogleChatWebhookUrlInput {
