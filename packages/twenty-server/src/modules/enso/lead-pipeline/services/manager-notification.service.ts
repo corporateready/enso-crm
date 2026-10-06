@@ -109,6 +109,7 @@ export class ManagerNotificationService {
       opportunityId: string;
       managerId: string;
       autoClaimed: boolean;
+      handedOverByName?: string;
       claimWindowMinutes: number;
     },
   ): Promise<void> {
@@ -179,9 +180,11 @@ export class ManagerNotificationService {
     await this.googleChatWebhookService.post(
       webhookUrl,
       this.buildDealCard({
-        title: params.autoClaimed
-          ? '🔔 New deal assigned to you — your returning client'
-          : `🎯 New deal routed — claim within ${params.claimWindowMinutes} min`,
+        title: isDefined(params.handedOverByName)
+          ? `🔔 ${params.handedOverByName} gave you a new lead`
+          : params.autoClaimed
+            ? '🔔 New deal assigned to you — your returning client'
+            : `🎯 New deal routed — claim within ${params.claimWindowMinutes} min`,
         subtitle: 'ENSO CRM · Routing',
         rows,
         recordUrl: this.recordUrl('opportunity', params.opportunityId),

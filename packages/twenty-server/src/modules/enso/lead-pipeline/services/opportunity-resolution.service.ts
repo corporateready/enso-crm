@@ -33,6 +33,30 @@ const INBOUND_ACTIVITY_OBJECT_METADATA_ID =
 import { ManagerNotificationService } from 'src/modules/enso/lead-pipeline/services/manager-notification.service';
 import { OpportunityClaimService } from 'src/modules/enso/lead-pipeline/services/opportunity-claim.service';
 import { OpportunityNameService } from 'src/modules/enso/lead-pipeline/services/opportunity-name.service';
+import { findManualLeadCategory } from 'src/modules/enso/lead-pipeline/utils/find-manual-lead-category.util';
+
+// Where a deal starts when the person creating it already knows who owns it and
+// how far along it is — a manager adding a lead by hand, for themselves or for
+// a colleague. The caller has checked the stage's required fields.
+export type OpportunityInitialState = {
+  stage: string;
+  ownerMemberId: string;
+  firstContactAt?: string | null;
+  firstContactChannel?: string | null;
+};
+
+const buildInitialStateFields = (
+  initialState: OpportunityInitialState,
+): Record<string, unknown> => ({
+  stage: initialState.stage,
+  ownerId: initialState.ownerMemberId,
+  ...(isDefined(initialState.firstContactAt)
+    ? { firstContactAt: initialState.firstContactAt }
+    : {}),
+  ...(isDefined(initialState.firstContactChannel)
+    ? { firstContactChannel: initialState.firstContactChannel }
+    : {}),
+});
 
 // Result of resolving an inbound activity to an opportunity.
 export type ResolutionResult = {
@@ -40,6 +64,9 @@ export type ResolutionResult = {
   // true → a fresh opportunity was created (needs routing);
   // false → the activity was attached to an existing open deal.
   created: boolean;
+  // The attached deal's stage before this activity, so a caller can tell a
+  // deal it just claimed out of ROUTING from one already being worked.
+  previousStage?: string | null;
 };
 
 // What the workspace-context block hands back. Carries the re-engagement owner
@@ -61,6 +88,7 @@ type ActivityRow = {
   opportunityId?: string | null;
   isSynthetic?: boolean | null;
   kind?: string | null;
+  manualLeadSourceId?: string | null;
   m2Requested?: number | null;
   utmSource?: string | null;
   utmMedium?: string | null;
@@ -94,7 +122,10 @@ export class OpportunityResolutionService {
   async resolveFromActivity(
     authContext: WorkspaceAuthContext,
     activityId: string,
-    options?: { alreadyConnected?: { ownerMemberId?: string } },
+    options?: {
+      alreadyConnected?: { ownerMemberId?: string };
+      initialState?: OpportunityInitialState;
+    },
   ): Promise<ResolutionResult | null> {
     const workspaceId = authContext.workspace?.id;
 
@@ -226,7 +257,14 @@ export class OpportunityResolutionService {
                   // A parked deal whose contact has now actually been spoken to is
                   // connected — leaving it in ROUTING would queue it for a first
                   // contact that already happened.
+                  // A deal still waiting for an owner takes the hand-added
+                  // lead's owner and stage: that manager is already on it.
+                  ...(isDefined(options?.initialState) &&
+                  existing.stage === 'ROUTING'
+                    ? buildInitialStateFields(options.initialState)
+                    : {}),
                   ...(isDefined(options?.alreadyConnected) &&
+                  !isDefined(options?.initialState) &&
                   existing.stage === 'ROUTING'
                     ? {
                         stage: 'CONNECTED',
@@ -270,11 +308,19 @@ export class OpportunityResolutionService {
             return {
               opportunityId: existing.id,
               created: false,
+              previousStage: existing.stage ?? null,
               reengagementManagerId,
             };
           }
 
-          const source = mapOpportunitySource(activity.kind);
+          const source = mapOpportunitySource(
+            activity.kind,
+            await findManualLeadCategory(
+              this.globalWorkspaceOrmManager,
+              workspaceId,
+              activity,
+            ),
+          );
 
           const name = await this.opportunityNameService.computeName(
             authContext,
@@ -302,6 +348,7 @@ export class OpportunityResolutionService {
 
           const alreadyConnected = options?.alreadyConnected;
           const connectedOwnerId = alreadyConnected?.ownerMemberId;
+          const initialState = options?.initialState;
 
           await opportunityRepository.insert({
             id: opportunityId,
@@ -310,6 +357,9 @@ export class OpportunityResolutionService {
             stage: isDefined(alreadyConnected) ? 'CONNECTED' : 'ROUTING',
             ...(isDefined(connectedOwnerId)
               ? { ownerId: connectedOwnerId }
+              : {}),
+            ...(isDefined(initialState)
+              ? buildInitialStateFields(initialState)
               : {}),
             pipelineState: 'ACTIVE',
             routingCount: 0,
@@ -364,7 +414,11 @@ export class OpportunityResolutionService {
       );
 
     const result: ResolutionResult | null = isDefined(outcome)
-      ? { opportunityId: outcome.opportunityId, created: outcome.created }
+      ? {
+          opportunityId: outcome.opportunityId,
+          created: outcome.created,
+          previousStage: outcome.previousStage ?? null,
+        }
       : null;
 
     // Sticky (person × project) ownership for a deal this pipeline opened

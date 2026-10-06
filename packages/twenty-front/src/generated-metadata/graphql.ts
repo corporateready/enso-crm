@@ -1544,6 +1544,28 @@ export type EnsoColumnWidth = {
   viewId: Scalars['String'];
 };
 
+export type EnsoCreateManualLeadInput = {
+  colleagueWorkspaceMemberId?: InputMaybe<Scalars['String']>;
+  destination: Scalars['String'];
+  email?: InputMaybe<Scalars['String']>;
+  firstContactAt?: InputMaybe<Scalars['DateTime']>;
+  firstContactChannel?: InputMaybe<Scalars['String']>;
+  firstName: Scalars['String'];
+  lastName?: InputMaybe<Scalars['String']>;
+  manualLeadSourceId: Scalars['String'];
+  note?: InputMaybe<Scalars['String']>;
+  occurredAt?: InputMaybe<Scalars['DateTime']>;
+  phoneCallingCode?: InputMaybe<Scalars['String']>;
+  phoneNumber?: InputMaybe<Scalars['String']>;
+  projectId: Scalars['String'];
+  referredByCompanyId?: InputMaybe<Scalars['String']>;
+  referredByName?: InputMaybe<Scalars['String']>;
+  referredByPersonId?: InputMaybe<Scalars['String']>;
+  requestId: Scalars['String'];
+  startStage?: InputMaybe<Scalars['String']>;
+  verbalConsentChannels?: InputMaybe<Array<Scalars['String']>>;
+};
+
 export type EnsoDefaultView = {
   __typename?: 'EnsoDefaultView';
   objectMetadataId: Scalars['String'];
@@ -1648,6 +1670,35 @@ export type EnsoLeadProfileProject = {
   trafficType?: Maybe<Scalars['String']>;
   utmCampaign?: Maybe<Scalars['String']>;
   utmSource?: Maybe<Scalars['String']>;
+};
+
+export type EnsoManualLeadDuplicateCheck = {
+  __typename?: 'EnsoManualLeadDuplicateCheck';
+  displayName?: Maybe<Scalars['String']>;
+  hasOpenDeal: Scalars['Boolean'];
+  isRateLimited: Scalars['Boolean'];
+  maskedEmail?: Maybe<Scalars['String']>;
+  maskedPhone?: Maybe<Scalars['String']>;
+  ownerName?: Maybe<Scalars['String']>;
+  verdict: Scalars['String'];
+};
+
+export type EnsoManualLeadDuplicateCheckInput = {
+  email?: InputMaybe<Scalars['String']>;
+  phoneCallingCode?: InputMaybe<Scalars['String']>;
+  phoneNumber?: InputMaybe<Scalars['String']>;
+  projectId: Scalars['String'];
+};
+
+export type EnsoManualLeadResult = {
+  __typename?: 'EnsoManualLeadResult';
+  activityId?: Maybe<Scalars['String']>;
+  error?: Maybe<Scalars['String']>;
+  isNewDeal: Scalars['Boolean'];
+  isNewPerson: Scalars['Boolean'];
+  opportunityId?: Maybe<Scalars['String']>;
+  personId?: Maybe<Scalars['String']>;
+  success: Scalars['Boolean'];
 };
 
 export type EnsoRoleViewTemplateInput = {
@@ -2616,6 +2667,7 @@ export type Mutation = {
   editSSOIdentityProvider: EditSso;
   emailPasswordResetLink: EmailPasswordResetLink;
   endSubscriptionTrialPeriod: BillingEndTrialPeriod;
+  ensoCreateManualLead: EnsoManualLeadResult;
   ensoProvisionRoleViewCopies: Scalars['Int'];
   ensoSetMyColumnWidth: Array<EnsoColumnWidth>;
   ensoSetMyDefaultView: Array<EnsoDefaultView>;
@@ -3234,6 +3286,11 @@ export type MutationEditSsoIdentityProviderArgs = {
 export type MutationEmailPasswordResetLinkArgs = {
   email: Scalars['String'];
   workspaceId?: InputMaybe<Scalars['UUID']>;
+};
+
+
+export type MutationEnsoCreateManualLeadArgs = {
+  input: EnsoCreateManualLeadInput;
 };
 
 
@@ -4418,6 +4475,7 @@ export type Query = {
   currentWorkspace: Workspace;
   ensoLeadLookup: EnsoLeadLookupResult;
   ensoLeadProfile: EnsoLeadProfile;
+  ensoManualLeadDuplicateCheck: EnsoManualLeadDuplicateCheck;
   ensoViewerScope: EnsoViewerScope;
   enterpriseCheckoutSession?: Maybe<Scalars['String']>;
   enterprisePortalSession?: Maybe<Scalars['String']>;
@@ -4580,6 +4638,11 @@ export type QueryEnsoLeadLookupArgs = {
 export type QueryEnsoLeadProfileArgs = {
   opportunityId?: InputMaybe<Scalars['String']>;
   personId?: InputMaybe<Scalars['String']>;
+};
+
+
+export type QueryEnsoManualLeadDuplicateCheckArgs = {
+  input: EnsoManualLeadDuplicateCheckInput;
 };
 
 

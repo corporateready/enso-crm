@@ -79,14 +79,32 @@ task due today until call/form cadences exist.
 ## Build order
 
 1. ✅ Shared stage-requirements constant + backend stage guard (first half of gating) —
-   `src/modules/enso/deal-stage-gate`.
-2. Metadata (provisioning script — these option lists live only in the DB):
-   inboundActivity kind `MANUAL_ENTRY`, `isSelfReported`, `enteredBy`, referrer
-   relation; marketing-owned `leadSource` object.
-3. Backend: `checkLeadDuplicate`, `createManualLead` (bypass-permission activity write
-   → attribution → resolution with owner/stage/fields or routing → consent;
-   idempotency key), opportunity create pre-hook rejecting direct deal creation by
-   the Sales Manager role, PostHog `manual_lead_created`. Metadata resolvers must sit
-   in the CoreEngineModule graph.
-4. Frontend "New lead" launcher.
+   `src/modules/enso/deal-stage-gate` (#328).
+2. ✅ Metadata, applied to production 2026-10-06 by
+   `scripts/provision-manual-lead-entry.mjs` (#329): inboundActivity kind
+   `MANUAL_ENTRY`, source `MANUAL`, `isSelfReported`, `enteredBy`, `referredByPerson`
+   / `referredByCompany` / `referredByName`, `manualLeadSource`; the marketing-owned
+   `manualLeadSource` object (6 seeded rows, utm blank for marketing).
+3. ✅ Backend — `src/modules/enso/manual-lead`:
+   - `ensoManualLeadDuplicateCheck(input)` — NEW / REUSE / BLOCKED with a masked
+     match, person-merge phone rule + exact email, 100 checks/manager/day.
+   - `ensoCreateManualLead(input)` — idempotent on `requestId` (stored as the
+     activity's `sourceExternalId`); refuses a contact another manager works on the
+     project; creates or completes the person, writes the MANUAL_ENTRY activity
+     (utm from the source, verbal consent channels in `submittedPayload`), queues
+     attribution, resolves the deal synchronously with an initial owner + stage
+     (or routing), then: marketing-room post, routing job, first-contact task for a
+     Lead Claimed start, Google Chat notice to a colleague it was handed to.
+   - Sales Managers' direct `opportunity.createOne/createMany` is refused.
+   - Pipeline: REFERRAL / WALK_IN source from the manual source's category (deal +
+     person first touch); VERBAL consent limited to the ticked channels.
+   - Known gap: a B2B contact (work email) can attach to another manager's open
+     company deal through the company dedup, which the duplicate check does not see.
+4. ✅ Frontend — `packages/twenty-front/src/modules/enso/manual-lead`: "New lead" in the
+   sidebar above "Log activity" → modal: project, contact (duplicate check on blur
+   shows REUSE / BLOCKED before submit), source (filtered by project; referral asks
+   for a name), when, who works it (Me + Lead Claimed / Connected with first
+   contact date + channel; a colleague; routing), verbal consent ticks, note. On
+   success opens the deal. v1 takes the referrer as a name only (no contact
+   picker).
 5. Done = real managers' leads reaching Connected, not a synthetic test.

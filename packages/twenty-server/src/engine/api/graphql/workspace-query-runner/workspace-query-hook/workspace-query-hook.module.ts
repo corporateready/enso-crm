@@ -14,6 +14,7 @@ import { DealCommentQueryHookModule } from 'src/modules/enso/deal-comment/deal-c
 import { DealStageGateQueryHookModule } from 'src/modules/enso/deal-stage-gate/deal-stage-gate-query-hook.module';
 import { InboundActivityQueryHookModule } from 'src/modules/enso/inbound-activity/inbound-activity-query-hook.module';
 import { LeadPipelineModule } from 'src/modules/enso/lead-pipeline/lead-pipeline.module';
+import { ManualLeadQueryHookModule } from 'src/modules/enso/manual-lead/manual-lead-query-hook.module';
 import { PersonMergeModule } from 'src/modules/enso/person-merge/person-merge.module';
 import { PersonProjectAssignmentQueryHookModule } from 'src/modules/enso/person-project-assignment/person-project-assignment-query-hook.module';
 import { PersonProjectConsentQueryHookModule } from 'src/modules/enso/person-project-consent/person-project-consent-query-hook.module';
@@ -40,6 +41,7 @@ import { WorkspaceMemberQueryHookModule } from 'src/modules/workspace-member/que
     DealCommentQueryHookModule,
     DealStageGateQueryHookModule,
     LeadPipelineModule,
+    ManualLeadQueryHookModule,
     PersonMergeModule,
     PersonProjectAssignmentQueryHookModule,
     PersonProjectConsentQueryHookModule,

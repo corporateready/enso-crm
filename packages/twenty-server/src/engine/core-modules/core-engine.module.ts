@@ -79,6 +79,7 @@ import { DealCommentModule } from 'src/modules/enso/deal-comment/deal-comment.mo
 import { NotificationSettingsModule } from 'src/modules/enso/notifications/notification-settings.module';
 import { OutboundEmailModule } from 'src/modules/enso/outbound-email/outbound-email.module';
 import { EnsoLeadLookupModule } from 'src/modules/enso/record-lookup/enso-lead-lookup.module';
+import { ManualLeadModule } from 'src/modules/enso/manual-lead/manual-lead.module';
 import { EnsoRoutingAvailabilitySelfModule } from 'src/modules/enso/routing-availability/enso-routing-availability-self.module';
 import { EnsoViewerScopeModule } from 'src/modules/enso/record-visibility/enso-viewer-scope.module';
 import { TelephonyOutboundModule } from 'src/modules/enso/telephony/telephony-outbound.module';
@@ -140,6 +141,7 @@ import { FileModule } from './file/file.module';
     OutboundEmailModule,
     DealCommentModule,
     EnsoLeadLookupModule,
+    ManualLeadModule,
     EnsoRoutingAvailabilitySelfModule,
     EnsoViewerScopeModule,
     TelephonyOutboundModule,

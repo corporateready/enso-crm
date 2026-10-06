@@ -2473,6 +2473,28 @@ export interface EnsoLeadProfile {
     __typename: 'EnsoLeadProfile'
 }
 
+export interface EnsoManualLeadDuplicateCheck {
+    verdict: Scalars['String']
+    displayName?: Scalars['String']
+    maskedPhone?: Scalars['String']
+    maskedEmail?: Scalars['String']
+    ownerName?: Scalars['String']
+    hasOpenDeal: Scalars['Boolean']
+    isRateLimited: Scalars['Boolean']
+    __typename: 'EnsoManualLeadDuplicateCheck'
+}
+
+export interface EnsoManualLeadResult {
+    success: Scalars['Boolean']
+    error?: Scalars['String']
+    personId?: Scalars['String']
+    opportunityId?: Scalars['String']
+    activityId?: Scalars['String']
+    isNewDeal: Scalars['Boolean']
+    isNewPerson: Scalars['Boolean']
+    __typename: 'EnsoManualLeadResult'
+}
+
 export interface EnsoRoutingAvailability {
     isAvailableForRouting: Scalars['Boolean']
     __typename: 'EnsoRoutingAvailability'
@@ -2821,6 +2843,7 @@ export interface Query {
     pieChartData: PieChartData
     lineChartData: LineChartData
     barChartData: BarChartData
+    ensoManualLeadDuplicateCheck: EnsoManualLeadDuplicateCheck
     ensoLeadLookup: EnsoLeadLookupResult
     ensoLeadProfile: EnsoLeadProfile
     taskEmailContext: TaskEmailContext
@@ -3041,6 +3064,7 @@ export interface Mutation {
     impersonate: Impersonate
     callViaPbx: CallViaPbxResult
     ensoSetMyRoutingAvailability: EnsoRoutingAvailability
+    ensoCreateManualLead: EnsoManualLeadResult
     createDealComment: DealCommentResult
     deleteDealComment: DealCommentResult
     sendTaskEmail: GoogleChatTestResult
@@ -5731,6 +5755,30 @@ export interface EnsoLeadProfileGenqlSelection{
     __scalar?: boolean | number
 }
 
+export interface EnsoManualLeadDuplicateCheckGenqlSelection{
+    verdict?: boolean | number
+    displayName?: boolean | number
+    maskedPhone?: boolean | number
+    maskedEmail?: boolean | number
+    ownerName?: boolean | number
+    hasOpenDeal?: boolean | number
+    isRateLimited?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
+export interface EnsoManualLeadResultGenqlSelection{
+    success?: boolean | number
+    error?: boolean | number
+    personId?: boolean | number
+    opportunityId?: boolean | number
+    activityId?: boolean | number
+    isNewDeal?: boolean | number
+    isNewPerson?: boolean | number
+    __typename?: boolean | number
+    __scalar?: boolean | number
+}
+
 export interface EnsoRoutingAvailabilityGenqlSelection{
     isAvailableForRouting?: boolean | number
     __typename?: boolean | number
@@ -6094,6 +6142,7 @@ export interface QueryGenqlSelection{
     pieChartData?: (PieChartDataGenqlSelection & { __args: {input: PieChartDataInput} })
     lineChartData?: (LineChartDataGenqlSelection & { __args: {input: LineChartDataInput} })
     barChartData?: (BarChartDataGenqlSelection & { __args: {input: BarChartDataInput} })
+    ensoManualLeadDuplicateCheck?: (EnsoManualLeadDuplicateCheckGenqlSelection & { __args: {input: EnsoManualLeadDuplicateCheckInput} })
     ensoLeadLookup?: (EnsoLeadLookupResultGenqlSelection & { __args: {searchTerm: Scalars['String']} })
     ensoLeadProfile?: (EnsoLeadProfileGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null)} })
     taskEmailContext?: (TaskEmailContextGenqlSelection & { __args: {taskId: Scalars['String']} })
@@ -6137,6 +6186,8 @@ export interface PieChartDataInput {objectMetadataId: Scalars['UUID'],configurat
 export interface LineChartDataInput {objectMetadataId: Scalars['UUID'],configuration: Scalars['JSON']}
 
 export interface BarChartDataInput {objectMetadataId: Scalars['UUID'],configuration: Scalars['JSON']}
+
+export interface EnsoManualLeadDuplicateCheckInput {projectId: Scalars['String'],phoneNumber?: (Scalars['String'] | null),phoneCallingCode?: (Scalars['String'] | null),email?: (Scalars['String'] | null)}
 
 export interface UsageAnalyticsInput {periodStart?: (Scalars['DateTime'] | null),periodEnd?: (Scalars['DateTime'] | null),userWorkspaceId?: (Scalars['String'] | null),operationTypes?: (UsageOperationType[] | null)}
 
@@ -6335,6 +6386,7 @@ export interface MutationGenqlSelection{
     impersonate?: (ImpersonateGenqlSelection & { __args: {userId: Scalars['UUID'], workspaceId: Scalars['UUID']} })
     callViaPbx?: (CallViaPbxResultGenqlSelection & { __args?: {personId?: (Scalars['String'] | null), opportunityId?: (Scalars['String'] | null), taskId?: (Scalars['String'] | null)} })
     ensoSetMyRoutingAvailability?: (EnsoRoutingAvailabilityGenqlSelection & { __args: {isAvailableForRouting: Scalars['Boolean']} })
+    ensoCreateManualLead?: (EnsoManualLeadResultGenqlSelection & { __args: {input: EnsoCreateManualLeadInput} })
     createDealComment?: (DealCommentResultGenqlSelection & { __args: {opportunityId: Scalars['String'], body: Scalars['String'], mentionedWorkspaceMemberIds: Scalars['String'][]} })
     deleteDealComment?: (DealCommentResultGenqlSelection & { __args: {commentId: Scalars['String']} })
     sendTaskEmail?: (GoogleChatTestResultGenqlSelection & { __args: {taskId: Scalars['String'], subject: Scalars['String'], body: Scalars['String']} })
@@ -6719,6 +6771,8 @@ export interface SetupSAMLSsoInput {name: Scalars['String'],issuer: Scalars['Str
 export interface DeleteSsoInput {identityProviderId: Scalars['UUID']}
 
 export interface EditSsoInput {id: Scalars['UUID'],status: SSOIdentityProviderStatus}
+
+export interface EnsoCreateManualLeadInput {requestId: Scalars['String'],projectId: Scalars['String'],firstName: Scalars['String'],lastName?: (Scalars['String'] | null),phoneNumber?: (Scalars['String'] | null),phoneCallingCode?: (Scalars['String'] | null),email?: (Scalars['String'] | null),manualLeadSourceId: Scalars['String'],occurredAt?: (Scalars['DateTime'] | null),destination: Scalars['String'],colleagueWorkspaceMemberId?: (Scalars['String'] | null),startStage?: (Scalars['String'] | null),firstContactAt?: (Scalars['DateTime'] | null),firstContactChannel?: (Scalars['String'] | null),referredByPersonId?: (Scalars['String'] | null),referredByCompanyId?: (Scalars['String'] | null),referredByName?: (Scalars['String'] | null),note?: (Scalars['String'] | null),verbalConsentChannels?: (Scalars['String'][] | null)}
 
 export interface SetGoogleChatWebhookUrlInput {webhookUrl: Scalars['String']}
 
@@ -8651,6 +8705,22 @@ export interface LogicFunctionLogsInput {applicationId?: (Scalars['UUID'] | null
     export const isEnsoLeadProfile = (obj?: { __typename?: any } | null): obj is EnsoLeadProfile => {
       if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoLeadProfile"')
       return EnsoLeadProfile_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoManualLeadDuplicateCheck_possibleTypes: string[] = ['EnsoManualLeadDuplicateCheck']
+    export const isEnsoManualLeadDuplicateCheck = (obj?: { __typename?: any } | null): obj is EnsoManualLeadDuplicateCheck => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoManualLeadDuplicateCheck"')
+      return EnsoManualLeadDuplicateCheck_possibleTypes.includes(obj.__typename)
+    }
+    
+
+
+    const EnsoManualLeadResult_possibleTypes: string[] = ['EnsoManualLeadResult']
+    export const isEnsoManualLeadResult = (obj?: { __typename?: any } | null): obj is EnsoManualLeadResult => {
+      if (!obj?.__typename) throw new Error('__typename is missing in "isEnsoManualLeadResult"')
+      return EnsoManualLeadResult_possibleTypes.includes(obj.__typename)
     }
     
 
