@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { HouseholdCreateManyPreQueryHook } from 'src/modules/enso/person-relationship/query-hooks/household-create-many.pre-query-hook';
+import { HouseholdCreateOnePreQueryHook } from 'src/modules/enso/person-relationship/query-hooks/household-create-one.pre-query-hook';
 import { PersonRelationshipCreateManyPostQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-create-many.post-query-hook';
 import { PersonRelationshipCreateManyPreQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-create-many.pre-query-hook';
 import { PersonRelationshipCreateOnePostQueryHook } from 'src/modules/enso/person-relationship/query-hooks/person-relationship-create-one.post-query-hook';
@@ -21,6 +23,8 @@ import { PersonRelationshipValidationService } from 'src/modules/enso/person-rel
     PersonRelationshipNameService,
     PersonRelationshipMirrorService,
     HouseholdSyncService,
+    HouseholdCreateOnePreQueryHook,
+    HouseholdCreateManyPreQueryHook,
     PersonRelationshipValidationService,
     PersonRelationshipCreateOnePreQueryHook,
     PersonRelationshipCreateManyPreQueryHook,

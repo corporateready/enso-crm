@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { AddRelativeForm } from '@/enso/family-tree/components/AddRelativeForm';
 import { FamilyTreeCard } from '@/enso/family-tree/components/FamilyTreeCard';
 import { useFamilyTreeLinks } from '@/enso/family-tree/hooks/useFamilyTreeLinks';
 import {
@@ -12,7 +13,6 @@ import {
   type FamilyRelation,
 } from '@/enso/family-tree/utils/buildFamilyGraph';
 import { layoutFamilyGraph } from '@/enso/family-tree/utils/layoutFamilyGraph';
-import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useDeleteOneRecord } from '@/object-record/hooks/useDeleteOneRecord';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
@@ -22,7 +22,8 @@ import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingC
 // (household) record. Couples are joined by a line and each set of parents
 // connects to their own children. Clicking a relative re-centres the tree on
 // them in place; each card's menu opens the profile or changes / removes the
-// link, and "Add relative" starts a new one. A scoped manager sees only the
+// link, and "Add relative" adds one in a single step (nothing is saved until
+// it is complete). A scoped manager sees only the
 // links their visibility rules allow.
 export const ENSO_PERSON_FAMILY_TREE_MARKER = '__enso_person_family_tree';
 
@@ -145,9 +146,7 @@ export const PersonFamilyTree = () => {
 
   const { ownLinks, links, loading, refetch } = useFamilyTreeLinks(focusId);
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
-  const { createOneRecord } = useCreateOneRecord({
-    objectNameSingular: 'personRelationship',
-  });
+  const [isAddingRelative, setIsAddingRelative] = useState(false);
   const { deleteOneRecord } = useDeleteOneRecord({
     objectNameSingular: 'personRelationship',
   });
@@ -189,17 +188,6 @@ export const PersonFamilyTree = () => {
   const startLabel = nameOf(startId).full || t`the start`;
   const focusLabel = focusName.full || t`this person`;
 
-  const addRelative = async () => {
-    const created = await createOneRecord({ personId: focusId });
-
-    if (isDefined(created?.id)) {
-      openRecordInSidePanel({
-        recordId: created.id,
-        objectNameSingular: 'personRelationship',
-      });
-    }
-  };
-
   const directLinkTo = (personId: string) =>
     ownLinks.find(
       (link) => link.personId === focusId && link.relatedPersonId === personId,
@@ -225,22 +213,40 @@ export const PersonFamilyTree = () => {
   };
 
   const header = (
-    <StyledHeader>
-      <StyledTitle>{title}</StyledTitle>
-      <StyledActions>
-        <StyledAction type="button" $isPrimary onClick={addRelative}>
-          {t`+ Add relative to ${focusLabel}`}
-        </StyledAction>
-        {focusId !== startId && (
+    <>
+      <StyledHeader>
+        <StyledTitle>{title}</StyledTitle>
+        <StyledActions>
           <StyledAction
             type="button"
-            onClick={() => setFocus({ startId, personId: startId })}
+            $isPrimary
+            onClick={() => setIsAddingRelative((isOpen) => !isOpen)}
           >
-            {t`Back to ${startLabel}`}
+            {t`+ Add relative to ${focusLabel}`}
           </StyledAction>
-        )}
-      </StyledActions>
-    </StyledHeader>
+          {focusId !== startId && (
+            <StyledAction
+              type="button"
+              onClick={() => setFocus({ startId, personId: startId })}
+            >
+              {t`Back to ${startLabel}`}
+            </StyledAction>
+          )}
+        </StyledActions>
+      </StyledHeader>
+      {isAddingRelative && (
+        <AddRelativeForm
+          key={focusId}
+          focusId={focusId}
+          focusName={focusLabel}
+          onAdded={async () => {
+            setIsAddingRelative(false);
+            await refetch();
+          }}
+          onCancel={() => setIsAddingRelative(false)}
+        />
+      )}
+    </>
   );
 
   if (loading && links.length === 0) {
@@ -294,7 +300,10 @@ export const PersonFamilyTree = () => {
                 y={node.y}
                 isFocus={node.id === focusId}
                 canEditLink={isDefined(directLink)}
-                onFocus={() => setFocus({ startId, personId: node.id })}
+                onFocus={() => {
+                  setIsAddingRelative(false);
+                  setFocus({ startId, personId: node.id });
+                }}
                 onOpenProfile={() =>
                   openRecordInSidePanel({
                     recordId: node.id,

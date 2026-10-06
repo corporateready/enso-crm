@@ -1,3 +1,4 @@
+import { ENSO_SERVER_CREATED_OBJECT_NAMES } from '@/enso/family-tree/constants/EnsoServerCreatedObjectNames';
 import { currentUserWorkspaceState } from '@/auth/states/currentUserWorkspaceState';
 import { currentWorkspaceState } from '@/auth/states/currentWorkspaceState';
 import { objectPermissionsFamilySelector } from '@/auth/states/objectPermissionsFamilySelector';
@@ -88,8 +89,12 @@ export const useCurrentCommandMenuContextApi = (): CommandMenuContextApi => {
   const objectPermissionsFromHook = useObjectPermissionsForObject(
     objectMetadataItem?.id ?? '',
   );
+  // A server-created object (a household) can be renamed but not created by
+  // hand; "can update" is what gates the "New <object>" command.
   const objectPermissions = isDefined(objectMetadataItem)
-    ? objectPermissionsFromHook
+    ? ENSO_SERVER_CREATED_OBJECT_NAMES.includes(objectMetadataItem.nameSingular)
+      ? { ...objectPermissionsFromHook, canUpdateObjectRecords: false }
+      : objectPermissionsFromHook
     : {
         canReadObjectRecords: false,
         canUpdateObjectRecords: false,
