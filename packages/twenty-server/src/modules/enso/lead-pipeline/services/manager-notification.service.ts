@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { isDefined } from 'twenty-shared/utils';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
+import { EmailService } from 'src/engine/core-modules/email/email.service';
+import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import {
@@ -10,6 +12,7 @@ import {
   type NotificationEventKey,
 } from 'src/modules/enso/notifications/notifications.constants';
 import { GoogleChatWebhookService } from 'src/modules/enso/notifications/services/google-chat-webhook.service';
+import { buildCommentMentionEmail } from 'src/modules/enso/deal-comment/utils/build-comment-mention-email.util';
 import { readPersonPhoneE164 } from 'src/modules/enso/shared/utils/person-phone.util';
 
 type DealStateTransition = 'stalled' | 'deferred' | 'active' | 'stage';
@@ -33,6 +36,8 @@ export class ManagerNotificationService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly googleChatWebhookService: GoogleChatWebhookService,
+    private readonly emailService: EmailService,
+    private readonly twentyConfigService: TwentyConfigService,
   ) {}
 
   private get routingWebhookUrl(): string | undefined {
@@ -528,20 +533,35 @@ export class ManagerNotificationService {
       return;
     }
 
-    const webhookUrl = await this.resolveManagerWebhookUrl(
-      workspaceId,
-      details.managerUserId,
-    );
-
-    if (!isDefined(webhookUrl)) {
-      return;
-    }
-
     const authorName = comment.authorName || 'A colleague';
     const body =
       comment.body.length > COMMENT_MENTION_PREVIEW_LENGTH
         ? `${comment.body.slice(0, COMMENT_MENTION_PREVIEW_LENGTH)}…`
         : comment.body;
+    const recordUrl = this.recordUrl('opportunity', comment.opportunityId);
+
+    // Only the person's own space. Comment text is addressed to one colleague,
+    // so it never falls back to the shared routing room the way routing
+    // events do; without a personal webhook it goes to their email instead.
+    const personalWebhookUrl = isDefined(details.managerUserId)
+      ? await this.googleChatWebhookService.getWebhookUrl({
+          userId: details.managerUserId,
+          workspaceId,
+        })
+      : undefined;
+
+    if (!isDefined(personalWebhookUrl)) {
+      await this.emailCommentMention({
+        workspaceId,
+        managerId: params.managerId,
+        authorName,
+        body,
+        details,
+        recordUrl,
+      });
+
+      return;
+    }
 
     const rows = [
       { icon: 'EMAIL', label: authorName, text: body },
@@ -557,14 +577,89 @@ export class ManagerNotificationService {
     ].filter(isDefined);
 
     await this.googleChatWebhookService.post(
-      webhookUrl,
+      personalWebhookUrl,
       this.buildDealCard({
         title: `💬 ${authorName} mentioned you`,
         subtitle: 'ENSO CRM · Deal comment',
         rows,
-        recordUrl: this.recordUrl('opportunity', comment.opportunityId),
+        recordUrl,
         buttonText: 'Open deal',
       }),
+    );
+  }
+
+  private async emailCommentMention({
+    workspaceId,
+    managerId,
+    authorName,
+    body,
+    details,
+    recordUrl,
+  }: {
+    workspaceId: string;
+    managerId: string;
+    authorName: string;
+    body: string;
+    details: { dealName?: string; projectName?: string; who?: string };
+    recordUrl: string | undefined;
+  }): Promise<void> {
+    const email = await this.loadManagerEmail(workspaceId, managerId);
+
+    if (!isDefined(email)) {
+      this.logger.warn(
+        `No Google Chat webhook or email for member ${managerId}; mention not delivered.`,
+      );
+
+      return;
+    }
+
+    const message = buildCommentMentionEmail({
+      authorName,
+      body,
+      dealName: details.dealName,
+      projectName: details.projectName,
+      contactName: details.who,
+      recordUrl,
+    });
+
+    try {
+      await this.emailService.send({
+        from: `${this.twentyConfigService.get(
+          'EMAIL_FROM_NAME',
+        )} <${this.twentyConfigService.get('EMAIL_FROM_ADDRESS')}>`,
+        to: email,
+        ...message,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not queue the mention email for member ${managerId}: ${
+          (error as Error)?.message
+        }`,
+      );
+    }
+  }
+
+  private async loadManagerEmail(
+    workspaceId: string,
+    managerId: string,
+  ): Promise<string | undefined> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const workspaceMemberRepository =
+          await this.globalWorkspaceOrmManager.getRepository<{
+            id: string;
+            userEmail: string | null;
+          }>(workspaceId, 'workspaceMember', {
+            shouldBypassPermissionChecks: true,
+          });
+
+        const member = await workspaceMemberRepository.findOne({
+          where: { id: managerId },
+        });
+
+        return member?.userEmail || undefined;
+      },
+      buildSystemAuthContext(workspaceId),
     );
   }
 
