@@ -39,10 +39,19 @@ const CALL_SETTLED = {
   },
 };
 
-const buildService = (activityRow: Record<string, unknown> | undefined) => {
+// A project whose room still hears about calls.
+const VANZARI_PROJECT = { code: 'ENSVI', name: 'Vanzari Imobiliare' };
+
+// In PROJECT_CODES_WITHOUT_CALL_POSTS: its room takes no calls.
+const ARTIMA_PROJECT = { code: 'ENS2301', name: 'ARTIMA Business & Lifestyle' };
+
+const buildService = (
+  activityRow: Record<string, unknown> | undefined,
+  project: Record<string, unknown> = VANZARI_PROJECT,
+) => {
   const repositories: Record<string, { findOne: jest.Mock }> = {
     opportunity: { findOne: jest.fn().mockResolvedValue(OPPORTUNITY) },
-    project: { findOne: jest.fn().mockResolvedValue({ name: 'ARTIMA' }) },
+    project: { findOne: jest.fn().mockResolvedValue(project) },
     person: { findOne: jest.fn().mockResolvedValue(undefined) },
     inboundActivity: { findOne: jest.fn().mockResolvedValue(activityRow) },
   };
@@ -138,5 +147,51 @@ describe('ProjectNotificationService', () => {
 
     expect(outcome).toBe('posted');
     expect(projectChatWebhookService.post).toHaveBeenCalled();
+  });
+
+  describe('when the project room takes no calls', () => {
+    // Skipping must be terminal: answering 'awaiting-call-outcome' would keep
+    // PostProjectDealJob polling for a post that is never going to happen.
+    it('should skip a call deal without waiting for its closing push', async () => {
+      const { service, projectChatWebhookService } = buildService(
+        CALL_IN_PROGRESS,
+        ARTIMA_PROJECT,
+      );
+
+      const outcome = await service.notifyNewDeal(AUTH_CONTEXT, {
+        opportunityId: 'deal-id',
+      });
+
+      expect(outcome).toBe('skipped');
+      expect(projectChatWebhookService.post).not.toHaveBeenCalled();
+    });
+
+    it('should skip a call deal whose outcome is already final', async () => {
+      const { service, projectChatWebhookService } = buildService(
+        CALL_SETTLED,
+        ARTIMA_PROJECT,
+      );
+
+      const outcome = await service.notifyNewDeal(AUTH_CONTEXT, {
+        opportunityId: 'deal-id',
+      });
+
+      expect(outcome).toBe('skipped');
+      expect(projectChatWebhookService.post).not.toHaveBeenCalled();
+    });
+
+    it('should still post a form deal', async () => {
+      const { service, projectChatWebhookService } = buildService(
+        { kind: 'FORM_SUBMISSION' },
+        ARTIMA_PROJECT,
+      );
+
+      const outcome = await service.notifyNewDeal(AUTH_CONTEXT, {
+        opportunityId: 'deal-id',
+      });
+
+      expect(outcome).toBe('posted');
+      expect(projectChatWebhookService.post).toHaveBeenCalled();
+    });
   });
 });

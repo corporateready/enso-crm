@@ -6,6 +6,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import { PROJECT_CODES_WITHOUT_CALL_POSTS } from 'src/modules/enso/lead-pipeline/lead-pipeline.constants';
 import {
   buildProjectDealMessage,
   type ProjectDealFacts,
@@ -100,7 +101,21 @@ export class ProjectNotificationService {
       return 'skipped';
     }
 
-    const { projectId, facts, isAwaitingCallOutcome } = loaded;
+    const { projectId, projectCode, facts, isAwaitingCallOutcome } = loaded;
+
+    // Checked before the wait below: a call this room never hears about must
+    // not keep PostProjectDealJob polling for the call's closing push.
+    if (
+      facts.activity?.kind === 'INCOMING_CALL' &&
+      isDefined(projectCode) &&
+      PROJECT_CODES_WITHOUT_CALL_POSTS.has(projectCode)
+    ) {
+      this.logger.log(
+        `Not posting call deal ${params.opportunityId}: the ${projectCode} marketing space takes no calls.`,
+      );
+
+      return 'skipped';
+    }
 
     if (isAwaitingCallOutcome && params.postWithoutFinalCallOutcome !== true) {
       return 'awaiting-call-outcome';
@@ -143,6 +158,7 @@ export class ProjectNotificationService {
   ): Promise<
     | {
         projectId: string | undefined;
+        projectCode: string | undefined;
         facts: ProjectDealFacts;
         isAwaitingCallOutcome: boolean;
       }
@@ -168,6 +184,7 @@ export class ProjectNotificationService {
         }
 
         let projectName: string | undefined;
+        let projectCode: string | undefined;
 
         if (isDefined(opportunity.projectId)) {
           const projectRepository =
@@ -182,6 +199,7 @@ export class ProjectNotificationService {
           });
 
           projectName = project?.name ?? undefined;
+          projectCode = project?.code ?? undefined;
         }
 
         let fullName: string | undefined;
@@ -237,6 +255,7 @@ export class ProjectNotificationService {
 
         return {
           projectId: opportunity.projectId ?? undefined,
+          projectCode,
           isAwaitingCallOutcome: awaitsCallOutcome(activityRow),
           facts: {
             projectName,
