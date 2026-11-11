@@ -115,3 +115,11 @@ export const PROJECT_DEAL_POST_POLL_MS = Number(
 export const PROJECT_DEAL_POST_MAX_ATTEMPTS = Number(
   process.env.ENSO_PROJECT_DEAL_POST_MAX_ATTEMPTS ?? 90,
 );
+
+// Projects whose marketing room is not told about deals opened by a phone call.
+// Their forms, lead ads and messages still post, and the managers' own cards
+// are a separate lane that this does not touch. ARTIMA's call alerts were
+// switched off on 2026-11-11 at the business's request.
+export const PROJECT_CODES_WITHOUT_CALL_POSTS: ReadonlySet<string> = new Set([
+  'ENS2301', // ARTIMA
+]);
